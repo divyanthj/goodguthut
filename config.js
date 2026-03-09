@@ -2,12 +2,12 @@ import themes from "daisyui/src/theming/themes";
 
 const config = {
   // REQUIRED
-  appName: "ShipFast",
+  appName: "Good Gut Hut",
   // REQUIRED: a short description of your app for SEO tags (can be overwritten)
   appDescription:
-    "The NextJS boilerplate with all you need to build your SaaS, AI tool, or any other web app.",
+    "Good Gut Hut crafts fermented non-alcoholic drinks that are slowly brewed and made with care.",
   // REQUIRED (no https://, not trialing slash at the end, just the naked domain)
-  domainName: "shipfa.st",
+  domainName: "goodguthut.com",
   crisp: {
     // Crisp website ID. IF YOU DON'T USE CRISP: just remove this => Then add a support email in this config file (mailgun.supportEmail) otherwise customer support won't work.
     id: "",
@@ -64,6 +64,12 @@ const config = {
       },
     ],
   },
+  lemonsqueezy: {
+    // Placeholder for future preorder marketplace support
+    storeId: process.env.LEMONSQUEEZY_STORE_ID || "",
+    variantId: process.env.LEMONSQUEEZY_PREORDER_VARIANT_ID || "",
+    webhookSecret: process.env.LEMONSQUEEZY_WEBHOOK_SECRET || "",
+  },
   aws: {
     // If you use AWS S3/Cloudfront, put values in here
     bucket: "bucket-name",
@@ -87,7 +93,7 @@ const config = {
     theme: "light",
     // REQUIRED — This color will be reflected on the whole app outside of the document (loading bar, Chrome tabs, etc..). By default it takes the primary color from your DaisyUI theme (make sure to update your the theme name after "data-theme=")
     // OR you can just do this to use a custom color: main: "#f37055". HEX only.
-    main: themes["light"]["primary"],
+    main: "#1E6A4A",
   },
   auth: {
     // REQUIRED — the path to log in users. It's use to protect private routes (like /dashboard). It's used in apiClient (/libs/api.js) upon 401 errors from our API
