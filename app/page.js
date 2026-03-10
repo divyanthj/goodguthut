@@ -33,13 +33,6 @@ const lineup = [
   },
 ];
 
-const roadmap = [
-  "Product catalog and inventory-ready structure",
-  "Preorder flow hooks for upcoming drops",
-  "LemonSqueezy checkout integration points",
-  "Order status and customer updates",
-];
-
 export default function Page() {
   return (
     <main className="bg-base-200">
@@ -89,26 +82,6 @@ export default function Page() {
           Customers can place preorders directly with contact + delivery details. User authentication is not required.
         </p>
         <PreorderForm products={lineup} />
-      </section>
-
-      <section id="marketplace-ready" className="mx-auto max-w-6xl px-4 pb-16 md:px-6">
-        <div className="card bg-secondary/20 shadow-md">
-          <div className="card-body">
-            <h2 className="card-title text-2xl md:text-3xl">Built with room for preorders + LemonSqueezy</h2>
-            <p className="max-w-3xl opacity-80">
-              Today this is a focused landing page with open preorder capture. It is intentionally designed to expand
-              into a full preorder/ordering marketplace with LemonSqueezy payments later.
-            </p>
-
-            <ul className="grid gap-3 md:grid-cols-2">
-              {roadmap.map((item) => (
-                <li key={item} className="alert bg-base-100 text-base-content">
-                  <span>{item}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
       </section>
     </main>
   );

@@ -25,6 +25,16 @@ const preorderItemSchema = mongoose.Schema(
       maxlength: 240,
       default: "",
     },
+    unitPrice: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+    lineTotal: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
   },
   { _id: false }
 );
@@ -52,6 +62,32 @@ const preorderSchema = mongoose.Schema(
       trim: true,
       required: true,
     },
+    customerNotes: {
+      type: String,
+      trim: true,
+      maxlength: 500,
+      default: "",
+    },
+    preorderWindow: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "PreorderWindow",
+      default: null,
+    },
+    preorderWindowLabel: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    deliveryDate: {
+      type: Date,
+      default: null,
+    },
+    currency: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      default: "INR",
+    },
     items: {
       type: [preorderItemSchema],
       default: [],
@@ -59,6 +95,21 @@ const preorderSchema = mongoose.Schema(
         validator: (value) => value.length > 0,
         message: "At least one preorder item is required",
       },
+    },
+    totalQuantity: {
+      type: Number,
+      min: 1,
+      default: 1,
+    },
+    subtotal: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+    source: {
+      type: String,
+      enum: ["landing", "admin", "marketplace", "manual"],
+      default: "landing",
     },
     status: {
       type: String,
