@@ -56,7 +56,7 @@ export default function PreorderForm({
 
     setDeliveryError("");
 
-    if (!address || !preorderWindowId || !pickupAddress || deliveryBands.length === 0) {
+    if (!address || !pickupAddress || deliveryBands.length === 0) {
       setDeliveryQuote(null);
       setIsQuotingDelivery(false);
       return undefined;
