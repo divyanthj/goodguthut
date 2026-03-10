@@ -1,12 +1,11 @@
-import connectMongo from "@/libs/mongoose";
-import { getAdminSessionState } from "@/libs/admin-auth";
-import PreorderWindow from "@/models/PreorderWindow";
-import { createDefaultPreorderWindow } from "@/libs/preorder-catalog";
 import AdminLoginButton from "@/components/AdminLoginButton";
-import AdminPreorderConsole from "@/components/AdminPreorderConsole";
 import AdminNav from "@/components/AdminNav";
+import AdminPreordersList from "@/components/AdminPreordersList";
+import { getAdminSessionState } from "@/libs/admin-auth";
+import connectMongo from "@/libs/mongoose";
+import Preorder from "@/models/Preorder";
 
-export default async function AdminPage() {
+export default async function AdminPreordersPage() {
   const { session, isAdmin } = await getAdminSessionState();
 
   if (!session?.user) {
@@ -43,28 +42,23 @@ export default async function AdminPage() {
   }
 
   await connectMongo();
-  const preorderWindow = await PreorderWindow.findOne({
-    status: { $in: ["draft", "open", "closed"] },
-  }).sort({ updatedAt: -1, createdAt: -1 });
-
-  const initialWindow = preorderWindow
-    ? JSON.parse(JSON.stringify(preorderWindow))
-    : createDefaultPreorderWindow();
+  const preorderDocs = await Preorder.find({})
+    .sort({ createdAt: -1 })
+    .limit(100);
+  const preorders = JSON.parse(JSON.stringify(preorderDocs));
 
   return (
     <main className="min-h-screen bg-base-200 px-4 py-10 md:px-6">
       <div className="mx-auto max-w-6xl space-y-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold">Admin preorder control</h1>
-            <p className="mt-2 max-w-3xl opacity-75">
-              Manage the active preorder window, set per-SKU pricing, and prepare the catalog for Razorpay checkout.
-            </p>
+            <h1 className="text-3xl font-bold">Preorders</h1>
+            <p className="mt-2 opacity-75">Review the latest customer orders, delivery charges, and payment state.</p>
           </div>
-          <AdminNav active="settings" />
+          <AdminNav active="preorders" />
         </div>
 
-        <AdminPreorderConsole initialWindow={initialWindow} adminEmail={session.user.email} />
+        <AdminPreordersList initialPreorders={preorders} />
       </div>
     </main>
   );

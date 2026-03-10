@@ -128,6 +128,10 @@ const preorderSchema = mongoose.Schema(
       type: Date,
       default: null,
     },
+    deliveredAt: {
+      type: Date,
+      default: null,
+    },
     currency: {
       type: String,
       trim: true,

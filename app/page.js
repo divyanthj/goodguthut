@@ -89,7 +89,13 @@ export default function Page() {
     });
   }, [preorderWindow]);
 
+  const isPreorderOpen = preorderWindow?.status === "open";
+
   const updateQty = (sku, nextQty) => {
+    if (!isPreorderOpen) {
+      return;
+    }
+
     const boundedQty = Math.max(0, Math.min(MAX_QTY, nextQty));
     setCart((prev) => ({ ...prev, [sku]: boundedQty }));
   };
@@ -132,9 +138,11 @@ export default function Page() {
                 <a className="btn btn-primary" href="#lineup">
                   Explore the lineup
                 </a>
-                <a className="btn btn-outline" href="#preorder">
-                  Place a preorder
-                </a>
+                {isPreorderOpen && (
+                  <a className="btn btn-outline" href="#preorder">
+                    Place a preorder
+                  </a>
+                )}
               </div>
             </div>
           </div>
@@ -146,6 +154,11 @@ export default function Page() {
           <h2 className="text-2xl font-extrabold md:text-3xl">Current lineup</h2>
           <div className="badge badge-outline">{preorderWindow.currency || "INR"} pricing</div>
         </div>
+        {!isPreorderOpen && (
+          <div className="mt-4 rounded-2xl bg-base-100 p-4 text-sm shadow-md">
+            We are currently not taking preorders. Check back in with us later.
+          </div>
+        )}
         <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {lineup.map((drink) => {
             const qty = Number(cart[drink.sku] || 0);
@@ -153,51 +166,49 @@ export default function Page() {
               <article key={drink.sku} className="card bg-base-100 shadow-md">
                 <div className="card-body">
                   <h3 className="card-title">{drink.name}</h3>
-                  <button
-                    type="button"
-                    className="link link-primary text-left text-xs no-underline hover:underline"
-                    onClick={() => updateQty(drink.sku, qty === 0 ? 1 : qty)}
-                  >
+                  <div className="text-left text-xs opacity-70">
                     SKU: {drink.sku}
-                  </button>
+                  </div>
                   <p>{drink.note}</p>
                   <div className="text-sm font-medium opacity-80">
                     {drink.unitPrice > 0
                       ? `${preorderWindow.currency || "INR"} ${drink.unitPrice.toFixed(2)}`
                       : "Price available after admin setup"}
                   </div>
-                  <div className="card-actions justify-end">
-                    {qty === 0 ? (
-                      <button
-                        type="button"
-                        className="btn btn-primary btn-sm"
-                        onClick={() => updateQty(drink.sku, 1)}
-                      >
-                        Add to cart
-                      </button>
-                    ) : (
-                      <div className="join">
+                  {isPreorderOpen && (
+                    <div className="card-actions justify-end">
+                      {qty === 0 ? (
                         <button
                           type="button"
-                          className="btn btn-sm join-item"
-                          onClick={() => updateQty(drink.sku, qty - 1)}
+                          className="btn btn-primary btn-sm"
+                          onClick={() => updateQty(drink.sku, 1)}
                         >
-                          -
+                          Add to cart
                         </button>
-                        <button type="button" className="btn btn-sm join-item" disabled>
-                          {qty}
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-sm join-item"
-                          onClick={() => updateQty(drink.sku, qty + 1)}
-                          disabled={qty >= MAX_QTY}
-                        >
-                          +
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                      ) : (
+                        <div className="join">
+                          <button
+                            type="button"
+                            className="btn btn-sm join-item"
+                            onClick={() => updateQty(drink.sku, qty - 1)}
+                          >
+                            -
+                          </button>
+                          <button type="button" className="btn btn-sm join-item" disabled>
+                            {qty}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-sm join-item"
+                            onClick={() => updateQty(drink.sku, qty + 1)}
+                            disabled={qty >= MAX_QTY}
+                          >
+                            +
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </article>
             );
@@ -223,20 +234,21 @@ export default function Page() {
         </section>
       )}
 
-      <section id="preorder" className="mx-auto max-w-6xl px-4 pb-12 md:px-6">
-        <h2 className="text-2xl font-extrabold md:text-3xl">Preorder now (no login required)</h2>
-        <PreorderForm
-          selectedItems={selectedItems}
-          preorderWindowId={preorderWindow.id || ""}
-          currency={preorderWindow.currency || "INR"}
-          deliveryBands={preorderWindow.deliveryBands || []}
-          pickupAddress={preorderWindow.pickupAddress || ""}
-          onOrderPlaced={resetCart}
-          updateQty={updateQty}
-          minTotalQuantity={minTotalQuantity}
-        />
-      </section>
+      {isPreorderOpen && (
+        <section id="preorder" className="mx-auto max-w-6xl px-4 pb-12 md:px-6">
+          <h2 className="text-2xl font-extrabold md:text-3xl">Preorder now (no login required)</h2>
+          <PreorderForm
+            selectedItems={selectedItems}
+            preorderWindowId={preorderWindow.id || ""}
+            currency={preorderWindow.currency || "INR"}
+            deliveryBands={preorderWindow.deliveryBands || []}
+            pickupAddress={preorderWindow.pickupAddress || ""}
+            onOrderPlaced={resetCart}
+            updateQty={updateQty}
+            minTotalQuantity={minTotalQuantity}
+          />
+        </section>
+      )}
     </main>
   );
 }
-

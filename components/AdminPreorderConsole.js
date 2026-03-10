@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 const toDateInputValue = (value) => {
   if (!value) {
@@ -25,6 +25,25 @@ const createEmptyDeliveryBand = () => ({
   fee: 0,
 });
 
+const createSessionToken = () => {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+};
+
+const createStoredPickupSelection = (pickupAddress = "") => {
+  if (!pickupAddress) {
+    return null;
+  }
+
+  return {
+    placeId: "",
+    formattedAddress: pickupAddress,
+  };
+};
+
 export default function AdminPreorderConsole({ initialWindow, adminEmail }) {
   const [windowConfig, setWindowConfig] = useState({
     ...initialWindow,
@@ -40,11 +59,65 @@ export default function AdminPreorderConsole({ initialWindow, adminEmail }) {
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [pickupSuggestions, setPickupSuggestions] = useState([]);
+  const [pickupLookupError, setPickupLookupError] = useState("");
+  const [isLoadingPickupSuggestions, setIsLoadingPickupSuggestions] = useState(false);
+  const [selectedPickupPlace, setSelectedPickupPlace] = useState(() =>
+    createStoredPickupSelection(initialWindow.pickupAddress)
+  );
+  const [pickupSessionToken, setPickupSessionToken] = useState(() => createSessionToken());
 
   const activeItemCount = useMemo(
     () => windowConfig.allowedItems.filter((item) => item.isActive).length,
     [windowConfig.allowedItems]
   );
+
+  useEffect(() => {
+    const input = (windowConfig.pickupAddress || "").trim();
+
+    if (!input || input.length < 3) {
+      setPickupSuggestions([]);
+      setIsLoadingPickupSuggestions(false);
+      return undefined;
+    }
+
+    if (selectedPickupPlace && selectedPickupPlace.formattedAddress === windowConfig.pickupAddress) {
+      setPickupSuggestions([]);
+      return undefined;
+    }
+
+    const timeoutId = setTimeout(async () => {
+      setIsLoadingPickupSuggestions(true);
+
+      try {
+        const response = await fetch("/api/preorder/address-autocomplete", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            input,
+            sessionToken: pickupSessionToken,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || "Could not load pickup address suggestions.");
+        }
+
+        setPickupSuggestions(data.suggestions || []);
+      } catch (lookupError) {
+        setPickupSuggestions([]);
+        setPickupLookupError(lookupError.message || "Could not load pickup address suggestions.");
+      } finally {
+        setIsLoadingPickupSuggestions(false);
+      }
+    }, 250);
+
+    return () => clearTimeout(timeoutId);
+  }, [windowConfig.pickupAddress, pickupSessionToken, selectedPickupPlace]);
 
   const setField = (field, value) => {
     setWindowConfig((current) => ({ ...current, [field]: value }));
@@ -96,10 +169,58 @@ export default function AdminPreorderConsole({ initialWindow, adminEmail }) {
     }));
   };
 
+  const handlePickupInputChange = (value) => {
+    setField("pickupAddress", value);
+    if (selectedPickupPlace) {
+      setPickupSessionToken(createSessionToken());
+    }
+    setSelectedPickupPlace(null);
+    setPickupLookupError("");
+  };
+
+  const handlePickupSuggestionSelect = async (suggestion) => {
+    setIsLoadingPickupSuggestions(true);
+    setPickupLookupError("");
+
+    try {
+      const response = await fetch("/api/preorder/address-place", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          placeId: suggestion.placeId,
+          sessionToken: pickupSessionToken,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Could not verify that pickup address.");
+      }
+
+      setSelectedPickupPlace(data.place);
+      setField("pickupAddress", data.place.formattedAddress);
+      setPickupSuggestions([]);
+    } catch (selectionError) {
+      setPickupLookupError(selectionError.message || "Could not verify that pickup address.");
+    } finally {
+      setIsLoadingPickupSuggestions(false);
+    }
+  };
+
   const onSave = async (event) => {
     event.preventDefault();
     setMessage("");
     setError("");
+    setPickupLookupError("");
+
+    if (windowConfig.pickupAddress?.trim() && !selectedPickupPlace) {
+      setError("Please select the pickup address from the suggestions before saving.");
+      return;
+    }
+
     setIsSaving(true);
 
     try {
@@ -128,6 +249,8 @@ export default function AdminPreorderConsole({ initialWindow, adminEmail }) {
           ? data.preorderWindow.deliveryBands
           : [createEmptyDeliveryBand()],
       });
+      setSelectedPickupPlace(createStoredPickupSelection(data.preorderWindow.pickupAddress));
+      setPickupSuggestions([]);
       setMessage("Admin settings saved.");
     } catch (saveError) {
       setError(saveError.message || "Could not save preorder settings.");
@@ -187,17 +310,59 @@ export default function AdminPreorderConsole({ initialWindow, adminEmail }) {
               />
             </label>
 
-            <label className="form-control w-full md:col-span-2">
+            <div className="form-control w-full md:col-span-2">
               <div className="label">
                 <span className="label-text">Pickup address</span>
               </div>
-              <textarea
-                className="textarea textarea-bordered"
-                rows={3}
+              <input
+                className="input input-bordered w-full"
                 value={windowConfig.pickupAddress || ""}
-                onChange={(event) => setField("pickupAddress", event.target.value)}
+                onChange={(event) => handlePickupInputChange(event.target.value)}
+                placeholder="Start typing the pickup address and choose the best match"
+                autoComplete="off"
               />
-            </label>
+              <div className="mt-2 text-xs opacity-70">
+                Choose a suggestion so delivery distance is calculated from the correct origin.
+              </div>
+              {pickupSuggestions.length > 0 && (
+                <div className="mt-2 rounded-2xl border border-base-300 bg-base-100 shadow-lg">
+                  <ul className="max-h-72 overflow-y-auto py-2">
+                    {pickupSuggestions.map((suggestion) => (
+                      <li key={suggestion.placeId}>
+                        <button
+                          type="button"
+                          className="w-full px-4 py-3 text-left hover:bg-base-200"
+                          onClick={() => handlePickupSuggestionSelect(suggestion)}
+                        >
+                          <div className="font-medium">{suggestion.primaryText}</div>
+                          {suggestion.secondaryText && (
+                            <div className="text-sm opacity-70">{suggestion.secondaryText}</div>
+                          )}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {isLoadingPickupSuggestions && (windowConfig.pickupAddress || "").trim().length >= 3 && (
+                <div className="mt-2 text-xs opacity-70">Looking up pickup addresses...</div>
+              )}
+              {selectedPickupPlace?.formattedAddress && (
+                <div className="mt-3 rounded-2xl border border-base-300 bg-base-200 p-4 text-sm">
+                  <div className="font-medium">Verified pickup address</div>
+                  <div className="mt-1 opacity-80">{selectedPickupPlace.formattedAddress}</div>
+                  <a
+                    className="link link-primary mt-3 inline-block"
+                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedPickupPlace.formattedAddress)}`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Open in Google Maps
+                  </a>
+                </div>
+              )}
+              {pickupLookupError && <div className="mt-2 text-sm text-error">{pickupLookupError}</div>}
+            </div>
           </div>
 
           <div className="rounded-2xl border border-base-300 bg-base-200 p-4">
