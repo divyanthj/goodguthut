@@ -1,17 +1,17 @@
 import { MongoClient } from "mongodb";
 
 // This lib is use just to connect to the database in next-auth.
-// We don't use it anywhere else in the API routes—we use mongoose.js instead (to be able to use models)
+// We don't use it anywhere else in the API routes-we use mongoose.js instead (to be able to use models)
 // See /libs/nextauth.js file.
 
-const uri = process.env.MONGODB_URI;
+const uri = process.env.MONGODB_DIRECT_URI || process.env.MONGODB_URI;
 const options = {};
 
 let client;
 let clientPromise;
 
 if (!uri) {
-  console.group("⚠️ MONGODB_URI missing from .env.local");
+  console.group("MONGODB_URI missing from .env.local");
   console.error(
     "It's not mandatory but a database is required for Magic Links."
   );

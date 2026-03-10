@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import connectMongo from "@/libs/mongoose";
 import Preorder from "@/models/Preorder";
 import PreorderWindow from "@/models/PreorderWindow";
+import { calculateDeliveryQuote } from "@/libs/delivery";
 
 const sanitizeItems = (items = []) => {
   return items
@@ -110,12 +111,41 @@ export async function POST(req) {
 
     const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
     const subtotal = items.reduce((sum, item) => sum + item.lineTotal, 0);
+    const minimumOrderQuantity = Math.max(1, Number(preorderWindow?.minimumOrderQuantity || 1));
+
+    if (totalQuantity < minimumOrderQuantity) {
+      return NextResponse.json(
+        {
+          error: `Minimum preorder quantity is ${minimumOrderQuantity}.`,
+        },
+        { status: 400 }
+      );
+    }
+
+    let deliveryFee = 0;
+    let deliveryDistanceKm = 0;
+    let normalizedDeliveryAddress = address;
+
+    if (preorderWindow?.pickupAddress && preorderWindow?.deliveryBands?.length) {
+      const deliveryQuote = await calculateDeliveryQuote({
+        pickupAddress: preorderWindow.pickupAddress,
+        deliveryBands: preorderWindow.deliveryBands,
+        address,
+      });
+
+      deliveryFee = deliveryQuote.deliveryFee;
+      deliveryDistanceKm = deliveryQuote.distanceKm;
+      normalizedDeliveryAddress = deliveryQuote.normalizedAddress;
+    }
+
+    const total = subtotal + deliveryFee;
 
     const preorder = await Preorder.create({
       customerName,
       email: email || "",
       phone,
       address,
+      normalizedDeliveryAddress,
       customerNotes,
       preorderWindow: preorderWindow?._id || null,
       preorderWindowLabel: preorderWindow?.title || "",
@@ -124,7 +154,15 @@ export async function POST(req) {
       items,
       totalQuantity,
       subtotal,
+      deliveryFee,
+      deliveryDistanceKm,
+      total,
       source: "landing",
+      payment: {
+        status: total > 0 ? "pending" : "not_required",
+        amount: total,
+        currency: preorderWindow?.currency || "INR",
+      },
     });
 
     return NextResponse.json({
@@ -132,7 +170,11 @@ export async function POST(req) {
       status: preorder.status,
       totalQuantity: preorder.totalQuantity,
       subtotal: preorder.subtotal,
+      deliveryFee: preorder.deliveryFee,
+      deliveryDistanceKm: preorder.deliveryDistanceKm,
+      total: preorder.total,
       currency: preorder.currency,
+      paymentStatus: preorder.payment?.status,
     });
   } catch (e) {
     console.error(e);

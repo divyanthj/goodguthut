@@ -37,6 +37,27 @@ const windowItemSchema = mongoose.Schema(
   { _id: false }
 );
 
+const deliveryBandSchema = mongoose.Schema(
+  {
+    minDistanceKm: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+    maxDistanceKm: {
+      type: Number,
+      min: 0,
+      required: true,
+    },
+    fee: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+  },
+  { _id: false }
+);
+
 const preorderWindowSchema = mongoose.Schema(
   {
     title: {
@@ -73,6 +94,20 @@ const preorderWindowSchema = mongoose.Schema(
       trim: true,
       uppercase: true,
       default: "INR",
+    },
+    minimumOrderQuantity: {
+      type: Number,
+      min: 1,
+      default: 4,
+    },
+    pickupAddress: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    deliveryBands: {
+      type: [deliveryBandSchema],
+      default: [],
     },
     allowedItems: {
       type: [windowItemSchema],

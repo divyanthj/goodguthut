@@ -34,6 +34,57 @@ const preorderItemSchema = mongoose.Schema(
   { _id: false }
 );
 
+const preorderPaymentSchema = mongoose.Schema(
+  {
+    provider: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    status: {
+      type: String,
+      enum: ["not_required", "pending", "order_created", "paid", "failed", "refunded"],
+      default: "not_required",
+    },
+    amount: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+    currency: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      default: "INR",
+    },
+    orderId: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    paymentId: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    signature: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    webhookEvent: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    paidAt: {
+      type: Date,
+      default: null,
+    },
+  },
+  { _id: false }
+);
+
 const preorderSchema = mongoose.Schema(
   {
     customerName: {
@@ -101,6 +152,26 @@ const preorderSchema = mongoose.Schema(
       min: 0,
       default: 0,
     },
+    deliveryFee: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+    deliveryDistanceKm: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+    total: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+    normalizedDeliveryAddress: {
+      type: String,
+      trim: true,
+      default: "",
+    },
     source: {
       type: String,
       enum: ["landing", "admin", "marketplace", "manual"],
@@ -108,8 +179,12 @@ const preorderSchema = mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["pending", "confirmed", "cancelled", "fulfilled"],
+      enum: ["pending", "payment_pending", "paid", "confirmed", "cancelled", "fulfilled"],
       default: "pending",
+    },
+    payment: {
+      type: preorderPaymentSchema,
+      default: () => ({}),
     },
   },
   {

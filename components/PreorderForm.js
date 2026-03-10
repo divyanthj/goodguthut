@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 const initialCustomer = {
   customerName: "",
@@ -11,21 +11,90 @@ const initialCustomer = {
 
 const MAX_QTY = 10;
 
-export default function PreorderForm({ selectedItems, onOrderPlaced, updateQty, minTotalQuantity }) {
+export default function PreorderForm({
+  selectedItems,
+  preorderWindowId,
+  currency = "INR",
+  deliveryBands = [],
+  pickupAddress = "",
+  onOrderPlaced,
+  updateQty,
+  minTotalQuantity,
+}) {
   const [customer, setCustomer] = useState(initialCustomer);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [deliveryQuote, setDeliveryQuote] = useState(null);
+  const [isQuotingDelivery, setIsQuotingDelivery] = useState(false);
+  const [deliveryError, setDeliveryError] = useState("");
 
   const totalQuantity = useMemo(
     () => selectedItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
     [selectedItems]
   );
 
+  const subtotal = useMemo(
+    () =>
+      selectedItems.reduce(
+        (sum, item) => sum + Number(item.quantity || 0) * Number(item.unitPrice || 0),
+        0
+      ),
+    [selectedItems]
+  );
+
+  const total = subtotal + Number(deliveryQuote?.deliveryFee || 0);
   const hasMandatoryFields =
     customer.customerName.trim() && customer.phone.trim() && customer.address.trim();
   const meetsMinQty = totalQuantity >= minTotalQuantity;
-  const canSubmit = Boolean(hasMandatoryFields && meetsMinQty && selectedItems.length > 0 && !isSubmitting);
+  const canSubmit = Boolean(
+    hasMandatoryFields && meetsMinQty && selectedItems.length > 0 && !isSubmitting
+  );
+
+  useEffect(() => {
+    const address = customer.address.trim();
+
+    setDeliveryError("");
+
+    if (!address || !preorderWindowId || !pickupAddress || deliveryBands.length === 0) {
+      setDeliveryQuote(null);
+      setIsQuotingDelivery(false);
+      return undefined;
+    }
+
+    const timeoutId = setTimeout(async () => {
+      setIsQuotingDelivery(true);
+
+      try {
+        const response = await fetch("/api/preorder/delivery-quote", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            preorderWindowId,
+            address,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || "Could not calculate delivery fee.");
+        }
+
+        setDeliveryQuote(data);
+        setDeliveryError("");
+      } catch (quoteError) {
+        setDeliveryQuote(null);
+        setDeliveryError(quoteError.message || "Could not calculate delivery fee.");
+      } finally {
+        setIsQuotingDelivery(false);
+      }
+    }, 700);
+
+    return () => clearTimeout(timeoutId);
+  }, [customer.address, preorderWindowId, pickupAddress, deliveryBands]);
 
   const onSubmit = async (e) => {
     e.preventDefault();
@@ -53,7 +122,11 @@ export default function PreorderForm({ selectedItems, onOrderPlaced, updateQty, 
       const response = await fetch("/api/preorder", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...customer, items: selectedItems }),
+        body: JSON.stringify({
+          ...customer,
+          preorderWindowId,
+          items: selectedItems,
+        }),
       });
 
       const data = await response.json();
@@ -62,8 +135,13 @@ export default function PreorderForm({ selectedItems, onOrderPlaced, updateQty, 
         throw new Error(data.error || "Could not place preorder.");
       }
 
-      setMessage("Preorder received! We will contact you to confirm details.");
+      setMessage(
+        data.total > 0
+          ? `Preorder received. Total due: ${currency} ${Number(data.total).toFixed(2)} including delivery.`
+          : "Preorder received! We will contact you to confirm details."
+      );
       setCustomer(initialCustomer);
+      setDeliveryQuote(null);
       onOrderPlaced?.();
     } catch (err) {
       setError(err.message || "Something went wrong.");
@@ -132,7 +210,12 @@ export default function PreorderForm({ selectedItems, onOrderPlaced, updateQty, 
               <ul className="space-y-2">
                 {selectedItems.map((item) => (
                   <li key={item.sku} className="flex items-center justify-between rounded-lg bg-base-100 px-3 py-2">
-                    <span>{item.productName}</span>
+                    <div>
+                      <div>{item.productName}</div>
+                      <div className="text-xs opacity-60">
+                        {currency} {Number(item.unitPrice || 0).toFixed(2)} each
+                      </div>
+                    </div>
                     <div className="join">
                       <button
                         type="button"
@@ -159,6 +242,17 @@ export default function PreorderForm({ selectedItems, onOrderPlaced, updateQty, 
             )}
             <div className="text-sm opacity-80">Total quantity: {totalQuantity}</div>
             <div className="text-sm opacity-80">Minimum quantity required: {minTotalQuantity}</div>
+            <div className="text-sm font-medium opacity-90">Subtotal: {currency} {subtotal.toFixed(2)}</div>
+            <div className="text-sm font-medium opacity-90">
+              Delivery: {deliveryQuote ? `${currency} ${Number(deliveryQuote.deliveryFee).toFixed(2)}` : isQuotingDelivery ? "Calculating..." : `${currency} 0.00`}
+            </div>
+            {deliveryQuote && (
+              <div className="text-sm opacity-80">
+                Distance: {Number(deliveryQuote.distanceKm).toFixed(1)} km to {deliveryQuote.normalizedAddress}
+              </div>
+            )}
+            {deliveryError && <div className="text-sm text-error">{deliveryError}</div>}
+            <div className="text-sm font-semibold">Total: {currency} {total.toFixed(2)}</div>
           </div>
         </div>
 
