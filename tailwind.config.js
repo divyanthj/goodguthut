@@ -1,3 +1,5 @@
+const themes = require("daisyui/src/theming/themes");
+
 module.exports = {
   content: [
     "./app/**/*.{js,ts,jsx,tsx,mdx}",
@@ -63,6 +65,22 @@ module.exports = {
     // You can add another theme among the list of 30+
     // Add "data-theme='theme_name" to any HTML tag to enable the 'theme_name' theme.
     // https://daisyui.com/
-    themes: ["light", "dark"],
+    themes: [
+      {
+        goodguthut: {
+          ...themes["light"],
+          "primary": "#1E6A4A",
+          "secondary": "#D9898A",
+          "accent": "#6F9A74",
+          "neutral": "#213A2F",
+          "base-100": "#FFFDF8",
+          "base-200": "#F8F4EA",
+          "base-300": "#EFE9DA",
+          "base-content": "#213A2F",
+        },
+      },
+      "light",
+      "dark",
+    ],
   },
 };
