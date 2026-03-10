@@ -11,7 +11,7 @@ let client;
 let clientPromise;
 
 if (!uri) {
-  console.group("⚠️ MONGODB_URI missing from .env");
+  console.group("⚠️ MONGODB_URI missing from .env.local");
   console.error(
     "It's not mandatory but a database is required for Magic Links."
   );

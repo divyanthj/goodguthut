@@ -9,7 +9,6 @@ const sanitizeItems = (items = []) => {
       sku: (item.sku || "").trim().toUpperCase(),
       productName: (item.productName || "").trim(),
       quantity: Number(item.quantity || 0),
-      quantityNotes: (item.quantityNotes || "").trim(),
       unitPrice: Number(item.unitPrice || 0),
     }))
     .filter((item) => item.sku && item.productName && item.quantity > 0);
@@ -92,7 +91,6 @@ export async function POST(req) {
         sku: item.sku,
         productName: allowedItem?.productName || item.productName,
         quantity: item.quantity,
-        quantityNotes: item.quantityNotes,
         unitPrice,
         lineTotal: item.quantity * unitPrice,
       };

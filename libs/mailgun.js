@@ -9,7 +9,7 @@ const mg = mailgun.client({
 });
 
 if (!process.env.MAILGUN_API_KEY && process.env.NODE_ENV === "development") {
-  console.group("⚠️ MAILGUN_API_KEY missing from .env");
+  console.group("⚠️ MAILGUN_API_KEY missing from .env.local");
   console.error("It's not mandatory but it's required to send emails.");
   console.error("If you don't need it, remove the code from /libs/mailgun.js");
   console.groupEnd();

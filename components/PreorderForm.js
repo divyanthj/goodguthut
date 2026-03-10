@@ -14,9 +14,6 @@ export default function PreorderForm({ products }) {
   const [quantities, setQuantities] = useState(() =>
     Object.fromEntries(products.map((product) => [product.sku, 0]))
   );
-  const [quantityNotes, setQuantityNotes] = useState(() =>
-    Object.fromEntries(products.map((product) => [product.sku, ""]))
-  );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -29,9 +26,8 @@ export default function PreorderForm({ products }) {
           sku: product.sku,
           productName: product.name,
           quantity: Number(quantities[product.sku] || 0),
-          quantityNotes: quantityNotes[product.sku] || "",
         })),
-    [products, quantities, quantityNotes]
+    [products, quantities]
   );
 
   const onSubmit = async (e) => {
@@ -62,7 +58,6 @@ export default function PreorderForm({ products }) {
       setMessage("Preorder received! We will contact you to confirm details.");
       setCustomer(initialCustomer);
       setQuantities(Object.fromEntries(products.map((product) => [product.sku, 0])));
-      setQuantityNotes(Object.fromEntries(products.map((product) => [product.sku, ""])));
     } catch (err) {
       setError(err.message || "Something went wrong.");
     } finally {
@@ -131,7 +126,7 @@ export default function PreorderForm({ products }) {
           <div className="mt-4 space-y-3">
             {products.map((product) => (
               <div key={product.sku} className="card card-compact bg-base-200">
-                <div className="card-body grid gap-3 md:grid-cols-[1fr,140px,1fr] md:items-center">
+                <div className="card-body grid gap-3 md:grid-cols-[1fr,140px] md:items-center">
                   <div>
                     <p className="font-semibold">{product.name}</p>
                     <p className="text-xs opacity-70">SKU: {product.sku}</p>
@@ -146,17 +141,6 @@ export default function PreorderForm({ products }) {
                       setQuantities((prev) => ({
                         ...prev,
                         [product.sku]: Number(e.target.value || 0),
-                      }))
-                    }
-                  />
-                  <input
-                    placeholder="Quantity notes (optional)"
-                    className="input input-bordered"
-                    value={quantityNotes[product.sku]}
-                    onChange={(e) =>
-                      setQuantityNotes((prev) => ({
-                        ...prev,
-                        [product.sku]: e.target.value,
                       }))
                     }
                   />
