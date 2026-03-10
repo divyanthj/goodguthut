@@ -1,25 +1,32 @@
+import PreorderForm from "@/components/PreorderForm";
+
 const lineup = [
   {
+    sku: "GGH-KCK-250",
     name: "Kokum Carrot Kanji",
     note: "Tangy kokum + earthy carrot fermentation with a bold, savory finish.",
     badge: "Kanji",
   },
   {
+    sku: "GGH-CUK-250",
     name: "Cucumber Kanji",
     note: "Light, crisp and cooling with a naturally probiotic kick.",
     badge: "Kanji",
   },
   {
+    sku: "GGH-PSP-300",
     name: "Pineapple Sparkle",
     note: "Tepache-inspired tropical fizz with gentle fermentation funk.",
     badge: "Sparkle",
   },
   {
+    sku: "GGH-MSP-300",
     name: "Melon Sparkle",
     note: "Juicy melon brightness, softly sparkling and ultra-refreshing.",
     badge: "Sparkle",
   },
   {
+    sku: "GGH-BUG-330",
     name: "Bug Sodas",
     note: "Experimental small-batch fermented sodas for curious palates.",
     badge: "Lab Batch",
@@ -51,11 +58,17 @@ export default function Page() {
           </p>
 
           <div className="mt-8 flex flex-wrap gap-4">
-            <a className="rounded-full bg-[#1E6A4A] px-6 py-3 font-semibold text-[#F8F4EA] transition hover:opacity-90" href="#lineup">
+            <a
+              className="rounded-full bg-[#1E6A4A] px-6 py-3 font-semibold text-[#F8F4EA] transition hover:opacity-90"
+              href="#lineup"
+            >
               Explore the lineup
             </a>
-            <a className="rounded-full border border-[#1E6A4A]/30 px-6 py-3 font-semibold text-[#1E6A4A] transition hover:bg-[#1E6A4A]/5" href="#marketplace-ready">
-              Marketplace roadmap
+            <a
+              className="rounded-full border border-[#1E6A4A]/30 px-6 py-3 font-semibold text-[#1E6A4A] transition hover:bg-[#1E6A4A]/5"
+              href="#preorder"
+            >
+              Place a preorder
             </a>
           </div>
         </div>
@@ -65,25 +78,40 @@ export default function Page() {
         <h2 className="text-2xl font-extrabold md:text-3xl">Current lineup</h2>
         <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {lineup.map((drink) => (
-            <article key={drink.name} className="rounded-3xl border border-[#1E6A4A]/10 bg-white p-6 shadow-sm">
+            <article
+              key={drink.name}
+              className="rounded-3xl border border-[#1E6A4A]/10 bg-white p-6 shadow-sm"
+            >
               <p className="text-xs font-bold uppercase tracking-[0.15em] text-[#D9898A]">{drink.badge}</p>
               <h3 className="mt-2 text-xl font-bold">{drink.name}</h3>
+              <p className="mt-2 text-xs tracking-[0.15em] text-[#1E6A4A]/70">SKU: {drink.sku}</p>
               <p className="mt-2 text-sm leading-relaxed text-[#1E6A4A]/75">{drink.note}</p>
             </article>
           ))}
         </div>
       </section>
 
+      <section id="preorder" className="mx-auto max-w-6xl px-6 pb-16">
+        <h2 className="text-2xl font-extrabold md:text-3xl">Preorder now (no login required)</h2>
+        <p className="mt-2 max-w-3xl text-[#1E6A4A]/80">
+          Customers can place preorders directly with contact + delivery details. User authentication is not required.
+        </p>
+        <PreorderForm products={lineup} />
+      </section>
+
       <section id="marketplace-ready" className="mx-auto max-w-6xl px-6 pb-20">
         <div className="rounded-3xl border border-[#D9898A]/30 bg-[#D9898A]/10 p-8 md:p-10">
           <h2 className="text-2xl font-extrabold md:text-3xl">Built with room for preorders + LemonSqueezy</h2>
           <p className="mt-3 max-w-3xl text-[#1E6A4A]/80">
-            Today this is a focused landing page. Under the hood, the structure is intentionally planned so Good Gut Hut can expand into a preorder marketplace when you&apos;re ready.
+            Today this is a focused landing page with open preorder capture. It is intentionally designed to expand into a full preorder/ordering marketplace with LemonSqueezy payments later.
           </p>
 
           <ul className="mt-6 grid gap-3 md:grid-cols-2">
             {roadmap.map((item) => (
-              <li key={item} className="rounded-2xl border border-[#1E6A4A]/10 bg-white/90 px-4 py-3 text-sm font-medium">
+              <li
+                key={item}
+                className="rounded-2xl border border-[#1E6A4A]/10 bg-white/90 px-4 py-3 text-sm font-medium"
+              >
                 {item}
               </li>
             ))}
