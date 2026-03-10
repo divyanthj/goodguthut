@@ -17,6 +17,7 @@ const preorderItemSchema = mongoose.Schema(
     quantity: {
       type: Number,
       min: 1,
+      max: 10,
       required: true,
     },
     unitPrice: {

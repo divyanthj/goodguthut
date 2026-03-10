@@ -1,3 +1,6 @@
+"use client";
+
+import { useMemo, useState } from "react";
 import PreorderForm from "@/components/PreorderForm";
 
 const lineup = [
@@ -33,7 +36,34 @@ const lineup = [
   },
 ];
 
+const MAX_QTY = 10;
+
 export default function Page() {
+  const [cart, setCart] = useState(() =>
+    Object.fromEntries(lineup.map((product) => [product.sku, 0]))
+  );
+
+  const updateQty = (sku, nextQty) => {
+    const boundedQty = Math.max(0, Math.min(MAX_QTY, nextQty));
+    setCart((prev) => ({ ...prev, [sku]: boundedQty }));
+  };
+
+  const selectedItems = useMemo(
+    () =>
+      lineup
+        .filter((product) => Number(cart[product.sku] || 0) > 0)
+        .map((product) => ({
+          sku: product.sku,
+          productName: product.name,
+          quantity: Number(cart[product.sku] || 0),
+        })),
+    [cart]
+  );
+
+  const resetCart = () => {
+    setCart(Object.fromEntries(lineup.map((product) => [product.sku, 0])));
+  };
+
   return (
     <main className="bg-base-200">
       <section className="hero py-12 md:py-16">
@@ -63,16 +93,57 @@ export default function Page() {
       <section id="lineup" className="mx-auto max-w-6xl px-4 pb-12 md:px-6">
         <h2 className="text-2xl font-extrabold md:text-3xl">Current lineup</h2>
         <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {lineup.map((drink) => (
-            <article key={drink.name} className="card bg-base-100 shadow-md">
-              <div className="card-body">
-                <div className="badge badge-accent badge-outline">{drink.badge}</div>
-                <h3 className="card-title">{drink.name}</h3>
-                <p className="text-xs opacity-70">SKU: {drink.sku}</p>
-                <p>{drink.note}</p>
-              </div>
-            </article>
-          ))}
+          {lineup.map((drink) => {
+            const qty = Number(cart[drink.sku] || 0);
+            return (
+              <article key={drink.name} className="card bg-base-100 shadow-md">
+                <div className="card-body">
+                  <div className="badge badge-accent badge-outline">{drink.badge}</div>
+                  <h3 className="card-title">{drink.name}</h3>
+                  <button
+                    type="button"
+                    className="link link-primary text-left text-xs no-underline hover:underline"
+                    onClick={() => updateQty(drink.sku, qty === 0 ? 1 : qty)}
+                  >
+                    SKU: {drink.sku}
+                  </button>
+                  <p>{drink.note}</p>
+                  <div className="card-actions justify-end">
+                    {qty === 0 ? (
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        onClick={() => updateQty(drink.sku, 1)}
+                      >
+                        Add to cart
+                      </button>
+                    ) : (
+                      <div className="join">
+                        <button
+                          type="button"
+                          className="btn btn-sm join-item"
+                          onClick={() => updateQty(drink.sku, qty - 1)}
+                        >
+                          -
+                        </button>
+                        <button type="button" className="btn btn-sm join-item" disabled>
+                          {qty}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-sm join-item"
+                          onClick={() => updateQty(drink.sku, qty + 1)}
+                          disabled={qty >= MAX_QTY}
+                        >
+                          +
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </article>
+            );
+          })}
         </div>
       </section>
 
@@ -81,7 +152,7 @@ export default function Page() {
         <p className="mt-2 max-w-3xl opacity-80">
           Customers can place preorders directly with contact + delivery details. User authentication is not required.
         </p>
-        <PreorderForm products={lineup} />
+        <PreorderForm selectedItems={selectedItems} onOrderPlaced={resetCart} />
       </section>
     </main>
   );

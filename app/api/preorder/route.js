@@ -79,6 +79,10 @@ export async function POST(req) {
         throw new Error(`SKU ${item.sku} is not available in this preorder window`);
       }
 
+      if (item.quantity > 10) {
+        throw new Error(`SKU ${item.sku} maximum quantity per preorder is 10`);
+      }
+
       if (allowedItem?.maxPerOrder && item.quantity > allowedItem.maxPerOrder) {
         throw new Error(
           `SKU ${item.sku} maximum quantity per preorder is ${allowedItem.maxPerOrder}`

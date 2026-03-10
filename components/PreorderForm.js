@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 
 const initialCustomer = {
   customerName: "",
@@ -9,26 +9,11 @@ const initialCustomer = {
   address: "",
 };
 
-export default function PreorderForm({ products }) {
+export default function PreorderForm({ selectedItems, onOrderPlaced }) {
   const [customer, setCustomer] = useState(initialCustomer);
-  const [quantities, setQuantities] = useState(() =>
-    Object.fromEntries(products.map((product) => [product.sku, 0]))
-  );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-
-  const selectedItems = useMemo(
-    () =>
-      products
-        .filter((product) => Number(quantities[product.sku] || 0) > 0)
-        .map((product) => ({
-          sku: product.sku,
-          productName: product.name,
-          quantity: Number(quantities[product.sku] || 0),
-        })),
-    [products, quantities]
-  );
 
   const onSubmit = async (e) => {
     e.preventDefault();
@@ -36,7 +21,7 @@ export default function PreorderForm({ products }) {
     setError("");
 
     if (selectedItems.length === 0) {
-      setError("Please add quantity for at least one SKU.");
+      setError("Please add at least one item from the lineup before placing a preorder.");
       return;
     }
 
@@ -57,7 +42,7 @@ export default function PreorderForm({ products }) {
 
       setMessage("Preorder received! We will contact you to confirm details.");
       setCustomer(initialCustomer);
-      setQuantities(Object.fromEntries(products.map((product) => [product.sku, 0])));
+      onOrderPlaced?.();
     } catch (err) {
       setError(err.message || "Something went wrong.");
     } finally {
@@ -117,36 +102,21 @@ export default function PreorderForm({ products }) {
           </label>
         </div>
 
-        <div>
-          <h3 className="text-lg font-bold">Select quantities by SKU</h3>
-          <p className="text-sm opacity-80">
-            This replaces long 1-10 dropdowns. Each product has a stable SKU + quantity pair so future marketplace
-            integrations stay clean.
-          </p>
-          <div className="mt-4 space-y-3">
-            {products.map((product) => (
-              <div key={product.sku} className="card card-compact bg-base-200">
-                <div className="card-body grid gap-3 md:grid-cols-[1fr,140px] md:items-center">
-                  <div>
-                    <p className="font-semibold">{product.name}</p>
-                    <p className="text-xs opacity-70">SKU: {product.sku}</p>
-                  </div>
-                  <input
-                    type="number"
-                    min={0}
-                    max={99}
-                    className="input input-bordered"
-                    value={quantities[product.sku]}
-                    onChange={(e) =>
-                      setQuantities((prev) => ({
-                        ...prev,
-                        [product.sku]: Number(e.target.value || 0),
-                      }))
-                    }
-                  />
-                </div>
-              </div>
-            ))}
+        <div className="card bg-base-200 card-compact">
+          <div className="card-body gap-3">
+            <h3 className="card-title text-lg">Your cart</h3>
+            {selectedItems.length === 0 ? (
+              <p className="text-sm opacity-70">No items selected yet. Add products from the lineup above.</p>
+            ) : (
+              <ul className="space-y-2">
+                {selectedItems.map((item) => (
+                  <li key={item.sku} className="flex items-center justify-between rounded-lg bg-base-100 px-3 py-2">
+                    <span>{item.productName}</span>
+                    <span className="badge badge-outline">Qty: {item.quantity}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </div>
 
@@ -154,7 +124,7 @@ export default function PreorderForm({ products }) {
           <button type="submit" disabled={isSubmitting} className="btn btn-primary">
             {isSubmitting ? "Placing preorder..." : "Place preorder"}
           </button>
-          {selectedItems.length > 0 && <div className="badge badge-outline">{selectedItems.length} SKU(s) selected</div>}
+          {selectedItems.length > 0 && <div className="badge badge-outline">{selectedItems.length} item(s) selected</div>}
         </div>
 
         {message && (
