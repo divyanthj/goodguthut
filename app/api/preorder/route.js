@@ -3,6 +3,7 @@ import connectMongo from "@/libs/mongoose";
 import Preorder from "@/models/Preorder";
 import PreorderWindow from "@/models/PreorderWindow";
 import { calculateDeliveryQuote } from "@/libs/delivery";
+import { getPlaceDetails } from "@/libs/places";
 
 const sanitizeItems = (items = []) => {
   return items
@@ -33,6 +34,8 @@ export async function POST(req) {
     const email = body.email?.trim().toLowerCase();
     const phone = body.phone?.trim();
     const address = body.address?.trim();
+    const placeId = body.deliveryPlaceId?.trim() || "";
+    const sessionToken = body.addressSessionToken?.trim() || "";
     const customerNotes = body.customerNotes?.trim() || "";
     const preorderWindowId = body.preorderWindowId?.trim() || "";
 
@@ -127,11 +130,27 @@ export async function POST(req) {
     let normalizedDeliveryAddress = address;
 
     if (preorderWindow?.pickupAddress && preorderWindow?.deliveryBands?.length) {
+      if (!placeId) {
+        return NextResponse.json(
+          { error: "Please select a delivery address from the suggestions." },
+          { status: 400 }
+        );
+      }
+
+      const placeDetails = await getPlaceDetails({ placeId, sessionToken });
       const deliveryQuote = await calculateDeliveryQuote({
         pickupAddress: preorderWindow.pickupAddress,
         deliveryBands: preorderWindow.deliveryBands,
         address,
+        placeDetails,
       });
+
+      if (!deliveryQuote.isDeliverable) {
+        return NextResponse.json(
+          { error: deliveryQuote.reason || "We do not deliver there yet." },
+          { status: 400 }
+        );
+      }
 
       deliveryFee = deliveryQuote.deliveryFee;
       deliveryDistanceKm = deliveryQuote.distanceKm;

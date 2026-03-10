@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import connectMongo from "@/libs/mongoose";
 import { calculateDeliveryQuote, isGoogleMapsConfigured } from "@/libs/delivery";
+import { getPlaceDetails } from "@/libs/places";
 import PreorderWindow from "@/models/PreorderWindow";
 
 const findWindow = async (preorderWindowId) => {
@@ -19,9 +20,11 @@ export async function POST(req) {
 
     const body = await req.json();
     const address = body.address?.trim();
+    const placeId = body.placeId?.trim() || "";
+    const sessionToken = body.sessionToken?.trim() || "";
     const preorderWindowId = body.preorderWindowId?.trim() || "";
 
-    if (!address) {
+    if (!address && !placeId) {
       return NextResponse.json({ error: "Address is required." }, { status: 400 });
     }
 
@@ -38,10 +41,13 @@ export async function POST(req) {
       );
     }
 
+    const placeDetails = placeId ? await getPlaceDetails({ placeId, sessionToken }) : null;
+
     const quote = await calculateDeliveryQuote({
       pickupAddress: preorderWindow.pickupAddress,
       deliveryBands: preorderWindow.deliveryBands,
       address,
+      placeDetails,
     });
 
     return NextResponse.json({
@@ -50,6 +56,11 @@ export async function POST(req) {
       normalizedAddress: quote.normalizedAddress,
       matchedBand: quote.matchedBand,
       currency: preorderWindow.currency || "INR",
+      isDeliverable: quote.isDeliverable,
+      isConfigured: quote.isConfigured,
+      reason: quote.reason,
+      location: quote.location,
+      placeId: placeDetails?.placeId || placeId,
     });
   } catch (e) {
     console.error(e);

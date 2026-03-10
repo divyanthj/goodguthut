@@ -11,6 +11,14 @@ const initialCustomer = {
 
 const MAX_QTY = 10;
 
+const createSessionToken = () => {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+};
+
 export default function PreorderForm({
   selectedItems,
   preorderWindowId,
@@ -28,6 +36,10 @@ export default function PreorderForm({
   const [deliveryQuote, setDeliveryQuote] = useState(null);
   const [isQuotingDelivery, setIsQuotingDelivery] = useState(false);
   const [deliveryError, setDeliveryError] = useState("");
+  const [addressSuggestions, setAddressSuggestions] = useState([]);
+  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
+  const [selectedPlace, setSelectedPlace] = useState(null);
+  const [addressSessionToken, setAddressSessionToken] = useState(() => createSessionToken());
 
   const totalQuantity = useMemo(
     () => selectedItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
@@ -43,20 +55,76 @@ export default function PreorderForm({
     [selectedItems]
   );
 
+  const deliveryConfigured = Boolean(pickupAddress && deliveryBands.length > 0);
+  const requiresSelectedAddress = deliveryConfigured;
   const total = subtotal + Number(deliveryQuote?.deliveryFee || 0);
   const hasMandatoryFields =
     customer.customerName.trim() && customer.phone.trim() && customer.address.trim();
   const meetsMinQty = totalQuantity >= minTotalQuantity;
+  const needsAddressSelection =
+    requiresSelectedAddress && customer.address.trim() && !selectedPlace;
+  const isBlockedByDelivery =
+    deliveryConfigured &&
+    customer.address.trim() &&
+    (isQuotingDelivery || deliveryQuote?.isDeliverable === false || Boolean(deliveryError) || needsAddressSelection);
   const canSubmit = Boolean(
-    hasMandatoryFields && meetsMinQty && selectedItems.length > 0 && !isSubmitting
+    hasMandatoryFields &&
+      meetsMinQty &&
+      selectedItems.length > 0 &&
+      !isSubmitting &&
+      !isBlockedByDelivery
   );
 
   useEffect(() => {
-    const address = customer.address.trim();
+    const input = customer.address.trim();
 
+    if (!deliveryConfigured || input.length < 3) {
+      setAddressSuggestions([]);
+      setIsLoadingSuggestions(false);
+      return undefined;
+    }
+
+    if (selectedPlace && selectedPlace.formattedAddress === customer.address) {
+      setAddressSuggestions([]);
+      return undefined;
+    }
+
+    const timeoutId = setTimeout(async () => {
+      setIsLoadingSuggestions(true);
+
+      try {
+        const response = await fetch("/api/preorder/address-autocomplete", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            input,
+            sessionToken: addressSessionToken,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || "Could not load address suggestions.");
+        }
+
+        setAddressSuggestions(data.suggestions || []);
+      } catch (_autocompleteError) {
+        setAddressSuggestions([]);
+      } finally {
+        setIsLoadingSuggestions(false);
+      }
+    }, 250);
+
+    return () => clearTimeout(timeoutId);
+  }, [customer.address, deliveryConfigured, addressSessionToken, selectedPlace]);
+
+  useEffect(() => {
     setDeliveryError("");
 
-    if (!address || !pickupAddress || deliveryBands.length === 0) {
+    if (!deliveryConfigured || !selectedPlace) {
       setDeliveryQuote(null);
       setIsQuotingDelivery(false);
       return undefined;
@@ -73,7 +141,9 @@ export default function PreorderForm({
           },
           body: JSON.stringify({
             preorderWindowId,
-            address,
+            address: selectedPlace.formattedAddress,
+            placeId: selectedPlace.placeId,
+            sessionToken: addressSessionToken,
           }),
         });
 
@@ -84,17 +154,61 @@ export default function PreorderForm({
         }
 
         setDeliveryQuote(data);
-        setDeliveryError("");
+        setDeliveryError(
+          data.isDeliverable === false ? data.reason || "We do not deliver there yet." : ""
+        );
       } catch (quoteError) {
         setDeliveryQuote(null);
         setDeliveryError(quoteError.message || "Could not calculate delivery fee.");
       } finally {
         setIsQuotingDelivery(false);
       }
-    }, 700);
+    }, 200);
 
     return () => clearTimeout(timeoutId);
-  }, [customer.address, preorderWindowId, pickupAddress, deliveryBands]);
+  }, [selectedPlace, preorderWindowId, deliveryConfigured, addressSessionToken]);
+
+  const handleAddressInputChange = (value) => {
+    setCustomer((prev) => ({ ...prev, address: value }));
+    if (selectedPlace) {
+      setAddressSessionToken(createSessionToken());
+    }
+    setSelectedPlace(null);
+    setDeliveryQuote(null);
+    setDeliveryError("");
+  };
+
+  const handleSuggestionSelect = async (suggestion) => {
+    setIsLoadingSuggestions(true);
+    setDeliveryError("");
+
+    try {
+      const response = await fetch("/api/preorder/address-place", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          placeId: suggestion.placeId,
+          sessionToken: addressSessionToken,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Could not verify that address.");
+      }
+
+      setSelectedPlace(data.place);
+      setCustomer((prev) => ({ ...prev, address: data.place.formattedAddress }));
+      setAddressSuggestions([]);
+    } catch (selectionError) {
+      setDeliveryError(selectionError.message || "Could not verify that address.");
+    } finally {
+      setIsLoadingSuggestions(false);
+    }
+  };
 
   const onSubmit = async (e) => {
     e.preventDefault();
@@ -116,6 +230,16 @@ export default function PreorderForm({
       return;
     }
 
+    if (requiresSelectedAddress && !selectedPlace) {
+      setError("Please select your delivery address from the suggestions.");
+      return;
+    }
+
+    if (deliveryQuote?.isDeliverable === false) {
+      setError(deliveryQuote.reason || "We do not deliver there yet.");
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -125,6 +249,8 @@ export default function PreorderForm({
         body: JSON.stringify({
           ...customer,
           preorderWindowId,
+          deliveryPlaceId: selectedPlace?.placeId || "",
+          addressSessionToken,
           items: selectedItems,
         }),
       });
@@ -141,7 +267,11 @@ export default function PreorderForm({
           : "Preorder received! We will contact you to confirm details."
       );
       setCustomer(initialCustomer);
+      setSelectedPlace(null);
+      setAddressSuggestions([]);
+      setAddressSessionToken(createSessionToken());
       setDeliveryQuote(null);
+      setDeliveryError("");
       onOrderPlaced?.();
     } catch (err) {
       setError(err.message || "Something went wrong.");
@@ -187,18 +317,70 @@ export default function PreorderForm({
               onChange={(e) => setCustomer((prev) => ({ ...prev, phone: e.target.value }))}
             />
           </label>
-          <label className="form-control w-full md:col-span-2">
+          <div className="form-control w-full md:col-span-2">
             <div className="label">
               <span className="label-text">Address *</span>
             </div>
-            <textarea
-              className="textarea textarea-bordered"
-              rows={3}
+            <input
+              className="input input-bordered w-full"
               required
               value={customer.address}
-              onChange={(e) => setCustomer((prev) => ({ ...prev, address: e.target.value }))}
+              onChange={(e) => handleAddressInputChange(e.target.value)}
+              placeholder="Start typing your address and choose the best match"
+              autoComplete="off"
             />
-          </label>
+            {deliveryConfigured && (
+              <div className="mt-2 text-xs opacity-70">
+                Choose a suggestion so we can verify the address on Google Maps before quoting delivery.
+              </div>
+            )}
+            {addressSuggestions.length > 0 && (
+              <div className="mt-2 rounded-2xl border border-base-300 bg-base-100 shadow-lg">
+                <ul className="max-h-72 overflow-y-auto py-2">
+                  {addressSuggestions.map((suggestion) => (
+                    <li key={suggestion.placeId}>
+                      <button
+                        type="button"
+                        className="w-full px-4 py-3 text-left hover:bg-base-200"
+                        onClick={() => handleSuggestionSelect(suggestion)}
+                      >
+                        <div className="font-medium">{suggestion.primaryText}</div>
+                        {suggestion.secondaryText && (
+                          <div className="text-sm opacity-70">{suggestion.secondaryText}</div>
+                        )}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {isLoadingSuggestions && customer.address.trim().length >= 3 && (
+              <div className="mt-2 text-xs opacity-70">Looking up addresses...</div>
+            )}
+          </div>
+          {selectedPlace?.formattedAddress && (
+            <div className="md:col-span-2 rounded-2xl border border-base-300 bg-base-200 p-4 text-sm">
+              <div className="font-medium">Verified on Google Maps</div>
+              <div className="mt-1 opacity-80">{selectedPlace.formattedAddress}</div>
+              <div className="mt-3 overflow-hidden rounded-xl border border-base-300 bg-base-100">
+                <iframe
+                  title="Matched delivery location"
+                  className="h-56 w-full"
+                  loading="lazy"
+                  referrerPolicy="no-referrer-when-downgrade"
+                  src={`https://www.google.com/maps?q=${encodeURIComponent(selectedPlace.formattedAddress)}&z=15&output=embed`}
+                />
+              </div>
+              <a
+                className="link link-primary mt-3 inline-block"
+                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedPlace.formattedAddress)}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Open in Google Maps
+              </a>
+            </div>
+          )}
         </div>
 
         <div className="card bg-base-200 card-compact">
@@ -246,12 +428,18 @@ export default function PreorderForm({
             <div className="text-sm font-medium opacity-90">
               Delivery: {deliveryQuote ? `${currency} ${Number(deliveryQuote.deliveryFee).toFixed(2)}` : isQuotingDelivery ? "Calculating..." : `${currency} 0.00`}
             </div>
-            {deliveryQuote && (
+            {deliveryQuote?.distanceKm > 0 && (
               <div className="text-sm opacity-80">
-                Distance: {Number(deliveryQuote.distanceKm).toFixed(1)} km to {deliveryQuote.normalizedAddress}
+                Distance: {Number(deliveryQuote.distanceKm).toFixed(1)} km
               </div>
             )}
             {deliveryError && <div className="text-sm text-error">{deliveryError}</div>}
+            {!deliveryError && needsAddressSelection && (
+              <div className="text-sm opacity-70">Pick one of the suggested addresses to continue.</div>
+            )}
+            {!deliveryError && deliveryConfigured && !customer.address.trim() && (
+              <div className="text-sm opacity-70">Enter your address to calculate delivery.</div>
+            )}
             <div className="text-sm font-semibold">Total: {currency} {total.toFixed(2)}</div>
           </div>
         </div>
