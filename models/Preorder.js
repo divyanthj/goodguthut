@@ -45,7 +45,7 @@ const preorderSchema = mongoose.Schema(
       type: String,
       trim: true,
       lowercase: true,
-      required: true,
+      default: "",
     },
     phone: {
       type: String,

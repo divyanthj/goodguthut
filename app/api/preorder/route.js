@@ -29,9 +29,9 @@ export async function POST(req) {
 
     const requestItems = sanitizeItems(body.items);
 
-    if (!customerName || !email || !phone || !address) {
+    if (!customerName || !phone || !address) {
       return NextResponse.json(
-        { error: "Name, email, phone number, and address are required" },
+        { error: "Name, phone number, and address are required" },
         { status: 400 }
       );
     }
@@ -105,7 +105,7 @@ export async function POST(req) {
 
     const preorder = await Preorder.create({
       customerName,
-      email,
+      email: email || "",
       phone,
       address,
       customerNotes,

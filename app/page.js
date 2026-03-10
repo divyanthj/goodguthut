@@ -37,6 +37,7 @@ const lineup = [
 ];
 
 const MAX_QTY = 10;
+const MIN_PREORDER_QUANTITY = 4;
 
 export default function Page() {
   const [cart, setCart] = useState(() =>
@@ -149,10 +150,12 @@ export default function Page() {
 
       <section id="preorder" className="mx-auto max-w-6xl px-4 pb-12 md:px-6">
         <h2 className="text-2xl font-extrabold md:text-3xl">Preorder now (no login required)</h2>
-        <p className="mt-2 max-w-3xl opacity-80">
-          Customers can place preorders directly with contact + delivery details. User authentication is not required.
-        </p>
-        <PreorderForm selectedItems={selectedItems} onOrderPlaced={resetCart} />
+        <PreorderForm
+          selectedItems={selectedItems}
+          onOrderPlaced={resetCart}
+          updateQty={updateQty}
+          minTotalQuantity={MIN_PREORDER_QUANTITY}
+        />
       </section>
     </main>
   );

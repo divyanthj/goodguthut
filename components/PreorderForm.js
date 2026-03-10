@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 const initialCustomer = {
   customerName: "",
@@ -9,11 +9,23 @@ const initialCustomer = {
   address: "",
 };
 
-export default function PreorderForm({ selectedItems, onOrderPlaced }) {
+const MAX_QTY = 10;
+
+export default function PreorderForm({ selectedItems, onOrderPlaced, updateQty, minTotalQuantity }) {
   const [customer, setCustomer] = useState(initialCustomer);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+
+  const totalQuantity = useMemo(
+    () => selectedItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
+    [selectedItems]
+  );
+
+  const hasMandatoryFields =
+    customer.customerName.trim() && customer.phone.trim() && customer.address.trim();
+  const meetsMinQty = totalQuantity >= minTotalQuantity;
+  const canSubmit = Boolean(hasMandatoryFields && meetsMinQty && selectedItems.length > 0 && !isSubmitting);
 
   const onSubmit = async (e) => {
     e.preventDefault();
@@ -22,6 +34,16 @@ export default function PreorderForm({ selectedItems, onOrderPlaced }) {
 
     if (selectedItems.length === 0) {
       setError("Please add at least one item from the lineup before placing a preorder.");
+      return;
+    }
+
+    if (!hasMandatoryFields) {
+      setError("Please fill in name, phone number, and address.");
+      return;
+    }
+
+    if (!meetsMinQty) {
+      setError(`Minimum preorder quantity is ${minTotalQuantity}.`);
       return;
     }
 
@@ -56,7 +78,7 @@ export default function PreorderForm({ selectedItems, onOrderPlaced }) {
         <div className="grid gap-4 md:grid-cols-2">
           <label className="form-control w-full">
             <div className="label">
-              <span className="label-text">Name</span>
+              <span className="label-text">Name *</span>
             </div>
             <input
               className="input input-bordered w-full"
@@ -72,14 +94,13 @@ export default function PreorderForm({ selectedItems, onOrderPlaced }) {
             <input
               type="email"
               className="input input-bordered w-full"
-              required
               value={customer.email}
               onChange={(e) => setCustomer((prev) => ({ ...prev, email: e.target.value }))}
             />
           </label>
           <label className="form-control w-full">
             <div className="label">
-              <span className="label-text">Phone Number</span>
+              <span className="label-text">Phone Number *</span>
             </div>
             <input
               className="input input-bordered w-full"
@@ -90,7 +111,7 @@ export default function PreorderForm({ selectedItems, onOrderPlaced }) {
           </label>
           <label className="form-control w-full md:col-span-2">
             <div className="label">
-              <span className="label-text">Address</span>
+              <span className="label-text">Address *</span>
             </div>
             <textarea
               className="textarea textarea-bordered"
@@ -112,16 +133,37 @@ export default function PreorderForm({ selectedItems, onOrderPlaced }) {
                 {selectedItems.map((item) => (
                   <li key={item.sku} className="flex items-center justify-between rounded-lg bg-base-100 px-3 py-2">
                     <span>{item.productName}</span>
-                    <span className="badge badge-outline">Qty: {item.quantity}</span>
+                    <div className="join">
+                      <button
+                        type="button"
+                        className="btn btn-sm join-item"
+                        onClick={() => updateQty(item.sku, Number(item.quantity) - 1)}
+                      >
+                        -
+                      </button>
+                      <button type="button" className="btn btn-sm join-item" disabled>
+                        {item.quantity}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-sm join-item"
+                        onClick={() => updateQty(item.sku, Number(item.quantity) + 1)}
+                        disabled={Number(item.quantity) >= MAX_QTY}
+                      >
+                        +
+                      </button>
+                    </div>
                   </li>
                 ))}
               </ul>
             )}
+            <div className="text-sm opacity-80">Total quantity: {totalQuantity}</div>
+            <div className="text-sm opacity-80">Minimum quantity required: {minTotalQuantity}</div>
           </div>
         </div>
 
         <div className="card-actions items-center justify-between">
-          <button type="submit" disabled={isSubmitting} className="btn btn-primary">
+          <button type="submit" disabled={!canSubmit} className="btn btn-primary">
             {isSubmitting ? "Placing preorder..." : "Place preorder"}
           </button>
           {selectedItems.length > 0 && <div className="badge badge-outline">{selectedItems.length} item(s) selected</div>}
