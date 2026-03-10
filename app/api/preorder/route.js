@@ -14,6 +14,14 @@ const sanitizeItems = (items = []) => {
     .filter((item) => item.sku && item.productName && item.quantity > 0);
 };
 
+const isDatabaseUnavailable = (message = "") => {
+  return (
+    message.includes("MongoDB SRV lookup failed") ||
+    message.includes("buffering timed out") ||
+    message.includes("Could not connect to MongoDB")
+  );
+};
+
 export async function POST(req) {
   try {
     await connectMongo();
@@ -131,6 +139,16 @@ export async function POST(req) {
 
     if (e.message?.startsWith("SKU ")) {
       return NextResponse.json({ error: e.message }, { status: 400 });
+    }
+
+    if (isDatabaseUnavailable(e.message)) {
+      return NextResponse.json(
+        {
+          error:
+            "Preorders are temporarily unavailable because the database connection could not be established. If you are using MongoDB Atlas, add MONGODB_DIRECT_URI with the standard non-SRV connection string.",
+        },
+        { status: 503 }
+      );
     }
 
     return NextResponse.json({ error: e.message }, { status: 500 });
