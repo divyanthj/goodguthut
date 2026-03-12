@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 const formatCurrency = (currency, amount) => {
   return new Intl.NumberFormat("en-IN", {
@@ -32,6 +32,77 @@ export default function AdminPreordersList({ initialPreorders }) {
   const [savingId, setSavingId] = useState("");
   const [deletingId, setDeletingId] = useState("");
   const [error, setError] = useState("");
+  const confirmedProductionSummary = useMemo(() => {
+    const batches = new Map();
+
+    preorders
+      .filter((preorder) => preorder.status === "confirmed" || preorder.status === "fulfilled")
+      .forEach((preorder) => {
+        const batchKey = preorder.preorderWindow || preorder.preorderWindowLabel || "unassigned";
+        const existingBatch = batches.get(batchKey) || {
+          batchKey,
+          batchLabel: preorder.preorderWindowLabel || "Unassigned batch",
+          deliveryDate: preorder.deliveryDate,
+          confirmedOrderCount: 0,
+          totalBottles: 0,
+          items: new Map(),
+        };
+
+        existingBatch.confirmedOrderCount += 1;
+
+        preorder.items.forEach((item) => {
+          const currentItem = existingBatch.items.get(item.sku) || {
+            sku: item.sku,
+            productName: item.productName,
+            bottles: 0,
+          };
+
+          currentItem.bottles += Number(item.quantity || 0);
+          existingBatch.totalBottles += Number(item.quantity || 0);
+          existingBatch.items.set(item.sku, currentItem);
+        });
+
+        batches.set(batchKey, existingBatch);
+      });
+
+    return [...batches.values()]
+      .map((batch) => ({
+        ...batch,
+        items: [...batch.items.values()].sort((left, right) => left.productName.localeCompare(right.productName)),
+      }))
+      .sort((left, right) => new Date(left.deliveryDate || 0).getTime() - new Date(right.deliveryDate || 0).getTime());
+  }, [preorders]);
+
+  const updateStatus = async (preorderId, status) => {
+    setSavingId(preorderId);
+    setError("");
+
+    try {
+      const response = await fetch(`/api/admin/preorders/${preorderId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ status }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Could not update preorder.");
+      }
+
+      setPreorders((current) =>
+        current.map((preorder) =>
+          preorder.id === preorderId ? data.preorder : preorder
+        )
+      );
+    } catch (updateError) {
+      setError(updateError.message || "Could not update preorder.");
+    } finally {
+      setSavingId("");
+    }
+  };
 
   const markDelivered = async (preorderId, deliveredAt) => {
     setSavingId(preorderId);
@@ -109,6 +180,60 @@ export default function AdminPreordersList({ initialPreorders }) {
         </div>
       )}
 
+      {confirmedProductionSummary.length > 0 && (
+        <section className="rounded-2xl bg-base-100 p-5 shadow-md">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold">Confirmed production summary</h2>
+              <p className="text-sm opacity-70">
+                Bottle counts are based only on confirmed and fulfilled preorders. Each quantity equals one 200 ml bottle.
+              </p>
+            </div>
+            <div className="badge badge-outline">
+              {confirmedProductionSummary.reduce((sum, batch) => sum + batch.totalBottles, 0)} bottles committed
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-4 xl:grid-cols-2">
+            {confirmedProductionSummary.map((batch) => (
+              <div key={batch.batchKey} className="rounded-xl bg-base-200 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="font-semibold">{batch.batchLabel}</div>
+                    <div className="text-sm opacity-70">Delivery: {formatDate(batch.deliveryDate)}</div>
+                  </div>
+                  <div className="text-right text-sm">
+                    <div>{batch.confirmedOrderCount} confirmed order(s)</div>
+                    <div className="font-medium">{batch.totalBottles} bottles</div>
+                  </div>
+                </div>
+
+                <div className="mt-3 overflow-x-auto">
+                  <table className="table table-sm">
+                    <thead>
+                      <tr>
+                        <th>SKU</th>
+                        <th>Product</th>
+                        <th className="text-right">Bottles</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {batch.items.map((item) => (
+                        <tr key={`${batch.batchKey}-${item.sku}`}>
+                          <td>{item.sku}</td>
+                          <td>{item.productName}</td>
+                          <td className="text-right font-medium">{item.bottles}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {preorders.map((preorder) => (
         <article key={preorder.id} className="rounded-2xl bg-base-100 p-5 shadow-md">
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -121,8 +246,18 @@ export default function AdminPreordersList({ initialPreorders }) {
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <div className="badge badge-outline">{preorder.status}</div>
-              <div className="badge badge-outline">payment: {preorder.payment?.status || "-"}</div>
+              <div className="badge badge-outline">payment: manual after confirmation</div>
               <div className="badge badge-outline">qty {preorder.totalQuantity}</div>
+              {preorder.status === "pending" && (
+                <button
+                  type="button"
+                  className="btn btn-outline btn-xs"
+                  disabled={savingId === preorder.id || deletingId === preorder.id}
+                  onClick={() => updateStatus(preorder.id, "confirmed")}
+                >
+                  {savingId === preorder.id ? "Saving..." : "Confirm order"}
+                </button>
+              )}
               <button
                 type="button"
                 className="btn btn-ghost btn-xs text-error"
@@ -181,6 +316,10 @@ export default function AdminPreordersList({ initialPreorders }) {
                     <div className="mt-1">{formatDate(preorder.deliveredAt)}</div>
                   </div>
                   <div>
+                    <div className="text-xs uppercase tracking-[0.16em] opacity-60">Confirmation</div>
+                    <div className="mt-1">{preorder.status === "confirmed" || preorder.status === "fulfilled" ? "Confirmed" : "Awaiting contact"}</div>
+                  </div>
+                  <div>
                     <div className="text-xs uppercase tracking-[0.16em] opacity-60">Distance</div>
                     <div className="mt-1">{Number(preorder.deliveryDistanceKm || 0).toFixed(1)} km</div>
                   </div>
@@ -228,7 +367,11 @@ export default function AdminPreordersList({ initialPreorders }) {
               <button
                 type="button"
                 className="btn btn-primary btn-sm"
-                disabled={savingId === preorder.id || deletingId === preorder.id}
+                disabled={
+                  savingId === preorder.id ||
+                  deletingId === preorder.id ||
+                  (preorder.status !== "confirmed" && preorder.status !== "fulfilled")
+                }
                 onClick={() => {
                   const element = document.getElementById(`delivered-at-${preorder.id}`);
                   markDelivered(preorder.id, element?.value);

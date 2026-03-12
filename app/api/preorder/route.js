@@ -180,7 +180,7 @@ export async function POST(req) {
       total,
       source: "landing",
       payment: {
-        status: total > 0 ? "pending" : "not_required",
+        status: "not_required",
         amount: total,
         currency: preorderWindow?.currency || "INR",
       },
@@ -196,6 +196,8 @@ export async function POST(req) {
       total: preorder.total,
       currency: preorder.currency,
       paymentStatus: preorder.payment?.status,
+      confirmationMessage:
+        "Preorder received. We will contact you on WhatsApp or by text to confirm your order before payment.",
     });
   } catch (e) {
     console.error(e);

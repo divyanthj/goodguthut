@@ -18,6 +18,30 @@ export async function PATCH(req, { params }) {
 
   try {
     const body = await req.json();
+    const nextStatus = body.status;
+
+    if (nextStatus) {
+      if (!["confirmed", "fulfilled", "cancelled", "pending"].includes(nextStatus)) {
+        return NextResponse.json({ error: "Invalid preorder status." }, { status: 400 });
+      }
+
+      const preorder = await Preorder.findById(params.id);
+
+      if (!preorder) {
+        return NextResponse.json({ error: "Preorder not found." }, { status: 404 });
+      }
+
+      preorder.status = nextStatus;
+
+      if (nextStatus !== "fulfilled") {
+        preorder.deliveredAt = body.keepDeliveredAt ? preorder.deliveredAt : null;
+      }
+
+      await preorder.save();
+
+      return NextResponse.json({ preorder });
+    }
+
     const deliveredAt = body.deliveredAt ? new Date(body.deliveredAt) : null;
 
     if (!deliveredAt || Number.isNaN(deliveredAt.getTime())) {

@@ -262,9 +262,8 @@ export default function PreorderForm({
       }
 
       setMessage(
-        data.total > 0
-          ? `Preorder received. Total due: ${currency} ${Number(data.total).toFixed(2)} including delivery.`
-          : "Preorder received! We will contact you to confirm details."
+        data.confirmationMessage ||
+          "Preorder received. We will contact you on WhatsApp or by text to confirm your order before payment."
       );
       setCustomer(initialCustomer);
       setSelectedPlace(null);
