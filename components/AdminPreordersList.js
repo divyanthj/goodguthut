@@ -21,6 +21,26 @@ const formatDate = (value) => {
   });
 };
 
+const getPaymentBadgeLabel = (preorder) => {
+  if (preorder.payment?.provider === "razorpay") {
+    if (preorder.payment?.status === "paid") {
+      return "payment: paid via Razorpay";
+    }
+
+    if (preorder.payment?.status === "order_created") {
+      return "payment: checkout started";
+    }
+
+    if (preorder.payment?.status === "failed") {
+      return "payment: Razorpay failed";
+    }
+
+    return "payment: awaiting Razorpay";
+  }
+
+  return "payment: manual after confirmation";
+};
+
 const toDateTimeLocal = (value) => {
   const date = value ? new Date(value) : new Date();
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
@@ -246,9 +266,9 @@ export default function AdminPreordersList({ initialPreorders }) {
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <div className="badge badge-outline">{preorder.status}</div>
-              <div className="badge badge-outline">payment: manual after confirmation</div>
+              <div className="badge badge-outline">{getPaymentBadgeLabel(preorder)}</div>
               <div className="badge badge-outline">qty {preorder.totalQuantity}</div>
-              {preorder.status === "pending" && (
+              {preorder.status === "pending" && preorder.payment?.provider !== "razorpay" && (
                 <button
                   type="button"
                   className="btn btn-outline btn-xs"

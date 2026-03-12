@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRazorpayCheckout } from "@/components/RazorpayCheckout";
 
 const initialCustomer = {
   customerName: "",
@@ -40,6 +41,7 @@ export default function PreorderForm({
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
   const [selectedPlace, setSelectedPlace] = useState(null);
   const [addressSessionToken, setAddressSessionToken] = useState(() => createSessionToken());
+  const loadRazorpay = useRazorpayCheckout();
 
   const totalQuantity = useMemo(
     () => selectedItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
@@ -261,6 +263,73 @@ export default function PreorderForm({
         throw new Error(data.error || "Could not place preorder.");
       }
 
+      if (data.razorpay?.isConfigured && Number(data.total || 0) > 0) {
+        const paymentResponse = await fetch(`/api/preorder/${data.id}/payment`, {
+          method: "POST",
+        });
+        const paymentData = await paymentResponse.json();
+
+        if (!paymentResponse.ok) {
+          throw new Error(paymentData.error || "Could not start Razorpay checkout.");
+        }
+
+        const Razorpay = await loadRazorpay();
+
+        if (!Razorpay) {
+          throw new Error("Razorpay checkout is unavailable right now.");
+        }
+
+        const checkout = new Razorpay({
+          ...paymentData.razorpay,
+          handler: async (paymentResult) => {
+            try {
+              const verifyResponse = await fetch(`/api/preorder/${data.id}/payment`, {
+                method: "PATCH",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify(paymentResult),
+              });
+              const verifyData = await verifyResponse.json();
+
+              if (!verifyResponse.ok) {
+                throw new Error(verifyData.error || "Payment verification failed.");
+              }
+
+              setMessage(
+                verifyData.confirmationMessage ||
+                  "Payment received. Your preorder is confirmed."
+              );
+              setCustomer(initialCustomer);
+              setSelectedPlace(null);
+              setAddressSuggestions([]);
+              setAddressSessionToken(createSessionToken());
+              setDeliveryQuote(null);
+              setDeliveryError("");
+              onOrderPlaced?.();
+            } catch (verificationError) {
+              setError(
+                verificationError.message ||
+                  "Payment was captured, but confirmation has not synced yet."
+              );
+            } finally {
+              setIsSubmitting(false);
+            }
+          },
+          modal: {
+            ondismiss: () => {
+              setError(
+                "Payment was not completed. Your preorder was saved, but it will stay unconfirmed until payment succeeds."
+              );
+              setIsSubmitting(false);
+            },
+          },
+        });
+
+        checkout.open();
+        return;
+      }
+
       setMessage(
         data.confirmationMessage ||
           "Preorder received. We will contact you on WhatsApp or by text to confirm your order before payment."
@@ -445,7 +514,7 @@ export default function PreorderForm({
 
         <div className="card-actions items-center justify-between">
           <button type="submit" disabled={!canSubmit} className="btn btn-primary">
-            {isSubmitting ? "Placing preorder..." : "Place preorder"}
+            {isSubmitting ? "Processing..." : "Place preorder"}
           </button>
           {selectedItems.length > 0 && <div className="badge badge-outline">{selectedItems.length} item(s) selected</div>}
         </div>

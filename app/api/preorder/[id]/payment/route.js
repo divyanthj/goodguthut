@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import connectMongo from "@/libs/mongoose";
-import { createRazorpayOrder, getRazorpayPublicConfig } from "@/libs/razorpay";
+import {
+  createRazorpayOrder,
+  getRazorpayPublicConfig,
+  verifyRazorpayPaymentSignature,
+} from "@/libs/razorpay";
 import Preorder from "@/models/Preorder";
 
 export async function POST(_req, { params }) {
@@ -13,7 +17,7 @@ export async function POST(_req, { params }) {
       return NextResponse.json({ error: "Preorder not found" }, { status: 404 });
     }
 
-    if (Number(preorder.subtotal || 0) <= 0) {
+    if (Number(preorder.total || 0) <= 0) {
       return NextResponse.json(
         { error: "This preorder does not have a payable amount." },
         { status: 400 }
@@ -21,7 +25,7 @@ export async function POST(_req, { params }) {
     }
 
     const razorpayOrder = await createRazorpayOrder({
-      amount: Math.round(Number(preorder.subtotal) * 100),
+      amount: Math.round(Number(preorder.total) * 100),
       currency: preorder.currency || "INR",
       receipt: `preorder_${preorder.id}`,
       notes: {
@@ -36,7 +40,7 @@ export async function POST(_req, { params }) {
       ...(preorder.payment?.toObject?.() || preorder.payment || {}),
       provider: "razorpay",
       status: "order_created",
-      amount: preorder.subtotal,
+      amount: preorder.total,
       currency: preorder.currency,
       orderId: razorpayOrder.id,
     };
@@ -60,6 +64,53 @@ export async function POST(_req, { params }) {
           preorderId: preorder.id,
         },
       },
+    });
+  } catch (e) {
+    console.error(e);
+    return NextResponse.json({ error: e.message }, { status: 500 });
+  }
+}
+
+export async function PATCH(req, { params }) {
+  try {
+    await connectMongo();
+
+    const preorder = await Preorder.findById(params.id);
+
+    if (!preorder) {
+      return NextResponse.json({ error: "Preorder not found" }, { status: 404 });
+    }
+
+    const body = await req.json();
+    const orderId = body.razorpay_order_id || "";
+    const paymentId = body.razorpay_payment_id || "";
+    const signature = body.razorpay_signature || "";
+
+    if (!verifyRazorpayPaymentSignature({ orderId, paymentId, signature })) {
+      return NextResponse.json({ error: "Payment signature verification failed." }, { status: 400 });
+    }
+
+    if (preorder.payment?.orderId && preorder.payment.orderId !== orderId) {
+      return NextResponse.json({ error: "Payment order does not match this preorder." }, { status: 400 });
+    }
+
+    preorder.status = "confirmed";
+    preorder.payment = {
+      ...(preorder.payment?.toObject?.() || preorder.payment || {}),
+      provider: "razorpay",
+      status: "paid",
+      amount: Number(preorder.total || preorder.payment?.amount || 0),
+      currency: preorder.currency,
+      orderId,
+      paymentId,
+      signature,
+      paidAt: new Date(),
+    };
+    await preorder.save();
+
+    return NextResponse.json({
+      preorder,
+      confirmationMessage: "Payment received. Your preorder is confirmed.",
     });
   } catch (e) {
     console.error(e);

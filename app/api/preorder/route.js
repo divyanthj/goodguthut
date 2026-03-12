@@ -6,6 +6,7 @@ import { calculateDeliveryQuote } from "@/libs/delivery";
 import { getPlaceDetails } from "@/libs/places";
 import { isWindowAcceptingOrders, MAX_PER_ORDER_LIMIT } from "@/libs/preorder-windows";
 import { ensureSkuCatalogSeeded, getSkuMap, normalizeAllowedItemRefs } from "@/libs/sku-catalog";
+import { getRazorpayPublicConfig, isRazorpayConfigured } from "@/libs/razorpay";
 
 const sanitizeItems = (items = []) => {
   return items
@@ -180,7 +181,8 @@ export async function POST(req) {
       total,
       source: "landing",
       payment: {
-        status: "not_required",
+        provider: isRazorpayConfigured() ? "razorpay" : "",
+        status: isRazorpayConfigured() ? "pending" : "not_required",
         amount: total,
         currency: preorderWindow?.currency || "INR",
       },
@@ -196,8 +198,10 @@ export async function POST(req) {
       total: preorder.total,
       currency: preorder.currency,
       paymentStatus: preorder.payment?.status,
-      confirmationMessage:
-        "Preorder received. We will contact you on WhatsApp or by text to confirm your order before payment.",
+      razorpay: getRazorpayPublicConfig(),
+      confirmationMessage: isRazorpayConfigured()
+        ? "Preorder received. Complete payment to confirm this order automatically."
+        : "Preorder received. We will contact you on WhatsApp or by text to confirm your order before payment.",
     });
   } catch (e) {
     console.error(e);

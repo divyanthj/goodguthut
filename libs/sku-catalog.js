@@ -110,8 +110,21 @@ export const getSkuMap = (skuCatalog = []) =>
 
 export const hydrateAllowedItems = (allowedItems = [], skuMap) =>
   normalizeAllowedItemRefs(allowedItems)
-    .map((item) => skuMap.get(item.sku))
-    .filter(Boolean);
+    .map((item) => {
+      const catalogItem = skuMap.get(item.sku);
+
+      if (catalogItem) {
+        return catalogItem;
+      }
+
+      return {
+        sku: item.sku,
+        name: item.sku,
+        notes: "",
+        unitPrice: 0,
+        status: "active",
+      };
+    });
 
 export const hydrateWindowWithCatalog = (preorderWindow, skuMap) => {
   if (!preorderWindow) {

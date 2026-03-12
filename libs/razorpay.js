@@ -9,9 +9,34 @@ export const isRazorpayConfigured = () => {
 };
 
 export const getRazorpayPublicConfig = () => ({
+  key: razorpayKeyId,
   keyId: razorpayKeyId,
   isConfigured: isRazorpayConfigured(),
 });
+
+export const verifyRazorpayPaymentSignature = ({
+  orderId = "",
+  paymentId = "",
+  signature = "",
+}) => {
+  if (!razorpayKeySecret || !orderId || !paymentId || !signature) {
+    return false;
+  }
+
+  const expectedSignature = crypto
+    .createHmac("sha256", razorpayKeySecret)
+    .update(`${orderId}|${paymentId}`)
+    .digest("hex");
+
+  const expectedBuffer = Buffer.from(expectedSignature);
+  const actualBuffer = Buffer.from(signature);
+
+  if (expectedBuffer.length !== actualBuffer.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(expectedBuffer, actualBuffer);
+};
 
 export const createRazorpayOrder = async ({ amount, currency, receipt, notes = {} }) => {
   if (!isRazorpayConfigured()) {

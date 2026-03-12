@@ -37,21 +37,22 @@ export async function POST(req) {
     }
 
     const paymentEntity = event?.payload?.payment?.entity;
+    const orderEntity = event?.payload?.order?.entity;
 
     switch (event.event) {
       case "payment.captured":
       case "order.paid": {
-        preorder.status = "paid";
+        preorder.status = preorder.status === "fulfilled" ? "fulfilled" : "confirmed";
         preorder.payment = {
           ...(preorder.payment?.toObject?.() || preorder.payment || {}),
           provider: "razorpay",
           status: "paid",
-          orderId: paymentEntity?.order_id || preorder.payment?.orderId || "",
+          orderId: paymentEntity?.order_id || orderEntity?.id || preorder.payment?.orderId || "",
           paymentId: paymentEntity?.id || preorder.payment?.paymentId || "",
           signature: signature || "",
           webhookEvent: event.event,
-          amount: paymentEntity?.amount ? Number(paymentEntity.amount) / 100 : preorder.subtotal,
-          currency: paymentEntity?.currency || preorder.currency,
+          amount: paymentEntity?.amount ? Number(paymentEntity.amount) / 100 : preorder.total,
+          currency: paymentEntity?.currency || orderEntity?.currency || preorder.currency,
           paidAt: paymentEntity?.captured_at
             ? new Date(Number(paymentEntity.captured_at) * 1000)
             : new Date(),
