@@ -3,15 +3,18 @@ import connectMongo from "@/libs/mongoose";
 import { calculateDeliveryQuote, isGoogleMapsConfigured } from "@/libs/delivery";
 import { getPlaceDetails } from "@/libs/places";
 import PreorderWindow from "@/models/PreorderWindow";
+import { getActiveWindowFilter, isWindowAcceptingOrders } from "@/libs/preorder-windows";
 
 const findWindow = async (preorderWindowId) => {
   if (preorderWindowId) {
     return PreorderWindow.findById(preorderWindowId);
   }
 
-  return PreorderWindow.findOne({
-    status: { $in: ["draft", "open", "closed"] },
-  }).sort({ updatedAt: -1, createdAt: -1 });
+  return PreorderWindow.findOne(getActiveWindowFilter()).sort({
+    opensAt: -1,
+    updatedAt: -1,
+    createdAt: -1,
+  });
 };
 
 export async function POST(req) {
@@ -32,6 +35,13 @@ export async function POST(req) {
 
     if (!preorderWindow) {
       return NextResponse.json({ error: "Preorder window not found." }, { status: 404 });
+    }
+
+    if (!isWindowAcceptingOrders(preorderWindow)) {
+      return NextResponse.json(
+        { error: "Preorders are closed for the selected delivery window." },
+        { status: 400 }
+      );
     }
 
     if (!isGoogleMapsConfigured()) {

@@ -4,6 +4,7 @@ import Preorder from "@/models/Preorder";
 import PreorderWindow from "@/models/PreorderWindow";
 import { calculateDeliveryQuote } from "@/libs/delivery";
 import { getPlaceDetails } from "@/libs/places";
+import { isWindowAcceptingOrders, MAX_PER_ORDER_LIMIT } from "@/libs/preorder-windows";
 
 const sanitizeItems = (items = []) => {
   return items
@@ -68,7 +69,7 @@ export async function POST(req) {
         );
       }
 
-      if (preorderWindow.status !== "open") {
+      if (!isWindowAcceptingOrders(preorderWindow)) {
         return NextResponse.json(
           { error: "Preorders are closed for the selected delivery window" },
           { status: 400 }
@@ -91,8 +92,10 @@ export async function POST(req) {
         throw new Error(`SKU ${item.sku} is not available in this preorder window`);
       }
 
-      if (item.quantity > 10) {
-        throw new Error(`SKU ${item.sku} maximum quantity per preorder is 10`);
+      if (item.quantity > MAX_PER_ORDER_LIMIT) {
+        throw new Error(
+          `SKU ${item.sku} maximum quantity per preorder is ${MAX_PER_ORDER_LIMIT}`
+        );
       }
 
       if (allowedItem?.maxPerOrder && item.quantity > allowedItem.maxPerOrder) {

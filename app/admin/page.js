@@ -5,6 +5,7 @@ import { createDefaultPreorderWindow } from "@/libs/preorder-catalog";
 import AdminLoginButton from "@/components/AdminLoginButton";
 import AdminPreorderConsole from "@/components/AdminPreorderConsole";
 import AdminNav from "@/components/AdminNav";
+import { sortPreorderWindows } from "@/libs/preorder-windows";
 
 export default async function AdminPage() {
   const { session, isAdmin } = await getAdminSessionState();
@@ -43,13 +44,14 @@ export default async function AdminPage() {
   }
 
   await connectMongo();
-  const preorderWindow = await PreorderWindow.findOne({
-    status: { $in: ["draft", "open", "closed"] },
-  }).sort({ updatedAt: -1, createdAt: -1 });
-
-  const initialWindow = preorderWindow
-    ? JSON.parse(JSON.stringify(preorderWindow))
-    : createDefaultPreorderWindow();
+  const preorderWindowDocs = await PreorderWindow.find({}).sort({
+    status: 1,
+    deliveryDate: -1,
+    updatedAt: -1,
+    createdAt: -1,
+  });
+  const initialWindows = sortPreorderWindows(JSON.parse(JSON.stringify(preorderWindowDocs)));
+  const defaultWindow = createDefaultPreorderWindow();
 
   return (
     <main className="min-h-screen bg-base-200 px-4 py-10 md:px-6">
@@ -64,7 +66,11 @@ export default async function AdminPage() {
           <AdminNav active="settings" />
         </div>
 
-        <AdminPreorderConsole initialWindow={initialWindow} adminEmail={session.user.email} />
+        <AdminPreorderConsole
+          initialWindows={initialWindows}
+          defaultWindow={defaultWindow}
+          adminEmail={session.user.email}
+        />
       </div>
     </main>
   );

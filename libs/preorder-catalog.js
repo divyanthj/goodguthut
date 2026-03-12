@@ -59,8 +59,10 @@ export const createDefaultPreorderWindow = () => {
   deliveryDate.setDate(deliveryDate.getDate() + 7);
 
   return {
-    title: "Current preorder window",
+    title: "New preorder batch",
     status: "draft",
+    opensAt: null,
+    closesAt: null,
     deliveryDate: deliveryDate.toISOString(),
     currency: "INR",
     minimumOrderQuantity: 4,

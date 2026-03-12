@@ -107,10 +107,15 @@ export default function AdminPreordersList({ initialPreorders }) {
               <div className="opacity-80">Total: {formatCurrency(preorder.currency, preorder.total || preorder.subtotal)}</div>
             </div>
             <div className="rounded-xl bg-base-200 p-4 text-sm">
-              <div className="font-medium">Delivery</div>
-              <div className="mt-2 opacity-80">Distance: {Number(preorder.deliveryDistanceKm || 0).toFixed(1)} km</div>
+              <div className="font-medium">Batch</div>
+              <div className="mt-2 opacity-80">Batch: {preorder.preorderWindowLabel || "-"}</div>
               <div className="opacity-80">Delivery date: {formatDate(preorder.deliveryDate)}</div>
               <div className="opacity-80">Delivered at: {formatDate(preorder.deliveredAt)}</div>
+            </div>
+            <div className="rounded-xl bg-base-200 p-4 text-sm">
+              <div className="font-medium">Delivery</div>
+              <div className="mt-2 opacity-80">Distance: {Number(preorder.deliveryDistanceKm || 0).toFixed(1)} km</div>
+              <div className="opacity-80">Address source: {preorder.normalizedDeliveryAddress ? "verified" : "manual"}</div>
             </div>
             <div className="rounded-xl bg-base-200 p-4 text-sm">
               <div className="font-medium">Contact</div>

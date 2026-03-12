@@ -2,31 +2,34 @@
 
 import { useEffect, useMemo, useState } from "react";
 import PreorderForm from "@/components/PreorderForm";
-import { preorderCatalog } from "@/libs/preorder-catalog";
 
 const MAX_QTY = 10;
 const DEFAULT_MIN_PREORDER_QUANTITY = 4;
 
 const buildFallbackWindow = () => ({
   id: "",
-  title: "Current lineup",
-  status: "draft",
+  title: "Preorders currently closed",
+  status: "closed",
   currency: "INR",
   minimumOrderQuantity: DEFAULT_MIN_PREORDER_QUANTITY,
   pickupAddress: "",
   deliveryBands: [],
-  allowedItems: preorderCatalog.map((product) => ({
-    sku: product.sku,
-    productName: product.name,
-    unitPrice: product.defaultUnitPrice,
-    isActive: true,
-    maxPerOrder: 10,
-    notes: product.note,
-  })),
+  allowedItems: [],
 });
 
 const buildCartFromItems = (items = []) =>
   Object.fromEntries(items.map((item) => [item.sku, 0]));
+
+const formatDeliveryDate = (value) => {
+  if (!value) {
+    return "";
+  }
+
+  return new Date(value).toLocaleString("en-IN", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+};
 
 export default function Page() {
   const [preorderWindow, setPreorderWindow] = useState(buildFallbackWindow);
@@ -40,15 +43,16 @@ export default function Page() {
         const response = await fetch("/api/preorder/window");
         const data = await response.json();
 
-        if (!isMounted || !data?.preorderWindow) {
+        if (!isMounted) {
           return;
         }
 
-        setPreorderWindow(data.preorderWindow);
+        const nextWindow = data?.preorderWindow || buildFallbackWindow();
+        setPreorderWindow(nextWindow);
         setCart((currentCart) => {
           const nextCart = {};
 
-          (data.preorderWindow.allowedItems || []).forEach((item) => {
+          (nextWindow.allowedItems || []).forEach((item) => {
             nextCart[item.sku] = Number(currentCart[item.sku] || 0);
           });
 
@@ -73,20 +77,14 @@ export default function Page() {
   const lineup = useMemo(() => {
     const allowedItems = preorderWindow?.allowedItems?.length
       ? preorderWindow.allowedItems.filter((item) => item.isActive)
-      : buildFallbackWindow().allowedItems;
+      : [];
 
-    const catalogMap = new Map(preorderCatalog.map((product) => [product.sku, product]));
-
-    return allowedItems.map((item) => {
-      const catalogItem = catalogMap.get(item.sku);
-
-      return {
-        sku: item.sku,
-        name: item.productName,
-        note: item.notes || catalogItem?.note || "",
-        unitPrice: Number(item.unitPrice || 0),
-      };
-    });
+    return allowedItems.map((item) => ({
+      sku: item.sku,
+      name: item.productName,
+      note: item.notes || "",
+      unitPrice: Number(item.unitPrice || 0),
+    }));
   }, [preorderWindow]);
 
   const isPreorderOpen = preorderWindow?.status === "open";
@@ -157,6 +155,33 @@ export default function Page() {
         {!isPreorderOpen && (
           <div className="mt-4 rounded-2xl bg-base-100 p-4 text-sm shadow-md">
             We are currently not taking preorders. Check back in with us later.
+          </div>
+        )}
+        {isPreorderOpen && preorderWindow.deliveryDate && (
+          <div className="mt-4 rounded-3xl border border-base-300 bg-base-100 p-5 shadow-md">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-[0.2em] opacity-60">
+                  Current batch
+                </div>
+                <div className="mt-1 text-lg font-semibold">
+                  Delivery date: {formatDeliveryDate(preorderWindow.deliveryDate)}
+                </div>
+                <div className="mt-1 text-sm opacity-70">
+                  Add your SKUs for this batch and we&apos;ll prepare them for this delivery run.
+                </div>
+              </div>
+              {preorderWindow.title && (
+                <div className="badge badge-outline h-auto px-4 py-3 text-center">
+                  {preorderWindow.title}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+        {isPreorderOpen && lineup.length === 0 && (
+          <div className="mt-4 rounded-2xl bg-base-100 p-4 text-sm shadow-md">
+            This batch is open, but no SKUs are active yet.
           </div>
         )}
         <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
