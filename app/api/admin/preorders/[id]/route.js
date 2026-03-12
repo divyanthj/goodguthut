@@ -40,3 +40,30 @@ export async function PATCH(req, { params }) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
 }
+
+export async function DELETE(_req, { params }) {
+  const { session, isAdmin } = await getAdminSessionState();
+
+  if (!session?.user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  if (!isAdmin) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  await connectMongo();
+
+  try {
+    const preorder = await Preorder.findByIdAndDelete(params.id);
+
+    if (!preorder) {
+      return NextResponse.json({ error: "Preorder not found." }, { status: 404 });
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (e) {
+    console.error(e);
+    return NextResponse.json({ error: e.message }, { status: 500 });
+  }
+}
