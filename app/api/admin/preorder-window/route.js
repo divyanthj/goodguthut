@@ -4,11 +4,14 @@ import { authOptions } from "@/libs/next-auth";
 import { isAdminEmail } from "@/libs/admin";
 import connectMongo from "@/libs/mongoose";
 import PreorderWindow from "@/models/PreorderWindow";
-import { createDefaultAllowedItems, createDefaultPreorderWindow } from "@/libs/preorder-catalog";
+import { createDefaultPreorderWindow } from "@/libs/preorder-catalog";
 import {
+  getLiveOpenWindowMessage,
+  isWindowAcceptingOrders,
   normalizePreorderWindowPayload,
   sortPreorderWindows,
 } from "@/libs/preorder-windows";
+import { ensureSkuCatalogSeeded } from "@/libs/sku-catalog";
 
 const getAdminSession = async () => {
   const session = await getServerSession(authOptions);
@@ -24,16 +27,6 @@ const getAdminSession = async () => {
   return { session };
 };
 
-const closeOtherOpenWindows = async (excludeId) => {
-  const filter = { status: "open" };
-
-  if (excludeId) {
-    filter._id = { $ne: excludeId };
-  }
-
-  await PreorderWindow.updateMany(filter, { status: "closed" });
-};
-
 export async function GET() {
   const { error } = await getAdminSession();
 
@@ -42,12 +35,14 @@ export async function GET() {
   }
 
   await connectMongo();
+  const skuCatalog = await ensureSkuCatalogSeeded();
 
   const preorderWindows = await PreorderWindow.find({})
     .sort({ status: 1, deliveryDate: -1, updatedAt: -1, createdAt: -1 });
 
   return NextResponse.json({
     preorderWindows: sortPreorderWindows(preorderWindows),
+    skuCatalog,
     defaultPreorderWindow: createDefaultPreorderWindow(),
   });
 }
@@ -63,11 +58,12 @@ export async function POST(req) {
 
   try {
     const body = await req.json();
+    const skuCatalog = await ensureSkuCatalogSeeded();
     const { payload, allowedItems } = normalizePreorderWindowPayload({
       body,
       fallbackTitle: "Preorder batch",
-      fallbackItems: createDefaultAllowedItems(),
     });
+    const skuCodes = new Set(skuCatalog.map((item) => item.sku));
 
     if (!payload.title) {
       return NextResponse.json({ error: "Title is required." }, { status: 400 });
@@ -80,15 +76,42 @@ export async function POST(req) {
       );
     }
 
+    const unknownSku = allowedItems.find((item) => !skuCodes.has(item.sku));
+
+    if (unknownSku) {
+      return NextResponse.json(
+        { error: `SKU ${unknownSku.sku} does not exist in the catalog.` },
+        { status: 400 }
+      );
+    }
+
     if (payload.status === "open" && !payload.opensAt) {
       payload.opensAt = new Date();
     }
 
-    const preorderWindow = await PreorderWindow.create(payload);
-
     if (payload.status === "open") {
-      await closeOtherOpenWindows(preorderWindow._id);
+      const liveOpenWindow = await PreorderWindow.findOne({ status: "open" }).sort({
+        opensAt: 1,
+        updatedAt: -1,
+        createdAt: -1,
+      });
+
+      if (liveOpenWindow && isWindowAcceptingOrders(liveOpenWindow)) {
+        const nextOpensAt = payload.opensAt ? new Date(payload.opensAt) : null;
+        const currentClosesAt = liveOpenWindow.closesAt ? new Date(liveOpenWindow.closesAt) : null;
+        const canScheduleAfterClose =
+          currentClosesAt && nextOpensAt && nextOpensAt.getTime() > currentClosesAt.getTime();
+
+        if (!canScheduleAfterClose) {
+          return NextResponse.json(
+            { error: getLiveOpenWindowMessage(liveOpenWindow) },
+            { status: 400 }
+          );
+        }
+      }
     }
+
+    const preorderWindow = await PreorderWindow.create(payload);
 
     return NextResponse.json({ preorderWindow }, { status: 201 });
   } catch (e) {

@@ -33,28 +33,15 @@ export const sortPreorderWindows = (windows = []) => {
   });
 };
 
-export const sanitizeAllowedItems = (items = [], fallbackItems = []) => {
-  const fallbackMap = new Map(fallbackItems.map((item) => [item.sku, item]));
+export const sanitizeAllowedItems = (items = []) => {
   const seenSkus = new Set();
 
   return items
     .map((item) => {
-      const sku = (item.sku || "").trim().toUpperCase();
-      const fallback = fallbackMap.get(sku);
-      const parsedMaxPerOrder = Number(item.maxPerOrder);
-
-      return {
-        sku,
-        productName: (item.productName || fallback?.productName || "").trim(),
-        unitPrice: Math.max(0, Number(item.unitPrice || 0)),
-        isActive: item.isActive !== false,
-        maxPerOrder: Number.isFinite(parsedMaxPerOrder)
-          ? Math.min(MAX_PER_ORDER_LIMIT, Math.max(1, parsedMaxPerOrder))
-          : MAX_PER_ORDER_LIMIT,
-        notes: (item.notes || fallback?.notes || "").trim(),
-      };
+      const sku = (typeof item === "string" ? item : item?.sku || "").trim().toUpperCase();
+      return sku ? { sku } : null;
     })
-    .filter((item) => item.sku && item.productName)
+    .filter(Boolean)
     .filter((item) => {
       if (seenSkus.has(item.sku)) {
         return false;
@@ -93,9 +80,8 @@ const normalizeDate = (value) => {
 export const normalizePreorderWindowPayload = ({
   body = {},
   fallbackTitle = "Preorder batch",
-  fallbackItems = [],
 } = {}) => {
-  const allowedItems = sanitizeAllowedItems(body.allowedItems, fallbackItems);
+  const allowedItems = sanitizeAllowedItems(body.allowedItems);
   const deliveryBands = sanitizeDeliveryBands(body.deliveryBands);
   const normalizedStatus = VALID_STATUSES.has(body.status)
     ? body.status
@@ -135,6 +121,23 @@ export const isWindowAcceptingOrders = (preorderWindow, now = new Date()) => {
   }
 
   return true;
+};
+
+export const getLiveOpenWindowMessage = (preorderWindow) => {
+  if (!preorderWindow) {
+    return "";
+  }
+
+  if (preorderWindow.closesAt) {
+    const closesAt = new Date(preorderWindow.closesAt).toLocaleString("en-IN", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
+
+    return `The current preorder batch "${preorderWindow.title}" is open until ${closesAt}. Schedule the next batch after it closes.`;
+  }
+
+  return `The current preorder batch "${preorderWindow.title}" is already open. Close it or set its close time before scheduling the next batch.`;
 };
 
 export const getActiveWindowFilter = (now = new Date()) => ({

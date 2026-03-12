@@ -1,11 +1,13 @@
 import connectMongo from "@/libs/mongoose";
 import { getAdminSessionState } from "@/libs/admin-auth";
 import PreorderWindow from "@/models/PreorderWindow";
+import Sku from "@/models/Sku";
 import { createDefaultPreorderWindow } from "@/libs/preorder-catalog";
 import AdminLoginButton from "@/components/AdminLoginButton";
 import AdminPreorderConsole from "@/components/AdminPreorderConsole";
 import AdminNav from "@/components/AdminNav";
 import { sortPreorderWindows } from "@/libs/preorder-windows";
+import { ensureSkuCatalogSeeded } from "@/libs/sku-catalog";
 
 export default async function AdminPage() {
   const { session, isAdmin } = await getAdminSessionState();
@@ -44,13 +46,20 @@ export default async function AdminPage() {
   }
 
   await connectMongo();
+  await ensureSkuCatalogSeeded();
   const preorderWindowDocs = await PreorderWindow.find({}).sort({
     status: 1,
     deliveryDate: -1,
     updatedAt: -1,
     createdAt: -1,
   });
+  const skuCatalogDocs = await Sku.find({}).sort({
+    status: 1,
+    name: 1,
+    sku: 1,
+  });
   const initialWindows = sortPreorderWindows(JSON.parse(JSON.stringify(preorderWindowDocs)));
+  const initialSkuCatalog = JSON.parse(JSON.stringify(skuCatalogDocs));
   const defaultWindow = createDefaultPreorderWindow();
 
   return (
@@ -60,7 +69,7 @@ export default async function AdminPage() {
           <div>
             <h1 className="text-3xl font-bold">Admin preorder control</h1>
             <p className="mt-2 max-w-3xl opacity-75">
-              Manage the active preorder window, set per-SKU pricing, and prepare the catalog for Razorpay checkout.
+              Manage the shared SKU catalog, build preorder batches from that catalog, and prepare the checkout flow.
             </p>
           </div>
           <AdminNav active="settings" />
@@ -68,6 +77,7 @@ export default async function AdminPage() {
 
         <AdminPreorderConsole
           initialWindows={initialWindows}
+          initialSkuCatalog={initialSkuCatalog}
           defaultWindow={defaultWindow}
           adminEmail={session.user.email}
         />

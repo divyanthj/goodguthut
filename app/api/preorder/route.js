@@ -5,6 +5,7 @@ import PreorderWindow from "@/models/PreorderWindow";
 import { calculateDeliveryQuote } from "@/libs/delivery";
 import { getPlaceDetails } from "@/libs/places";
 import { isWindowAcceptingOrders, MAX_PER_ORDER_LIMIT } from "@/libs/preorder-windows";
+import { ensureSkuCatalogSeeded, getSkuMap, normalizeAllowedItemRefs } from "@/libs/sku-catalog";
 
 const sanitizeItems = (items = []) => {
   return items
@@ -28,6 +29,8 @@ const isDatabaseUnavailable = (message = "") => {
 export async function POST(req) {
   try {
     await connectMongo();
+    const skuCatalog = await ensureSkuCatalogSeeded();
+    const skuMap = getSkuMap(skuCatalog);
 
     const body = await req.json();
 
@@ -79,17 +82,20 @@ export async function POST(req) {
 
     const allowedItemsBySku = preorderWindow
       ? new Map(
-          preorderWindow.allowedItems
-            .filter((item) => item.isActive)
-            .map((item) => [item.sku, item])
+          normalizeAllowedItemRefs(preorderWindow.allowedItems).map((item) => [item.sku, skuMap.get(item.sku)])
         )
       : null;
 
     const items = requestItems.map((item) => {
       const allowedItem = allowedItemsBySku?.get(item.sku);
+      const catalogItem = skuMap.get(item.sku);
 
       if (preorderWindow && !allowedItem) {
         throw new Error(`SKU ${item.sku} is not available in this preorder window`);
+      }
+
+      if (!catalogItem || catalogItem.status !== "active") {
+        throw new Error(`SKU ${item.sku} is not currently available`);
       }
 
       if (item.quantity > MAX_PER_ORDER_LIMIT) {
@@ -97,18 +103,11 @@ export async function POST(req) {
           `SKU ${item.sku} maximum quantity per preorder is ${MAX_PER_ORDER_LIMIT}`
         );
       }
-
-      if (allowedItem?.maxPerOrder && item.quantity > allowedItem.maxPerOrder) {
-        throw new Error(
-          `SKU ${item.sku} maximum quantity per preorder is ${allowedItem.maxPerOrder}`
-        );
-      }
-
-      const unitPrice = Math.max(0, Number(allowedItem?.unitPrice ?? item.unitPrice ?? 0));
+      const unitPrice = Math.max(0, Number(catalogItem.unitPrice ?? item.unitPrice ?? 0));
 
       return {
         sku: item.sku,
-        productName: allowedItem?.productName || item.productName,
+        productName: catalogItem.name || item.productName,
         quantity: item.quantity,
         unitPrice,
         lineTotal: item.quantity * unitPrice,

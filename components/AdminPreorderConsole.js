@@ -1,15 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { sortPreorderWindows } from "@/libs/preorder-windows";
 
-const toDateInputValue = (value) => {
-  if (!value) {
-    return "";
-  }
-
-  return new Date(value).toISOString().slice(0, 10);
-};
+const toDateInputValue = (value) => (value ? new Date(value).toISOString().slice(0, 10) : "");
 
 const toDateTimeInputValue = (value) => {
   if (!value) {
@@ -32,38 +26,56 @@ const formatDate = (value) => {
   });
 };
 
-const createEmptySku = () => ({
-  sku: "",
-  productName: "",
-  unitPrice: 0,
-  isActive: true,
-  maxPerOrder: 10,
-  notes: "",
-});
+const createEmptyDeliveryBand = () => ({ minDistanceKm: 0, maxDistanceKm: 0, fee: 0 });
 
-const createEmptyDeliveryBand = () => ({
-  minDistanceKm: 0,
-  maxDistanceKm: 0,
-  fee: 0,
-});
+const createSessionToken = () =>
+  typeof crypto !== "undefined" && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
-const createSessionToken = () => {
-  if (typeof crypto !== "undefined" && crypto.randomUUID) {
-    return crypto.randomUUID();
+const createStoredPickupSelection = (pickupAddress = "") =>
+  pickupAddress
+    ? { placeId: "", formattedAddress: pickupAddress }
+    : null;
+
+const cloneDeliveryBands = (bands = []) =>
+  bands.map((band) => ({
+    minDistanceKm: Number(band.minDistanceKm || 0),
+    maxDistanceKm: Number(band.maxDistanceKm || 0),
+    fee: Number(band.fee || 0),
+  }));
+
+const addMinuteToDateTimeInput = (value) => {
+  if (!value) {
+    return "";
   }
 
-  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  date.setMinutes(date.getMinutes() + 1);
+  return toDateTimeInputValue(date);
 };
 
-const createStoredPickupSelection = (pickupAddress = "") => {
-  if (!pickupAddress) {
-    return null;
-  }
+const normalizeAllowedItems = (allowedItems = []) => {
+  const seenSkus = new Set();
 
-  return {
-    placeId: "",
-    formattedAddress: pickupAddress,
-  };
+  return allowedItems
+    .map((item) => (typeof item === "string" ? item : item?.sku || ""))
+    .map((sku) => sku.trim().toUpperCase())
+    .filter(Boolean)
+    .filter((sku) => {
+      if (seenSkus.has(sku)) {
+        return false;
+      }
+
+      seenSkus.add(sku);
+      return true;
+    })
+    .map((sku) => ({ sku }));
 };
 
 const createWindowConfig = (windowData) => ({
@@ -76,17 +88,35 @@ const createWindowConfig = (windowData) => ({
   currency: windowData.currency || "INR",
   minimumOrderQuantity: Number(windowData.minimumOrderQuantity || 1),
   pickupAddress: windowData.pickupAddress || "",
-  deliveryBands: windowData.deliveryBands?.length
-    ? windowData.deliveryBands
-    : [createEmptyDeliveryBand()],
-  allowedItems: windowData.allowedItems?.length
-    ? windowData.allowedItems
-    : [createEmptySku()],
+  deliveryBands: windowData.deliveryBands?.length ? windowData.deliveryBands : [createEmptyDeliveryBand()],
+  allowedItems: normalizeAllowedItems(windowData.allowedItems),
   allowCustomerNotes: windowData.allowCustomerNotes !== false,
 });
 
-const countActiveItems = (windowData) =>
-  (windowData.allowedItems || []).filter((item) => item.isActive).length;
+const buildNewBatchConfig = (defaultWindow, previousWindow) => {
+  const baseWindow = createWindowConfig(defaultWindow);
+
+  if (!previousWindow) {
+    return baseWindow;
+  }
+
+  return {
+    ...baseWindow,
+    deliveryBands: previousWindow.deliveryBands?.length
+      ? cloneDeliveryBands(previousWindow.deliveryBands)
+      : baseWindow.deliveryBands,
+    opensAt: addMinuteToDateTimeInput(previousWindow.closesAt),
+  };
+};
+
+const createEmptySkuForm = () => ({
+  id: "",
+  sku: "",
+  name: "",
+  notes: "",
+  unitPrice: 0,
+  status: "active",
+});
 
 const getWindowTimingState = (windowData, now = new Date()) => {
   if (windowData.status !== "open") {
@@ -104,53 +134,23 @@ const getWindowTimingState = (windowData, now = new Date()) => {
   return "live";
 };
 
-const getWindowStatusLabel = (windowData) => {
-  const timingState = getWindowTimingState(windowData);
-
-  if (timingState === "scheduled") {
-    return `opens at ${formatDate(windowData.opensAt)}`;
-  }
-
-  if (timingState === "live") {
-    return "open";
-  }
-
-  return timingState;
-};
-
 const getWindowStatusMeta = (windowData) => {
   const timingState = getWindowTimingState(windowData);
 
   if (timingState === "scheduled") {
-    return {
-      badge: "scheduled",
-      detail: `Opens at ${formatDate(windowData.opensAt)}`,
-      badgeClassName: "badge-warning",
-    };
+    return { badge: "scheduled", detail: `Opens at ${formatDate(windowData.opensAt)}`, badgeClassName: "badge-warning" };
   }
 
   if (timingState === "live") {
-    return {
-      badge: "open",
-      detail: "Live on landing page",
-      badgeClassName: "badge-success",
-    };
+    return { badge: "open", detail: "Live on landing page", badgeClassName: "badge-success" };
   }
 
   if (timingState === "draft") {
-    return {
-      badge: "draft",
-      detail: "Not visible on landing page",
-      badgeClassName: "badge-ghost",
-    };
+    return { badge: "draft", detail: "Not visible on landing page", badgeClassName: "badge-ghost" };
   }
 
   if (timingState === "archived") {
-    return {
-      badge: "archived",
-      detail: "Kept for record only",
-      badgeClassName: "badge-neutral",
-    };
+    return { badge: "archived", detail: "Kept for record only", badgeClassName: "badge-neutral" };
   }
 
   return {
@@ -160,79 +160,182 @@ const getWindowStatusMeta = (windowData) => {
   };
 };
 
+const getWindowStatusLabel = (windowData) => {
+  const timingState = getWindowTimingState(windowData);
+  if (timingState === "scheduled") {
+    return `opens at ${formatDate(windowData.opensAt)}`;
+  }
+  return timingState === "live" ? "open" : timingState;
+};
+
+const canScheduleAfterLiveWindow = (windowData, liveOpenWindow) => {
+  if (!liveOpenWindow) {
+    return true;
+  }
+
+  if (windowData.id && liveOpenWindow.id === windowData.id) {
+    return true;
+  }
+
+  if (windowData.status !== "open") {
+    return true;
+  }
+
+  if (!liveOpenWindow.closesAt || !windowData.opensAt) {
+    return false;
+  }
+
+  return new Date(windowData.opensAt).getTime() > new Date(liveOpenWindow.closesAt).getTime();
+};
+
+const getLiveWindowConflictMessage = (liveOpenWindow) => {
+  if (!liveOpenWindow) {
+    return "";
+  }
+
+  if (liveOpenWindow.closesAt) {
+    return `Another batch is live right now. Set this batch to open after ${formatDate(liveOpenWindow.closesAt)}.`;
+  }
+
+  return "Another batch is live right now. Close it or add a close time before scheduling this one.";
+};
+
 export default function AdminPreorderConsole({
   initialWindows,
+  initialSkuCatalog,
   defaultWindow,
   adminEmail,
 }) {
-  const sortedInitialWindows = useMemo(
-    () => sortPreorderWindows(initialWindows || []),
-    [initialWindows]
+  const [windows, setWindows] = useState(sortPreorderWindows(initialWindows || []));
+  const [skuCatalog, setSkuCatalog] = useState(initialSkuCatalog || []);
+  const [selectedId, setSelectedId] = useState(initialWindows?.[0]?.id || "new");
+  const [windowConfig, setWindowConfig] = useState(
+    initialWindows?.[0] ? createWindowConfig(initialWindows[0]) : createWindowConfig(defaultWindow)
   );
-  const [windows, setWindows] = useState(sortedInitialWindows);
-  const [selectedId, setSelectedId] = useState(sortedInitialWindows[0]?.id || "new");
-  const [windowConfig, setWindowConfig] = useState(() =>
-    sortedInitialWindows[0] ? createWindowConfig(sortedInitialWindows[0]) : createWindowConfig(defaultWindow)
-  );
-  const [isSaving, setIsSaving] = useState(false);
+  const [skuForm, setSkuForm] = useState(createEmptySkuForm);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [isSavingBatch, setIsSavingBatch] = useState(false);
+  const [isSavingSku, setIsSavingSku] = useState(false);
   const [pickupSuggestions, setPickupSuggestions] = useState([]);
   const [pickupLookupError, setPickupLookupError] = useState("");
   const [isLoadingPickupSuggestions, setIsLoadingPickupSuggestions] = useState(false);
   const [selectedPickupPlace, setSelectedPickupPlace] = useState(() =>
-    createStoredPickupSelection(sortedInitialWindows[0]?.pickupAddress || defaultWindow.pickupAddress)
+    createStoredPickupSelection(initialWindows?.[0]?.pickupAddress || defaultWindow.pickupAddress)
   );
   const [pickupSessionToken, setPickupSessionToken] = useState(() => createSessionToken());
+  const batchEditorRef = useRef(null);
+  const skuEditorRef = useRef(null);
 
-  const activeItemCount = useMemo(
-    () => countActiveItems(windowConfig),
-    [windowConfig]
+  const skuCatalogMap = useMemo(
+    () => new Map(skuCatalog.map((item) => [item.sku, item])),
+    [skuCatalog]
+  );
+  const includedSkuCodes = useMemo(
+    () => (windowConfig.allowedItems || []).map((item) => item.sku),
+    [windowConfig.allowedItems]
+  );
+  const includedSkus = useMemo(
+    () => includedSkuCodes.map((sku) => skuCatalogMap.get(sku)).filter(Boolean),
+    [includedSkuCodes, skuCatalogMap]
+  );
+  const availableSkus = useMemo(
+    () => skuCatalog.filter((item) => !includedSkuCodes.includes(item.sku)),
+    [skuCatalog, includedSkuCodes]
   );
   const storefrontStatusLabel = useMemo(
     () => getWindowStatusLabel(windowConfig),
     [windowConfig]
   );
+  const liveOpenWindow = useMemo(
+    () =>
+      windows.find(
+        (item) => item.id !== windowConfig.id && getWindowTimingState(item) === "live"
+      ) || null,
+    [windows, windowConfig.id]
+  );
+  const canSaveOpenWindow = useMemo(
+    () => canScheduleAfterLiveWindow(windowConfig, liveOpenWindow),
+    [windowConfig, liveOpenWindow]
+  );
+  const liveWindowConflictMessage = useMemo(
+    () => getLiveWindowConflictMessage(liveOpenWindow),
+    [liveOpenWindow]
+  );
+  const previousBatchTemplate = useMemo(
+    () => liveOpenWindow || windows[0] || null,
+    [liveOpenWindow, windows]
+  );
 
-  const selectWindow = (nextWindow) => {
+  const clearFeedback = () => {
     setMessage("");
     setError("");
+  };
+
+  const selectWindow = (nextWindow) => {
+    clearFeedback();
     setPickupLookupError("");
     setPickupSuggestions([]);
     setPickupSessionToken(createSessionToken());
     setSelectedId(nextWindow.id || "new");
     setWindowConfig(createWindowConfig(nextWindow));
     setSelectedPickupPlace(createStoredPickupSelection(nextWindow.pickupAddress));
-  };
-
-  const selectNewWindow = () => {
-    selectWindow({
-      ...defaultWindow,
-      id: "",
-      title: defaultWindow.title || "New preorder batch",
-      status: "draft",
-      opensAt: null,
-      closesAt: null,
+    window.requestAnimationFrame(() => {
+      batchEditorRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
     });
   };
 
-  const refreshWindows = async (preferredId = selectedId) => {
+  const selectSkuForm = (nextSkuForm) => {
+    setSkuForm(nextSkuForm);
+    window.requestAnimationFrame(() => {
+      skuEditorRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+  };
+
+  const startNewBatch = () => {
+    selectWindow(buildNewBatchConfig(defaultWindow, previousBatchTemplate));
+  };
+
+  const refreshData = async (preferredWindowId = selectedId, preferredSkuId = skuForm.id) => {
     const response = await fetch("/api/admin/preorder-window");
     const data = await response.json();
 
     if (!response.ok) {
-      throw new Error(data.error || "Could not load preorder batches.");
+      throw new Error(data.error || "Could not load admin data.");
     }
 
     const nextWindows = sortPreorderWindows(data.preorderWindows || []);
-    setWindows(nextWindows);
+    const nextSkuCatalog = data.skuCatalog || [];
 
-    if (!nextWindows.length) {
-      selectNewWindow();
+    setWindows(nextWindows);
+    setSkuCatalog(nextSkuCatalog);
+
+    if (preferredSkuId) {
+      const nextSku = nextSkuCatalog.find((item) => item.id === preferredSkuId);
+      if (nextSku) {
+        setSkuForm({
+          id: nextSku.id,
+          sku: nextSku.sku,
+          name: nextSku.name,
+          notes: nextSku.notes || "",
+          unitPrice: Number(nextSku.unitPrice || 0),
+          status: nextSku.status || "active",
+        });
+      }
+    }
+
+    if (nextWindows.length === 0) {
+      selectWindow(buildNewBatchConfig(defaultWindow, null));
       return;
     }
 
-    const preferredWindow = nextWindows.find((item) => item.id === preferredId);
+    const preferredWindow = nextWindows.find((item) => item.id === preferredWindowId);
     selectWindow(preferredWindow || nextWindows[0]);
   };
 
@@ -256,15 +359,9 @@ export default function AdminPreorderConsole({
       try {
         const response = await fetch("/api/preorder/address-autocomplete", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            input,
-            sessionToken: pickupSessionToken,
-          }),
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ input, sessionToken: pickupSessionToken }),
         });
-
         const data = await response.json();
 
         if (!response.ok) {
@@ -287,29 +384,6 @@ export default function AdminPreorderConsole({
     setWindowConfig((current) => ({ ...current, [field]: value }));
   };
 
-  const updateItem = (index, field, value) => {
-    setWindowConfig((current) => ({
-      ...current,
-      allowedItems: current.allowedItems.map((item, itemIndex) =>
-        itemIndex === index ? { ...item, [field]: value } : item
-      ),
-    }));
-  };
-
-  const addItem = () => {
-    setWindowConfig((current) => ({
-      ...current,
-      allowedItems: [...current.allowedItems, createEmptySku()],
-    }));
-  };
-
-  const removeItem = (index) => {
-    setWindowConfig((current) => ({
-      ...current,
-      allowedItems: current.allowedItems.filter((_, itemIndex) => itemIndex !== index),
-    }));
-  };
-
   const updateDeliveryBand = (index, field, value) => {
     setWindowConfig((current) => ({
       ...current,
@@ -319,17 +393,17 @@ export default function AdminPreorderConsole({
     }));
   };
 
-  const addDeliveryBand = () => {
+  const includeSku = (sku) => {
     setWindowConfig((current) => ({
       ...current,
-      deliveryBands: [...current.deliveryBands, createEmptyDeliveryBand()],
+      allowedItems: [...current.allowedItems, { sku }],
     }));
   };
 
-  const removeDeliveryBand = (index) => {
+  const removeIncludedSku = (sku) => {
     setWindowConfig((current) => ({
       ...current,
-      deliveryBands: current.deliveryBands.filter((_, bandIndex) => bandIndex !== index),
+      allowedItems: current.allowedItems.filter((item) => item.sku !== sku),
     }));
   };
 
@@ -349,15 +423,9 @@ export default function AdminPreorderConsole({
     try {
       const response = await fetch("/api/preorder/address-place", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          placeId: suggestion.placeId,
-          sessionToken: pickupSessionToken,
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ placeId: suggestion.placeId, sessionToken: pickupSessionToken }),
       });
-
       const data = await response.json();
 
       if (!response.ok) {
@@ -374,10 +442,36 @@ export default function AdminPreorderConsole({
     }
   };
 
-  const onSave = async (event) => {
+  const onSaveSku = async (event) => {
     event.preventDefault();
-    setMessage("");
-    setError("");
+    clearFeedback();
+    setIsSavingSku(true);
+
+    try {
+      const isEditing = Boolean(skuForm.id);
+      const response = await fetch(isEditing ? `/api/admin/skus/${skuForm.id}` : "/api/admin/skus", {
+        method: isEditing ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(skuForm),
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Could not save SKU.");
+      }
+
+      await refreshData(selectedId, data.sku.id);
+      setMessage(isEditing ? "SKU updated." : "SKU created.");
+    } catch (saveError) {
+      setError(saveError.message || "Could not save SKU.");
+    } finally {
+      setIsSavingSku(false);
+    }
+  };
+
+  const onSaveBatch = async (event) => {
+    event.preventDefault();
+    clearFeedback();
     setPickupLookupError("");
 
     if (windowConfig.pickupAddress?.trim() && !selectedPickupPlace) {
@@ -385,7 +479,12 @@ export default function AdminPreorderConsole({
       return;
     }
 
-    setIsSaving(true);
+    if (!canSaveOpenWindow) {
+      setError(liveWindowConflictMessage);
+      return;
+    }
+
+    setIsSavingBatch(true);
 
     try {
       const isEditing = Boolean(windowConfig.id);
@@ -393,25 +492,22 @@ export default function AdminPreorderConsole({
         isEditing ? `/api/admin/preorder-window/${windowConfig.id}` : "/api/admin/preorder-window",
         {
           method: isEditing ? "PUT" : "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify(windowConfig),
         }
       );
-
       const data = await response.json();
 
       if (!response.ok) {
         throw new Error(data.error || "Could not save preorder batch.");
       }
 
-      await refreshWindows(data.preorderWindow.id);
+      await refreshData(data.preorderWindow.id);
       setMessage(isEditing ? "Preorder batch updated." : "Preorder batch created.");
     } catch (saveError) {
       setError(saveError.message || "Could not save preorder batch.");
     } finally {
-      setIsSaving(false);
+      setIsSavingBatch(false);
     }
   };
 
@@ -421,16 +517,13 @@ export default function AdminPreorderConsole({
       return;
     }
 
-    setMessage("");
-    setError("");
-    setIsSaving(true);
+    clearFeedback();
+    setIsSavingBatch(true);
 
     try {
       const response = await fetch(`/api/admin/preorder-window/${windowConfig.id}`, {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),
       });
       const data = await response.json();
@@ -439,16 +532,12 @@ export default function AdminPreorderConsole({
         throw new Error(data.error || "Could not update preorder batch status.");
       }
 
-      await refreshWindows(data.preorderWindow.id);
-      setMessage(
-        status === "open"
-          ? "Batch opened. Any previously open batch has been closed."
-          : `Batch marked ${status}.`
-      );
+      await refreshData(data.preorderWindow.id);
+      setMessage(status === "open" ? "Batch opened." : `Batch marked ${status}.`);
     } catch (statusError) {
       setError(statusError.message || "Could not update preorder batch status.");
     } finally {
-      setIsSaving(false);
+      setIsSavingBatch(false);
     }
   };
 
@@ -464,459 +553,346 @@ export default function AdminPreorderConsole({
             <div className="flex items-center justify-between gap-3">
               <div>
                 <h2 className="text-xl font-semibold">Preorder batches</h2>
-                <p className="text-sm opacity-70">One batch can be open on the landing page at a time.</p>
+                <p className="text-sm opacity-70">Batches pick from the shared SKU catalog.</p>
               </div>
-              <button type="button" className="btn btn-sm btn-primary" onClick={selectNewWindow}>
+              <button type="button" className="btn btn-sm btn-primary" onClick={startNewBatch}>
                 New batch
               </button>
             </div>
           </div>
 
-          {windows.length === 0 ? (
-            <div className="rounded-2xl bg-base-100 p-4 text-sm shadow-xl">
-              No batches yet. Create your first preorder batch to get started.
-            </div>
-          ) : (
-            windows.map((windowItem) => {
-              const isSelected = windowItem.id === selectedId;
-              const activeSkuCount = countActiveItems(windowItem);
-              const statusMeta = getWindowStatusMeta(windowItem);
+          {windows.map((windowItem) => {
+            const isSelected = windowItem.id === selectedId;
+            const statusMeta = getWindowStatusMeta(windowItem);
+            const includedCount = normalizeAllowedItems(windowItem.allowedItems).length;
 
-              return (
-                <button
-                  key={windowItem.id}
-                  type="button"
-                  className={`w-full rounded-2xl border p-4 text-left shadow-sm transition ${
-                    isSelected
-                      ? "border-primary bg-primary/10"
-                      : "border-base-300 bg-base-100 hover:border-primary/40"
-                  }`}
-                  onClick={() => selectWindow(windowItem)}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="text-2xl font-semibold leading-tight text-slate-900">
-                        {windowItem.title}
-                      </div>
-                      <div className="mt-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-500">
-                        {statusMeta.detail}
-                      </div>
-                      <div className="mt-1 text-xs opacity-70">
-                        Delivery: {formatDate(windowItem.deliveryDate)}
-                      </div>
+            return (
+              <button
+                key={windowItem.id}
+                type="button"
+                className={`w-full rounded-2xl border p-4 text-left shadow-sm transition ${
+                  isSelected ? "border-primary bg-primary/10" : "border-base-300 bg-base-100 hover:border-primary/40"
+                }`}
+                onClick={() => selectWindow(windowItem)}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-2xl font-semibold leading-tight text-slate-900">{windowItem.title}</div>
+                    <div className="mt-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-500">
+                      {statusMeta.detail}
                     </div>
-                    <div className={`badge shrink-0 ${statusMeta.badgeClassName}`}>
-                      {statusMeta.badge}
-                    </div>
+                    <div className="mt-1 text-xs opacity-70">Delivery: {formatDate(windowItem.deliveryDate)}</div>
                   </div>
-                  <div className="mt-3 text-xs opacity-70">
-                    {activeSkuCount} active SKU(s)
-                  </div>
-                  <div className="mt-1 text-xs opacity-70">
-                    Close: {windowItem.closesAt ? formatDate(windowItem.closesAt) : "Manual close"}
-                  </div>
-                </button>
-              );
-            })
-          )}
+                  <div className={`badge shrink-0 ${statusMeta.badgeClassName}`}>{statusMeta.badge}</div>
+                </div>
+                <div className="mt-3 text-xs opacity-70">{includedCount} included SKU(s)</div>
+                <div className="mt-1 text-xs opacity-70">
+                  Close: {windowItem.closesAt ? formatDate(windowItem.closesAt) : "Manual close"}
+                </div>
+              </button>
+            );
+          })}
         </aside>
 
-        <form onSubmit={onSave} className="card bg-base-100 shadow-xl">
-          <div className="card-body gap-6">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <h2 className="text-2xl font-semibold">
-                  {windowConfig.id ? "Edit preorder batch" : "Create preorder batch"}
-                </h2>
-                <p className="mt-1 text-sm opacity-70">
-                  The landing page will show only the active SKUs from the single batch marked open.
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                {windowConfig.id && windowConfig.status !== "open" && (
-                  <button
-                    type="button"
-                    className="btn btn-outline"
-                    disabled={isSaving}
-                    onClick={() => updateStatus("open")}
-                  >
-                    Open batch
-                  </button>
-                )}
-                {windowConfig.id && windowConfig.status === "open" && (
-                  <button
-                    type="button"
-                    className="btn btn-outline"
-                    disabled={isSaving}
-                    onClick={() => updateStatus("closed")}
-                  >
-                    Close batch
-                  </button>
-                )}
-                {windowConfig.id && <div className="badge badge-outline">Window ID: {windowConfig.id}</div>}
-              </div>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <label className="form-control w-full md:col-span-2">
-                <div className="label">
-                  <span className="label-text">Batch title</span>
-                </div>
-                <input
-                  className="input input-bordered"
-                  value={windowConfig.title}
-                  onChange={(event) => setField("title", event.target.value)}
-                  placeholder="Week of March 18 preorder"
-                />
-              </label>
-
-              <label className="form-control w-full">
-                <div className="label">
-                  <span className="label-text">Status</span>
-                </div>
-                <select
-                  className="select select-bordered"
-                  value={windowConfig.status}
-                  onChange={(event) => setField("status", event.target.value)}
-                >
-                  <option value="draft">Draft</option>
-                  <option value="open">Open</option>
-                  <option value="closed">Closed</option>
-                  <option value="archived">Archived</option>
-                </select>
-              </label>
-
-              <label className="form-control w-full">
-                <div className="label">
-                  <span className="label-text">Delivery date</span>
-                </div>
-                <input
-                  type="date"
-                  className="input input-bordered"
-                  value={windowConfig.deliveryDate}
-                  onChange={(event) => setField("deliveryDate", event.target.value)}
-                />
-              </label>
-
-              <label className="form-control w-full">
-                <div className="label">
-                  <span className="label-text">Opens at (optional)</span>
-                </div>
-                <input
-                  type="datetime-local"
-                  className="input input-bordered"
-                  value={windowConfig.opensAt}
-                  onChange={(event) => setField("opensAt", event.target.value)}
-                />
-              </label>
-
-              <label className="form-control w-full">
-                <div className="label">
-                  <span className="label-text">Close date/time (optional)</span>
-                </div>
-                <input
-                  type="datetime-local"
-                  className="input input-bordered"
-                  value={windowConfig.closesAt}
-                  onChange={(event) => setField("closesAt", event.target.value)}
-                />
-              </label>
-
-              <label className="form-control w-full">
-                <div className="label">
-                  <span className="label-text">Minimum order quantity</span>
-                </div>
-                <input
-                  type="number"
-                  min="1"
-                  className="input input-bordered"
-                  value={windowConfig.minimumOrderQuantity}
-                  onChange={(event) =>
-                    setField("minimumOrderQuantity", Number(event.target.value || 1))
-                  }
-                />
-              </label>
-
-              <label className="form-control w-full">
-                <div className="label">
-                  <span className="label-text">Currency</span>
-                </div>
-                <input
-                  className="input input-bordered"
-                  value={windowConfig.currency}
-                  onChange={(event) => setField("currency", event.target.value.toUpperCase())}
-                />
-              </label>
-
-              <div className="form-control w-full md:col-span-2">
-                <div className="label">
-                  <span className="label-text">Pickup address</span>
-                </div>
-                <input
-                  className="input input-bordered w-full"
-                  value={windowConfig.pickupAddress || ""}
-                  onChange={(event) => handlePickupInputChange(event.target.value)}
-                  placeholder="Start typing the pickup address and choose the best match"
-                  autoComplete="off"
-                />
-                <div className="mt-2 text-xs opacity-70">
-                  Choose a suggestion so delivery distance is calculated from the correct origin.
-                </div>
-                {pickupSuggestions.length > 0 && (
-                  <div className="mt-2 rounded-2xl border border-base-300 bg-base-100 shadow-lg">
-                    <ul className="max-h-72 overflow-y-auto py-2">
-                      {pickupSuggestions.map((suggestion) => (
-                        <li key={suggestion.placeId}>
-                          <button
-                            type="button"
-                            className="w-full px-4 py-3 text-left hover:bg-base-200"
-                            onClick={() => handlePickupSuggestionSelect(suggestion)}
-                          >
-                            <div className="font-medium">{suggestion.primaryText}</div>
-                            {suggestion.secondaryText && (
-                              <div className="text-sm opacity-70">{suggestion.secondaryText}</div>
-                            )}
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                {isLoadingPickupSuggestions && (windowConfig.pickupAddress || "").trim().length >= 3 && (
-                  <div className="mt-2 text-xs opacity-70">Looking up pickup addresses...</div>
-                )}
-                {selectedPickupPlace?.formattedAddress && (
-                  <div className="mt-3 rounded-2xl border border-base-300 bg-base-200 p-4 text-sm">
-                    <div className="font-medium">Verified pickup address</div>
-                    <div className="mt-1 opacity-80">{selectedPickupPlace.formattedAddress}</div>
-                    <a
-                      className="link link-primary mt-3 inline-block"
-                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedPickupPlace.formattedAddress)}`}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      Open in Google Maps
-                    </a>
-                  </div>
-                )}
-                {pickupLookupError && <div className="mt-2 text-sm text-error">{pickupLookupError}</div>}
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-base-300 bg-base-200 p-4">
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="space-y-6">
+          <div className="card bg-base-100 shadow-xl">
+            <div className="card-body gap-5">
+              <div className="flex items-center justify-between gap-3">
                 <div>
-                  <h3 className="text-xl font-semibold">Delivery charges</h3>
-                  <p className="text-sm opacity-70">
-                    Set fee slabs for this batch using Google Maps driving distance.
-                  </p>
+                  <h2 className="text-2xl font-semibold">SKU catalog</h2>
+                  <p className="text-sm opacity-70">Global product data lives here.</p>
                 </div>
-                <button type="button" className="btn btn-sm btn-primary" onClick={addDeliveryBand}>
-                  Add distance slab
+                <button type="button" className="btn btn-outline" onClick={() => selectSkuForm(createEmptySkuForm())}>
+                  New SKU
                 </button>
               </div>
 
-              <div className="space-y-3">
-                {windowConfig.deliveryBands.map((band, index) => (
-                  <div key={`delivery-band-${index}`} className="grid gap-3 rounded-xl bg-base-100 p-4 md:grid-cols-4">
-                    <label className="form-control w-full">
-                      <div className="label py-0">
-                        <span className="label-text">From km</span>
+              <div className="grid gap-3 md:grid-cols-2">
+                {skuCatalog.map((skuItem) => (
+                  <button
+                    key={skuItem.id}
+                    type="button"
+                    className={`rounded-2xl border p-4 text-left ${
+                      skuForm.id === skuItem.id ? "border-primary bg-primary/10" : "border-base-300 bg-base-100"
+                    }`}
+                    onClick={() =>
+                      selectSkuForm({
+                        id: skuItem.id,
+                        sku: skuItem.sku,
+                        name: skuItem.name,
+                        notes: skuItem.notes || "",
+                        unitPrice: Number(skuItem.unitPrice || 0),
+                        status: skuItem.status || "active",
+                      })
+                    }
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="font-semibold">{skuItem.name}</div>
+                        <div className="mt-1 text-xs uppercase tracking-[0.18em] opacity-60">{skuItem.sku}</div>
                       </div>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.1"
-                        className="input input-bordered"
-                        value={band.minDistanceKm}
-                        onChange={(event) =>
-                          updateDeliveryBand(index, "minDistanceKm", Number(event.target.value || 0))
-                        }
-                      />
-                    </label>
-
-                    <label className="form-control w-full">
-                      <div className="label py-0">
-                        <span className="label-text">To km</span>
+                      <div className={`badge ${skuItem.status === "archived" ? "badge-outline" : "badge-success"}`}>
+                        {skuItem.status}
                       </div>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.1"
-                        className="input input-bordered"
-                        value={band.maxDistanceKm}
-                        onChange={(event) =>
-                          updateDeliveryBand(index, "maxDistanceKm", Number(event.target.value || 0))
-                        }
-                      />
-                    </label>
+                    </div>
+                    <div className="mt-2 text-sm opacity-75">{skuItem.notes || "No description yet."}</div>
+                    <div className="mt-3 text-sm font-medium">INR {Number(skuItem.unitPrice || 0).toFixed(2)}</div>
+                  </button>
+                ))}
+              </div>
 
-                    <label className="form-control w-full">
-                      <div className="label py-0">
-                        <span className="label-text">Fee</span>
-                      </div>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        className="input input-bordered"
-                        value={band.fee}
-                        onChange={(event) =>
-                          updateDeliveryBand(index, "fee", Number(event.target.value || 0))
-                        }
-                      />
-                    </label>
+              <form ref={skuEditorRef} onSubmit={onSaveSku} className="rounded-2xl border border-base-300 bg-base-200 p-4">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <label className="form-control w-full">
+                    <div className="label"><span className="label-text">SKU code</span></div>
+                    <input
+                      className="input input-bordered"
+                      disabled={Boolean(skuForm.id)}
+                      value={skuForm.sku}
+                      onChange={(event) => setSkuForm((current) => ({ ...current, sku: event.target.value.toUpperCase() }))}
+                    />
+                  </label>
+                  <label className="form-control w-full">
+                    <div className="label"><span className="label-text">Status</span></div>
+                    <select
+                      className="select select-bordered"
+                      value={skuForm.status}
+                      onChange={(event) => setSkuForm((current) => ({ ...current, status: event.target.value }))}
+                    >
+                      <option value="active">Active</option>
+                      <option value="archived">Archived</option>
+                    </select>
+                  </label>
+                  <label className="form-control w-full md:col-span-2">
+                    <div className="label"><span className="label-text">Product name</span></div>
+                    <input
+                      className="input input-bordered"
+                      value={skuForm.name}
+                      onChange={(event) => setSkuForm((current) => ({ ...current, name: event.target.value }))}
+                    />
+                  </label>
+                  <label className="form-control w-full">
+                    <div className="label"><span className="label-text">Price</span></div>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      className="input input-bordered"
+                      value={skuForm.unitPrice}
+                      onChange={(event) => setSkuForm((current) => ({ ...current, unitPrice: Number(event.target.value || 0) }))}
+                    />
+                  </label>
+                  <label className="form-control w-full md:col-span-2">
+                    <div className="label"><span className="label-text">Description</span></div>
+                    <textarea
+                      className="textarea textarea-bordered"
+                      rows={3}
+                      value={skuForm.notes}
+                      onChange={(event) => setSkuForm((current) => ({ ...current, notes: event.target.value }))}
+                    />
+                  </label>
+                </div>
+                <div className="mt-4 card-actions justify-between">
+                  <button type="submit" className="btn btn-primary" disabled={isSavingSku}>
+                    {isSavingSku ? "Saving..." : "Save SKU"}
+                  </button>
+                  {skuForm.id && <div className="badge badge-outline">SKU ID: {skuForm.id}</div>}
+                </div>
+              </form>
+            </div>
+          </div>
 
-                    <div className="flex items-end">
+          <form ref={batchEditorRef} onSubmit={onSaveBatch} className="card bg-base-100 shadow-xl">
+            <div className="card-body gap-6">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-2xl font-semibold">{windowConfig.id ? "Edit preorder batch" : "Create preorder batch"}</h2>
+                  <p className="mt-1 text-sm opacity-70">This batch only controls timing, delivery rules, and which catalog SKUs are included.</p>
+                  {!canSaveOpenWindow && (
+                    <p className="mt-2 text-sm text-warning">{liveWindowConflictMessage}</p>
+                  )}
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {windowConfig.id && windowConfig.status !== "open" && (
+                    <button type="button" className="btn btn-outline" disabled={isSavingBatch || Boolean(liveOpenWindow)} onClick={() => updateStatus("open")}>
+                      Open batch
+                    </button>
+                  )}
+                  {windowConfig.id && windowConfig.status === "open" && (
+                    <button type="button" className="btn btn-outline" disabled={isSavingBatch} onClick={() => updateStatus("closed")}>
+                      Close batch
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="form-control w-full md:col-span-2">
+                  <div className="label"><span className="label-text">Batch title</span></div>
+                  <input className="input input-bordered" value={windowConfig.title} onChange={(event) => setField("title", event.target.value)} />
+                </label>
+                <label className="form-control w-full">
+                  <div className="label"><span className="label-text">Status</span></div>
+                  <select className="select select-bordered" value={windowConfig.status} onChange={(event) => setField("status", event.target.value)}>
+                    <option value="draft">Draft</option>
+                    <option value="open">Open</option>
+                    <option value="closed">Closed</option>
+                    <option value="archived">Archived</option>
+                  </select>
+                  {!canSaveOpenWindow && (
+                    <div className="mt-2 text-sm text-warning">{liveWindowConflictMessage}</div>
+                  )}
+                </label>
+                <label className="form-control w-full">
+                  <div className="label"><span className="label-text">Delivery date</span></div>
+                  <input type="date" className="input input-bordered" value={windowConfig.deliveryDate} onChange={(event) => setField("deliveryDate", event.target.value)} />
+                </label>
+                <label className="form-control w-full">
+                  <div className="label"><span className="label-text">Opens at (optional)</span></div>
+                  <input type="datetime-local" className="input input-bordered" value={windowConfig.opensAt} onChange={(event) => setField("opensAt", event.target.value)} />
+                </label>
+                <label className="form-control w-full">
+                  <div className="label"><span className="label-text">Close date/time (optional)</span></div>
+                  <input type="datetime-local" className="input input-bordered" value={windowConfig.closesAt} onChange={(event) => setField("closesAt", event.target.value)} />
+                </label>
+                <label className="form-control w-full">
+                  <div className="label"><span className="label-text">Minimum order quantity</span></div>
+                  <input type="number" min="1" className="input input-bordered" value={windowConfig.minimumOrderQuantity} onChange={(event) => setField("minimumOrderQuantity", Number(event.target.value || 1))} />
+                </label>
+                <label className="form-control w-full">
+                  <div className="label"><span className="label-text">Currency</span></div>
+                  <input className="input input-bordered" value={windowConfig.currency} onChange={(event) => setField("currency", event.target.value.toUpperCase())} />
+                </label>
+                <div className="form-control w-full md:col-span-2">
+                  <div className="label"><span className="label-text">Pickup address</span></div>
+                  <input className="input input-bordered w-full" value={windowConfig.pickupAddress || ""} onChange={(event) => handlePickupInputChange(event.target.value)} autoComplete="off" />
+                  {pickupSuggestions.length > 0 && (
+                    <div className="mt-2 rounded-2xl border border-base-300 bg-base-100 shadow-lg">
+                      <ul className="max-h-72 overflow-y-auto py-2">
+                        {pickupSuggestions.map((suggestion) => (
+                          <li key={suggestion.placeId}>
+                            <button type="button" className="w-full px-4 py-3 text-left hover:bg-base-200" onClick={() => handlePickupSuggestionSelect(suggestion)}>
+                              <div className="font-medium">{suggestion.primaryText}</div>
+                              {suggestion.secondaryText && <div className="text-sm opacity-70">{suggestion.secondaryText}</div>}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {isLoadingPickupSuggestions && (windowConfig.pickupAddress || "").trim().length >= 3 && (
+                    <div className="mt-2 text-xs opacity-70">Looking up pickup addresses...</div>
+                  )}
+                  {selectedPickupPlace?.formattedAddress && (
+                    <div className="mt-3 rounded-2xl border border-base-300 bg-base-200 p-4 text-sm">
+                      <div className="font-medium">Verified pickup address</div>
+                      <div className="mt-1 opacity-80">{selectedPickupPlace.formattedAddress}</div>
+                    </div>
+                  )}
+                  {pickupLookupError && <div className="mt-2 text-sm text-error">{pickupLookupError}</div>}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-base-300 bg-base-200 p-4">
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-xl font-semibold">Delivery charges</h3>
+                    <p className="text-sm opacity-70">Set fee slabs for this batch.</p>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-primary"
+                    onClick={() =>
+                      setWindowConfig((current) => ({
+                        ...current,
+                        deliveryBands: [...current.deliveryBands, createEmptyDeliveryBand()],
+                      }))
+                    }
+                  >
+                    Add distance slab
+                  </button>
+                </div>
+                <div className="space-y-3">
+                  {windowConfig.deliveryBands.map((band, index) => (
+                    <div key={`delivery-band-${index}`} className="grid gap-3 rounded-xl bg-base-100 p-4 md:grid-cols-4">
+                      <input type="number" min="0" step="0.1" className="input input-bordered" value={band.minDistanceKm} onChange={(event) => updateDeliveryBand(index, "minDistanceKm", Number(event.target.value || 0))} />
+                      <input type="number" min="0" step="0.1" className="input input-bordered" value={band.maxDistanceKm} onChange={(event) => updateDeliveryBand(index, "maxDistanceKm", Number(event.target.value || 0))} />
+                      <input type="number" min="0" step="0.01" className="input input-bordered" value={band.fee} onChange={(event) => updateDeliveryBand(index, "fee", Number(event.target.value || 0))} />
                       <button
                         type="button"
                         className="btn btn-sm btn-ghost text-error"
-                        onClick={() => removeDeliveryBand(index)}
+                        onClick={() =>
+                          setWindowConfig((current) => ({
+                            ...current,
+                            deliveryBands: current.deliveryBands.filter((_, bandIndex) => bandIndex !== index),
+                          }))
+                        }
                       >
                         Remove slab
                       </button>
                     </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-base-300 bg-base-200 p-4">
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-xl font-semibold">Included SKUs</h3>
+                    <p className="text-sm opacity-70">Choose products from the shared catalog for this batch.</p>
                   </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-base-300 bg-base-200 p-4">
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h3 className="text-xl font-semibold">SKUs</h3>
-                  <p className="text-sm opacity-70">
-                    Assign the products included in this batch. The landing page will show only active SKUs from the open batch.
-                  </p>
+                  <div className="badge badge-outline">{includedSkuCodes.length} included SKU(s)</div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <div className="badge badge-outline">{activeItemCount} active SKU(s)</div>
-                  <button type="button" className="btn btn-sm btn-primary" onClick={addItem}>
-                    Add SKU
-                  </button>
-                </div>
-              </div>
 
-              <div className="space-y-3">
-                {windowConfig.allowedItems.map((item, index) => (
-                  <div key={`sku-row-${index}`} className="rounded-xl bg-base-100 p-4">
-                    <div className="mb-3 flex items-start justify-between gap-3">
-                      <label className="label cursor-pointer justify-start gap-3">
-                        <input
-                          type="checkbox"
-                          className="checkbox"
-                          checked={Boolean(item.isActive)}
-                          onChange={(event) => updateItem(index, "isActive", event.target.checked)}
-                        />
-                        <span className="label-text">Active</span>
-                      </label>
-
-                      <button
-                        type="button"
-                        className="btn btn-sm btn-ghost text-error"
-                        onClick={() => removeItem(index)}
-                      >
-                        Remove
-                      </button>
-                    </div>
-
-                    <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
-                      <label className="form-control w-full">
-                        <div className="label py-0">
-                          <span className="label-text">Product name</span>
+                <div className="grid gap-3 md:grid-cols-2">
+                  {includedSkus.map((skuItem) => (
+                    <div key={`included-${skuItem.sku}`} className="rounded-xl bg-base-100 p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="font-semibold">{skuItem.name}</div>
+                          <div className="mt-1 text-xs uppercase tracking-[0.18em] opacity-60">{skuItem.sku}</div>
                         </div>
-                        <input
-                          className="input input-bordered"
-                          value={item.productName}
-                          onChange={(event) => updateItem(index, "productName", event.target.value)}
-                        />
-                      </label>
-
-                      <label className="form-control w-full">
-                        <div className="label py-0">
-                          <span className="label-text">SKU</span>
-                        </div>
-                        <input
-                          className="input input-bordered"
-                          value={item.sku}
-                          onChange={(event) => updateItem(index, "sku", event.target.value.toUpperCase())}
-                        />
-                      </label>
-
-                      <label className="form-control w-full">
-                        <div className="label py-0">
-                          <span className="label-text">Price</span>
-                        </div>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          className="input input-bordered"
-                          value={item.unitPrice}
-                          onChange={(event) => updateItem(index, "unitPrice", Number(event.target.value || 0))}
-                        />
-                      </label>
-
-                      <label className="form-control w-full">
-                        <div className="label py-0">
-                          <span className="label-text">Max per order</span>
-                        </div>
-                        <input
-                          type="number"
-                          min="1"
-                          max="10"
-                          className="input input-bordered"
-                          value={item.maxPerOrder ?? 10}
-                          onChange={(event) => updateItem(index, "maxPerOrder", Number(event.target.value || 10))}
-                        />
-                      </label>
-                    </div>
-
-                    <label className="form-control mt-3 w-full">
-                      <div className="label py-0">
-                        <span className="label-text">Description</span>
+                        <button type="button" className="btn btn-sm btn-ghost text-error" onClick={() => removeIncludedSku(skuItem.sku)}>
+                          Remove
+                        </button>
                       </div>
-                      <textarea
-                        className="textarea textarea-bordered"
-                        rows={3}
-                        value={item.notes || ""}
-                        onChange={(event) => updateItem(index, "notes", event.target.value)}
-                      />
-                    </label>
+                      <div className="mt-2 text-sm opacity-75">{skuItem.notes || "No description yet."}</div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-5">
+                  <div className="mb-3 text-sm font-medium opacity-75">Add from catalog</div>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {availableSkus.map((skuItem) => (
+                      <div key={`available-${skuItem.sku}`} className="rounded-xl bg-base-100 p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="font-semibold">{skuItem.name}</div>
+                            <div className="mt-1 text-xs uppercase tracking-[0.18em] opacity-60">{skuItem.sku}</div>
+                          </div>
+                          <button type="button" className="btn btn-sm btn-primary" disabled={skuItem.status !== "active"} onClick={() => includeSku(skuItem.sku)}>
+                            {skuItem.status === "active" ? "Add" : "Archived"}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                </div>
+              </div>
+
+              <div className="card-actions items-center justify-between">
+                <button type="submit" className="btn btn-primary" disabled={isSavingBatch}>
+                  {isSavingBatch ? "Saving..." : "Save batch"}
+                </button>
+                <div className="badge badge-outline">Storefront status: {storefrontStatusLabel}</div>
               </div>
             </div>
+          </form>
 
-            <div className="rounded-2xl border border-dashed border-base-300 p-4 text-sm">
-              <h3 className="font-semibold">Razorpay skeleton</h3>
-              <p className="mt-2 opacity-80">
-                The backend routes are scaffolded for creating Razorpay orders and handling webhooks. Add
-                <code> RAZORPAY_KEY_ID</code>, <code>RAZORPAY_KEY_SECRET</code>, and
-                <code> RAZORPAY_WEBHOOK_SECRET</code> in <code>.env.local</code> before wiring the frontend checkout modal.
-              </p>
-            </div>
-
-            <div className="card-actions items-center justify-between">
-              <button type="submit" className="btn btn-primary" disabled={isSaving}>
-                {isSaving ? "Saving..." : "Save batch"}
-              </button>
-              <div className="badge badge-outline">Storefront status: {storefrontStatusLabel}</div>
-            </div>
-
-            {message && (
-              <div className="alert alert-success">
-                <span>{message}</span>
-              </div>
-            )}
-
-            {error && (
-              <div className="alert alert-error">
-                <span>{error}</span>
-              </div>
-            )}
-          </div>
-        </form>
+          {message && <div className="alert alert-success"><span>{message}</span></div>}
+          {error && <div className="alert alert-error"><span>{error}</span></div>}
+        </div>
       </div>
     </div>
   );

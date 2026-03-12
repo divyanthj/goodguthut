@@ -76,12 +76,12 @@ export default function Page() {
 
   const lineup = useMemo(() => {
     const allowedItems = preorderWindow?.allowedItems?.length
-      ? preorderWindow.allowedItems.filter((item) => item.isActive)
+      ? preorderWindow.allowedItems.filter((item) => item.status !== "archived")
       : [];
 
     return allowedItems.map((item) => ({
       sku: item.sku,
-      name: item.productName,
+      name: item.name,
       note: item.notes || "",
       unitPrice: Number(item.unitPrice || 0),
     }));
@@ -181,7 +181,7 @@ export default function Page() {
         )}
         {isPreorderOpen && lineup.length === 0 && (
           <div className="mt-4 rounded-2xl bg-base-100 p-4 text-sm shadow-md">
-            This batch is open, but no SKUs are active yet.
+            This batch is open, but no sellable catalog SKUs are included yet.
           </div>
         )}
         <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">

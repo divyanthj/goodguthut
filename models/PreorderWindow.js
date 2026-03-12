@@ -9,30 +9,6 @@ const windowItemSchema = mongoose.Schema(
       uppercase: true,
       required: true,
     },
-    productName: {
-      type: String,
-      trim: true,
-      required: true,
-    },
-    unitPrice: {
-      type: Number,
-      min: 0,
-      default: 0,
-    },
-    isActive: {
-      type: Boolean,
-      default: true,
-    },
-    maxPerOrder: {
-      type: Number,
-      min: 1,
-      default: null,
-    },
-    notes: {
-      type: String,
-      trim: true,
-      default: "",
-    },
   },
   { _id: false }
 );

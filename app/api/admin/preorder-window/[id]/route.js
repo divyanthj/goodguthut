@@ -4,10 +4,12 @@ import { authOptions } from "@/libs/next-auth";
 import { isAdminEmail } from "@/libs/admin";
 import connectMongo from "@/libs/mongoose";
 import PreorderWindow from "@/models/PreorderWindow";
-import { createDefaultAllowedItems } from "@/libs/preorder-catalog";
 import {
+  getLiveOpenWindowMessage,
+  isWindowAcceptingOrders,
   normalizePreorderWindowPayload,
 } from "@/libs/preorder-windows";
+import { ensureSkuCatalogSeeded } from "@/libs/sku-catalog";
 
 const getAdminSession = async () => {
   const session = await getServerSession(authOptions);
@@ -23,16 +25,6 @@ const getAdminSession = async () => {
   return { session };
 };
 
-const closeOtherOpenWindows = async (excludeId) => {
-  await PreorderWindow.updateMany(
-    {
-      status: "open",
-      _id: { $ne: excludeId },
-    },
-    { status: "closed" }
-  );
-};
-
 export async function GET(_req, { params }) {
   const { error } = await getAdminSession();
 
@@ -41,6 +33,7 @@ export async function GET(_req, { params }) {
   }
 
   await connectMongo();
+  await ensureSkuCatalogSeeded();
 
   const preorderWindow = await PreorderWindow.findById(params.id);
 
@@ -62,11 +55,12 @@ export async function PUT(req, { params }) {
 
   try {
     const body = await req.json();
+    const skuCatalog = await ensureSkuCatalogSeeded();
     const { payload, allowedItems } = normalizePreorderWindowPayload({
       body,
       fallbackTitle: "Preorder batch",
-      fallbackItems: createDefaultAllowedItems(),
     });
+    const skuCodes = new Set(skuCatalog.map((item) => item.sku));
 
     if (!payload.title) {
       return NextResponse.json({ error: "Title is required." }, { status: 400 });
@@ -75,6 +69,15 @@ export async function PUT(req, { params }) {
     if (allowedItems.length === 0) {
       return NextResponse.json(
         { error: "Add at least one SKU before saving." },
+        { status: 400 }
+      );
+    }
+
+    const unknownSku = allowedItems.find((item) => !skuCodes.has(item.sku));
+
+    if (unknownSku) {
+      return NextResponse.json(
+        { error: `SKU ${unknownSku.sku} does not exist in the catalog.` },
         { status: 400 }
       );
     }
@@ -91,14 +94,35 @@ export async function PUT(req, { params }) {
       payload.opensAt = existingWindow.opensAt || new Date();
     }
 
+    if (willBeOpen) {
+      const liveOpenWindow = await PreorderWindow.findOne({
+        status: "open",
+        _id: { $ne: existingWindow._id },
+      }).sort({
+        opensAt: 1,
+        updatedAt: -1,
+        createdAt: -1,
+      });
+
+      if (liveOpenWindow && isWindowAcceptingOrders(liveOpenWindow)) {
+        const nextOpensAt = payload.opensAt ? new Date(payload.opensAt) : null;
+        const currentClosesAt = liveOpenWindow.closesAt ? new Date(liveOpenWindow.closesAt) : null;
+        const canScheduleAfterClose =
+          currentClosesAt && nextOpensAt && nextOpensAt.getTime() > currentClosesAt.getTime();
+
+        if (!canScheduleAfterClose) {
+          return NextResponse.json(
+            { error: getLiveOpenWindowMessage(liveOpenWindow) },
+            { status: 400 }
+          );
+        }
+      }
+    }
+
     const preorderWindow = await PreorderWindow.findByIdAndUpdate(params.id, payload, {
       new: true,
       runValidators: true,
     });
-
-    if (willBeOpen) {
-      await closeOtherOpenWindows(preorderWindow._id);
-    }
 
     return NextResponse.json({ preorderWindow });
   } catch (e) {
@@ -136,11 +160,32 @@ export async function PATCH(req, { params }) {
       preorderWindow.opensAt = new Date();
     }
 
-    await preorderWindow.save();
-
     if (nextStatus === "open") {
-      await closeOtherOpenWindows(preorderWindow._id);
+      const liveOpenWindow = await PreorderWindow.findOne({
+        status: "open",
+        _id: { $ne: preorderWindow._id },
+      }).sort({
+        opensAt: 1,
+        updatedAt: -1,
+        createdAt: -1,
+      });
+
+      if (liveOpenWindow && isWindowAcceptingOrders(liveOpenWindow)) {
+        const currentClosesAt = liveOpenWindow.closesAt ? new Date(liveOpenWindow.closesAt) : null;
+        const nextOpensAt = preorderWindow.opensAt ? new Date(preorderWindow.opensAt) : null;
+        const canScheduleAfterClose =
+          currentClosesAt && nextOpensAt && nextOpensAt.getTime() > currentClosesAt.getTime();
+
+        if (!canScheduleAfterClose) {
+          return NextResponse.json(
+            { error: getLiveOpenWindowMessage(liveOpenWindow) },
+            { status: 400 }
+          );
+        }
+      }
     }
+
+    await preorderWindow.save();
 
     return NextResponse.json({ preorderWindow });
   } catch (e) {

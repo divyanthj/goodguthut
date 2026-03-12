@@ -2,43 +2,47 @@ export const preorderCatalog = [
   {
     sku: "GGH-KCK-250",
     name: "Kokum Carrot Kanji",
-    note: "Tangy kokum + earthy carrot fermentation with a bold, savory finish.",
-    defaultUnitPrice: 0,
+    notes: "Tangy kokum + earthy carrot fermentation with a bold, savory finish.",
+    unitPrice: 0,
+    status: "active",
   },
   {
     sku: "GGH-CUK-250",
     name: "Cucumber Kanji",
-    note: "Light, crisp and cooling with a naturally probiotic kick.",
-    defaultUnitPrice: 0,
+    notes: "Light, crisp and cooling with a naturally probiotic kick.",
+    unitPrice: 0,
+    status: "active",
   },
   {
     sku: "GGH-PSP-300",
     name: "Pineapple Sparkle",
-    note: "Tepache-inspired tropical fizz with gentle fermentation funk.",
-    defaultUnitPrice: 0,
+    notes: "Tepache-inspired tropical fizz with gentle fermentation funk.",
+    unitPrice: 0,
+    status: "active",
   },
   {
     sku: "GGH-MSP-300",
     name: "Melon Sparkle",
-    note: "Juicy melon brightness, softly sparkling and ultra-refreshing.",
-    defaultUnitPrice: 0,
+    notes: "Juicy melon brightness, softly sparkling and ultra-refreshing.",
+    unitPrice: 0,
+    status: "active",
   },
   {
     sku: "GGH-BUG-330",
     name: "Bug Sodas",
-    note: "Experimental small-batch fermented sodas for curious palates.",
-    defaultUnitPrice: 0,
+    notes: "Experimental small-batch fermented sodas for curious palates.",
+    unitPrice: 0,
+    status: "active",
   },
 ];
 
-export const createDefaultAllowedItems = () =>
+export const createDefaultSkuCatalog = () =>
   preorderCatalog.map((item) => ({
     sku: item.sku,
-    productName: item.name,
-    unitPrice: item.defaultUnitPrice,
-    isActive: true,
-    maxPerOrder: 10,
-    notes: item.note,
+    name: item.name,
+    notes: item.notes,
+    unitPrice: item.unitPrice,
+    status: item.status,
   }));
 
 export const createDefaultDeliveryBands = () => [
@@ -68,7 +72,7 @@ export const createDefaultPreorderWindow = () => {
     minimumOrderQuantity: 4,
     pickupAddress: "",
     deliveryBands: createDefaultDeliveryBands(),
-    allowedItems: createDefaultAllowedItems(),
+    allowedItems: [],
     allowCustomerNotes: true,
   };
 };
