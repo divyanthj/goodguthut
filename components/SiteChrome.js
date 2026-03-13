@@ -1,9 +1,11 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import config from "@/config";
+import logo from "@/app/logo.jpg";
 
 const isAdminPath = (pathname = "") => pathname.startsWith("/admin");
 
@@ -18,8 +20,13 @@ export default function SiteChrome({ children }) {
       <header className="border-b border-base-300 bg-base-100/95 backdrop-blur">
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-4 py-4 md:px-6">
           <div>
-            <Link href="/" className="text-lg font-black tracking-[0.24em] text-primary">
-              GGH
+            <Link href="/" className="inline-flex items-center" aria-label={`${config.appName} homepage`}>
+              <Image
+                src={logo}
+                alt={`${config.appName} logo`}
+                priority
+                className="h-auto w-16 md:w-20"
+              />
             </Link>
             <div className="text-xs uppercase tracking-[0.18em] opacity-60">
               The Good Gut Hut

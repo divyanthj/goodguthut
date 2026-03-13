@@ -17,6 +17,10 @@ export const viewport = {
 // This adds default SEO tags to all pages in our app.
 // You can override them in each page passing params to getSOTags() function.
 export const metadata = getSEOTags();
+metadata.icons = {
+  icon: "/favicon.ico",
+  apple: "/apple-icon.jpg",
+};
 
 export default function RootLayout({ children }) {
   return (

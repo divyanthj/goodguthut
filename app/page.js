@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import PreorderForm from "@/components/PreorderForm";
 
@@ -126,9 +127,14 @@ export default function Page() {
           <div className="card w-full bg-base-100 shadow-xl">
             <div className="card-body gap-6">
               <div className="badge badge-secondary badge-outline">FERMENTED | NON-ALCOHOLIC | SMALL BATCH</div>
-              <h1 className="text-5xl font-black md:text-7xl">
-                GGH <span className="block text-2xl font-semibold md:text-4xl">THE GOOD GUT HUT</span>
-              </h1>
+              <Image
+                src="/images/ggh2.png"
+                alt="The Good Gut Hut"
+                priority
+                width={1844222}
+                height={1844222}
+                className="h-auto w-full max-w-xl"
+              />
               <p className="max-w-2xl text-lg md:text-xl">
                 Slowly brewed. Made with care. Gut-friendly fermented drinks crafted for everyday sipping.
               </p>
