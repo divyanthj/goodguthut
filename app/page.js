@@ -125,16 +125,18 @@ export default function Page() {
       <section className="hero py-12 md:py-16">
         <div className="hero-content w-full max-w-6xl">
           <div className="card w-full bg-base-100 shadow-xl">
-            <div className="card-body gap-6">
-              <div className="badge badge-secondary badge-outline">FERMENTED | NON-ALCOHOLIC | SMALL BATCH</div>
-              <Image
-                src="/images/ggh2.png"
-                alt="The Good Gut Hut"
-                priority
-                width={1844222}
-                height={1844222}
-                className="h-auto w-full max-w-xl"
-              />
+            <div className="card-body items-start gap-6">
+              <div className="badge badge-secondary badge-outline">FERMENTED | SMALL BATCH</div>
+              <div className="w-full bg-[#f0ebdf] px-4 py-6 md:px-8 md:py-8">
+                <Image
+                  src="/images/ggh2.png"
+                  alt="The Good Gut Hut"
+                  priority
+                  width={1844222}
+                  height={1844222}
+                  className="mx-auto h-auto w-full max-w-4xl"
+                />
+              </div>
               <p className="max-w-2xl text-lg md:text-xl">
                 Slowly brewed. Made with care. Gut-friendly fermented drinks crafted for everyday sipping.
               </p>
@@ -197,9 +199,6 @@ export default function Page() {
               <article key={drink.sku} className="card bg-base-100 shadow-md">
                 <div className="card-body">
                   <h3 className="card-title">{drink.name}</h3>
-                  <div className="text-left text-xs opacity-70">
-                    SKU: {drink.sku}
-                  </div>
                   <p>{drink.note}</p>
                   <div className="text-sm font-medium opacity-80">
                     {drink.unitPrice > 0

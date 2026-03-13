@@ -2,29 +2,6 @@ import Link from "next/link";
 import { getSEOTags } from "@/libs/seo";
 import config from "@/config";
 
-// CHATGPT PROMPT TO GENERATE YOUR TERMS & SERVICES — replace with your own data 👇
-
-// 1. Go to https://chat.openai.com/
-// 2. Copy paste bellow
-// 3. Replace the data with your own (if needed)
-// 4. Paste the answer from ChatGPT directly in the <pre> tag below
-
-// You are an excellent lawyer.
-
-// I need your help to write a simple Terms & Services for my website. Here is some context:
-// - Website: https://shipfa.st
-// - Name: ShipFast
-// - Contact information: marc@shipfa.st
-// - Description: A JavaScript code boilerplate to help entrepreneurs launch their startups faster
-// - Ownership: when buying a package, users can download code to create apps. They own the code but they do not have the right to resell it. They can ask for a full refund within 7 day after the purchase.
-// - User data collected: name, email and payment information
-// - Non-personal data collection: web cookies
-// - Link to privacy-policy: https://shipfa.st/privacy-policy
-// - Governing Law: France
-// - Updates to the Terms: users will be updated by email
-
-// Please write a simple Terms & Services for my site. Add the current date. Do not add or explain your reasoning. Answer:
-
 export const metadata = getSEOTags({
   title: `Terms and Conditions | ${config.appName}`,
   canonicalUrlRelative: "/tos",
@@ -32,14 +9,14 @@ export const metadata = getSEOTags({
 
 const TOS = () => {
   return (
-    <main className="max-w-xl mx-auto">
-      <div className="p-5">
+    <main className="mx-auto max-w-3xl px-5 py-8 md:px-6 md:py-12">
+      <div className="rounded-3xl bg-base-100 p-6 shadow-md md:p-8">
         <Link href="/" className="btn btn-ghost">
           <svg
             xmlns="http://www.w3.org/2000/svg"
             viewBox="0 0 20 20"
             fill="currentColor"
-            className="w-5 h-5"
+            className="h-5 w-5"
           >
             <path
               fillRule="evenodd"
@@ -49,48 +26,93 @@ const TOS = () => {
           </svg>
           Back
         </Link>
-        <h1 className="text-3xl font-extrabold pb-6">
+
+        <h1 className="pb-6 text-3xl font-extrabold">
           Terms and Conditions for {config.appName}
         </h1>
 
-        <pre
-          className="leading-relaxed whitespace-pre-wrap"
-          style={{ fontFamily: "sans-serif" }}
-        >
-          {`Last Updated: September 26, 2023
+        <div className="space-y-6 text-sm leading-7 text-base-content/80 md:text-base">
+          <p>Last updated: March 13, 2026</p>
+          <p>
+            These Terms and Conditions govern your use of {config.appName},
+            including our website, preorder forms, and related communications.
+            By using the site or placing a preorder, you agree to these terms.
+          </p>
 
-Welcome to ShipFast!
+          <section>
+            <h2 className="text-lg font-bold text-base-content">Use of the site</h2>
+            <p className="mt-2">
+              You may use this site to learn about our products, submit preorder
+              requests, and contact us. You agree not to misuse the site,
+              interfere with its operation, or provide false information.
+            </p>
+          </section>
 
-These Terms of Service ("Terms") govern your use of the ShipFast website at https://shipfa.st ("Website") and the services provided by ShipFast. By using our Website and services, you agree to these Terms.
+          <section>
+            <h2 className="text-lg font-bold text-base-content">Products and preorders</h2>
+            <p className="mt-2">
+              Product availability, pricing, batch schedules, and delivery
+              windows may change. A preorder request does not guarantee
+              acceptance until we confirm it. We may limit quantities, decline
+              requests, or cancel a batch if needed for operational, safety, or
+              availability reasons.
+            </p>
+          </section>
 
-1. Description of ShipFast
+          <section>
+            <h2 className="text-lg font-bold text-base-content">Payments and fulfillment</h2>
+            <p className="mt-2">
+              If payment is collected, you agree to provide accurate billing and
+              delivery information. Delivery times are estimates and may vary.
+              If a preorder cannot be fulfilled, we may contact you with an
+              update, substitute options if appropriate, or arrange a refund
+              where applicable.
+            </p>
+          </section>
 
-ShipFast is a platform that offers a JavaScript code boilerplate to assist entrepreneurs in launching their startups more efficiently.
+          <section>
+            <h2 className="text-lg font-bold text-base-content">Intellectual property</h2>
+            <p className="mt-2">
+              All branding, images, copy, and site content remain the property
+              of {config.appName} unless stated otherwise. You may not reuse or
+              reproduce them without permission.
+            </p>
+          </section>
 
-2. Ownership and Usage Rights
+          <section>
+            <h2 className="text-lg font-bold text-base-content">Limitation of liability</h2>
+            <p className="mt-2">
+              We aim to keep the information on this site accurate and current,
+              but we do not guarantee that the site will always be uninterrupted
+              or error-free. To the fullest extent permitted by law, we are not
+              liable for indirect or incidental losses arising from use of the
+              site or delays in fulfillment.
+            </p>
+          </section>
 
-When you purchase a package from ShipFast, you gain the right to download and use the code provided for creating applications. You own the code you create but do not have the right to resell it. We offer a full refund within 7 days of purchase, as specified in our refund policy.
+          <section>
+            <h2 className="text-lg font-bold text-base-content">Changes to these terms</h2>
+            <p className="mt-2">
+              We may revise these Terms and Conditions from time to time.
+              Updated versions will be posted on this page and take effect when
+              published.
+            </p>
+          </section>
 
-3. User Data and Privacy
-
-We collect and store user data, including name, email, and payment information, as necessary to provide our services. For details on how we handle your data, please refer to our Privacy Policy at https://shipfa.st/privacy-policy.
-
-4. Non-Personal Data Collection
-
-We use web cookies to collect non-personal data for the purpose of improving our services and user experience.
-
-5. Governing Law
-
-These Terms are governed by the laws of France.
-
-6. Updates to the Terms
-
-We may update these Terms from time to time. Users will be notified of any changes via email.
-
-For any questions or concerns regarding these Terms of Service, please contact us at marc@shipfa.st.
-
-Thank you for using ShipFast!`}
-        </pre>
+          <section>
+            <h2 className="text-lg font-bold text-base-content">Contact</h2>
+            <p className="mt-2">
+              For questions about these terms, contact us at{" "}
+              <a
+                href={`mailto:${config.mailgun.supportEmail}`}
+                className="link link-primary"
+              >
+                {config.mailgun.supportEmail}
+              </a>
+              .
+            </p>
+          </section>
+        </div>
       </div>
     </main>
   );

@@ -69,7 +69,7 @@ module.exports = {
       {
         goodguthut: {
           ...themes["light"],
-          "primary": "#1E6A4A",
+          "primary": "#355a45",
           "secondary": "#D9898A",
           "accent": "#6F9A74",
           "neutral": "#213A2F",

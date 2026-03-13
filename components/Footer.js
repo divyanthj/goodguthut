@@ -3,83 +3,98 @@ import Image from "next/image";
 import config from "@/config";
 import logo from "@/app/logo.jpg";
 
-// Add the Footer to the bottom of your landing page and more.
-// The support link is connected to the config.js file. If there's no config.mailgun.supportEmail, the link won't be displayed.
-
 const Footer = () => {
   return (
-    <footer className="bg-base-200 border-t border-base-content/10">
-      <div className="max-w-7xl mx-auto px-8 py-24">
-        <div className=" flex lg:items-start md:flex-row md:flex-nowrap flex-wrap flex-col">
-          <div className="w-64 flex-shrink-0 md:mx-0 mx-auto text-center md:text-left">
-            <Link
-              href="/#"
-              aria-current="page"
-              className="flex gap-2 justify-center md:justify-start items-center"
-            >
-              <Image
-                src={logo}
-                alt={`${config.appName} logo`}
-                priority={true}
-                className="h-auto w-8"
-                width={32}
-                height={32}
-              />
-              <strong className="font-extrabold tracking-tight text-base md:text-lg">
-                {config.appName}
-              </strong>
-            </Link>
+    <footer className="border-t border-base-300 bg-base-200 text-base-content">
+      <div className="mx-auto grid max-w-6xl gap-12 px-6 py-14 md:grid-cols-[1.3fr_1fr_1fr_1fr] md:px-8">
+        <div className="max-w-xs">
+          <Link href="/" aria-current="page" className="flex items-center gap-3">
+            <Image
+              src={logo}
+              alt={`${config.appName} logo`}
+              priority={true}
+              className="h-10 w-10 rounded-full object-cover"
+              width={40}
+              height={40}
+            />
+            <strong className="text-base font-bold tracking-tight text-base-content">
+              {config.appName}
+            </strong>
+          </Link>
 
-            <p className="mt-3 text-sm text-base-content/80">
-              {config.appDescription}
-            </p>
-            <p className="mt-3 text-sm text-base-content/60">
-              Copyright © {new Date().getFullYear()} - All rights reserved
-            </p>
+          <p className="mt-4 text-sm leading-6 text-base-content/75">
+            Slowly brewed, small-batch fermented drinks made with care.
+          </p>
+          <p className="mt-4 text-sm text-base-content/60">
+            Copyright © {new Date().getFullYear()} - All rights reserved
+          </p>
+        </div>
+
+        <div>
+          <div className="text-xs font-semibold uppercase tracking-[0.24em] text-base-content/60">
+            Links
           </div>
-          <div className="flex-grow flex flex-wrap justify-center -mb-10 md:mt-0 mt-10 text-center">
-            <div className="lg:w-1/3 md:w-1/2 w-full px-4">
-              <div className="footer-title font-semibold text-base-content tracking-widest text-sm md:text-left mb-3">
-                LINKS
-              </div>
+          <div className="mt-4 flex flex-col gap-3 text-sm">
+            <Link href="/#lineup" className="transition hover:text-primary">
+              Lineup
+            </Link>
+            <Link href="/#preorder" className="transition hover:text-primary">
+              Preorder
+            </Link>
+            
+              <a
+                href={`mailto:hello@goodguthut.com`}
+                className="transition hover:text-primary"
+              >
+                Contact
+              </a>
+            
+          </div>
+        </div>
 
-              <div className="flex flex-col justify-center items-center md:items-start gap-2 mb-10 text-sm">
-                {config.mailgun.supportEmail && (
-                  <a
-                    href={`mailto:${config.mailgun.supportEmail}`}
-                    target="_blank"
-                    className="link link-hover"
-                    aria-label="Contact Support"
-                  >
-                    Support
-                  </a>
-                )}
-                <Link href="/#pricing" className="link link-hover">
-                  Pricing
-                </Link>
-                <Link href="/blog" className="link link-hover">
-                  Blog
-                </Link>
-                <a href="/#" target="_blank" className="link link-hover">
-                  Affiliates
-                </a>
-              </div>
-            </div>
+        <div>
+          <div className="text-xs font-semibold uppercase tracking-[0.24em] text-base-content/60">
+            Legal
+          </div>
+          <div className="mt-4 flex flex-col gap-3 text-sm">
+            <Link href="/tos" className="transition hover:text-primary">
+              Terms and Conditions
+            </Link>
+            <Link href="/privacy-policy" className="transition hover:text-primary">
+              Privacy Policy
+            </Link>
+          </div>
+        </div>
 
-            <div className="lg:w-1/3 md:w-1/2 w-full px-4">
-              <div className="footer-title font-semibold text-base-content tracking-widest text-sm md:text-left mb-3">
-                LEGAL
-              </div>
-
-              <div className="flex flex-col justify-center items-center md:items-start gap-2 mb-10 text-sm">
-                <Link href="/tos" className="link link-hover">
-                  Terms of services
-                </Link>
-                <Link href="/privacy-policy" className="link link-hover">
-                  Privacy policy
-                </Link>
-              </div>
-            </div>
+        <div>
+          <div className="text-xs font-semibold uppercase tracking-[0.24em] text-base-content/60">
+            Social
+          </div>
+          <div className="mt-4 flex flex-col gap-3 text-sm">
+            <a
+              href="https://instagram.com/goodguthut"
+              target="_blank"
+              rel="noreferrer"
+              className="transition hover:text-primary"
+            >
+              Instagram
+            </a>
+            <a
+              href="https://thinkinpublic.app/thinker/goodguthut"
+              target="_blank"
+              rel="noreferrer"
+              className="transition hover:text-primary"
+            >
+              Think in Public
+            </a>
+            <a
+              href="https://www.facebook.com/profile.php?id=61584966604788"
+              target="_blank"
+              rel="noreferrer"
+              className="transition hover:text-primary"
+            >
+              Facebook
+            </a>
           </div>
         </div>
       </div>
