@@ -1,18 +1,62 @@
+import crypto from "crypto";
 import { NextResponse } from "next/server";
 import { sendEmail } from "@/libs/mailgun";
 import config from "@/config";
 
-// This route is used to receive emails from Mailgun and forward them to our customer support email.
-// See more: https://shipfa.st/docs/features/emails
+const MAILGUN_SIGNATURE_TOLERANCE_SECONDS = 15 * 60;
+
+const verifyMailgunSignature = ({ timestamp, token, signature }) => {
+  const signingKey = process.env.MAILGUN_WEBHOOK_SIGNING_KEY || "";
+
+  if (!signingKey || !timestamp || !token || !signature) {
+    return false;
+  }
+
+  const expectedSignature = crypto
+    .createHmac("sha256", signingKey)
+    .update(`${timestamp}${token}`)
+    .digest("hex");
+
+  const expectedBuffer = Buffer.from(expectedSignature, "utf8");
+  const signatureBuffer = Buffer.from(signature, "utf8");
+
+  if (expectedBuffer.length !== signatureBuffer.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(expectedBuffer, signatureBuffer);
+};
+
+const isFreshTimestamp = (timestamp) => {
+  const numericTimestamp = Number(timestamp);
+
+  if (!Number.isFinite(numericTimestamp)) {
+    return false;
+  }
+
+  const ageSeconds = Math.abs(Date.now() / 1000 - numericTimestamp);
+  return ageSeconds <= MAILGUN_SIGNATURE_TOLERANCE_SECONDS;
+};
+
 export async function POST(req) {
   try {
-    // extract the email content, subject and sender
     const formData = await req.formData();
+    const timestamp = formData.get("timestamp");
+    const token = formData.get("token");
+    const signature = formData.get("signature");
+
+    if (!verifyMailgunSignature({ timestamp, token, signature })) {
+      return NextResponse.json({ error: "Invalid Mailgun webhook signature." }, { status: 401 });
+    }
+
+    if (!isFreshTimestamp(timestamp)) {
+      return NextResponse.json({ error: "Expired Mailgun webhook timestamp." }, { status: 401 });
+    }
+
     const sender = formData.get("From");
     const subject = formData.get("Subject");
     const html = formData.get("body-html");
 
-    // send email to the admin if forwardRepliesTo is et & emailData exists
     if (config.mailgun.forwardRepliesTo && html && subject && sender) {
       await sendEmail({
         to: config.mailgun.forwardRepliesTo,

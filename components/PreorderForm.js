@@ -7,6 +7,7 @@ const initialCustomer = {
   customerName: "",
   email: "",
   phone: "",
+  addressLine2: "",
   address: "",
 };
 
@@ -18,6 +19,39 @@ const createSessionToken = () => {
   }
 
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+};
+
+const getApiErrorMessage = (response, data, fallbackMessage) => {
+  if (response?.status === 429) {
+    return (
+      data?.error ||
+      "Too many attempts right now. Please wait a moment and try again."
+    );
+  }
+
+  if (response?.status === 403) {
+    return (
+      data?.error ||
+      "This request was blocked by the site's security checks."
+    );
+  }
+
+  return data?.error || fallbackMessage;
+};
+
+const buildFullAddress = (addressLine2, address) => {
+  const unit = addressLine2.trim();
+  const baseAddress = address.trim();
+
+  if (!unit) {
+    return baseAddress;
+  }
+
+  if (!baseAddress) {
+    return unit;
+  }
+
+  return `${unit}, ${baseAddress}`;
 };
 
 export default function PreorderForm({
@@ -59,6 +93,7 @@ export default function PreorderForm({
 
   const deliveryConfigured = Boolean(pickupAddress && deliveryBands.length > 0);
   const requiresSelectedAddress = deliveryConfigured;
+  const fullAddress = buildFullAddress(customer.addressLine2, customer.address);
   const total = subtotal + Number(deliveryQuote?.deliveryFee || 0);
   const hasMandatoryFields =
     customer.customerName.trim() && customer.phone.trim() && customer.address.trim();
@@ -109,7 +144,9 @@ export default function PreorderForm({
         const data = await response.json();
 
         if (!response.ok) {
-          throw new Error(data.error || "Could not load address suggestions.");
+          throw new Error(
+            getApiErrorMessage(response, data, "Could not load address suggestions.")
+          );
         }
 
         setAddressSuggestions(data.suggestions || []);
@@ -143,7 +180,7 @@ export default function PreorderForm({
           },
           body: JSON.stringify({
             preorderWindowId,
-            address: selectedPlace.formattedAddress,
+            address: fullAddress,
             placeId: selectedPlace.placeId,
             sessionToken: addressSessionToken,
           }),
@@ -152,7 +189,9 @@ export default function PreorderForm({
         const data = await response.json();
 
         if (!response.ok) {
-          throw new Error(data.error || "Could not calculate delivery fee.");
+          throw new Error(
+            getApiErrorMessage(response, data, "Could not calculate delivery fee.")
+          );
         }
 
         setDeliveryQuote(data);
@@ -168,7 +207,7 @@ export default function PreorderForm({
     }, 200);
 
     return () => clearTimeout(timeoutId);
-  }, [selectedPlace, preorderWindowId, deliveryConfigured, addressSessionToken]);
+  }, [selectedPlace, preorderWindowId, deliveryConfigured, addressSessionToken, fullAddress]);
 
   const handleAddressInputChange = (value) => {
     setCustomer((prev) => ({ ...prev, address: value }));
@@ -199,7 +238,9 @@ export default function PreorderForm({
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || "Could not verify that address.");
+        throw new Error(
+          getApiErrorMessage(response, data, "Could not verify that address.")
+        );
       }
 
       setSelectedPlace(data.place);
@@ -250,6 +291,7 @@ export default function PreorderForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...customer,
+          address: fullAddress,
           preorderWindowId,
           deliveryPlaceId: selectedPlace?.placeId || "",
           addressSessionToken,
@@ -260,7 +302,9 @@ export default function PreorderForm({
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || "Could not place preorder.");
+        throw new Error(
+          getApiErrorMessage(response, data, "Could not place preorder.")
+        );
       }
 
       if (data.razorpay?.isConfigured && Number(data.total || 0) > 0) {
@@ -270,7 +314,13 @@ export default function PreorderForm({
         const paymentData = await paymentResponse.json();
 
         if (!paymentResponse.ok) {
-          throw new Error(paymentData.error || "Could not start Razorpay checkout.");
+          throw new Error(
+            getApiErrorMessage(
+              paymentResponse,
+              paymentData,
+              "Could not start Razorpay checkout."
+            )
+          );
         }
 
         const Razorpay = await loadRazorpay();
@@ -293,7 +343,13 @@ export default function PreorderForm({
               const verifyData = await verifyResponse.json();
 
               if (!verifyResponse.ok) {
-                throw new Error(verifyData.error || "Payment verification failed.");
+                throw new Error(
+                  getApiErrorMessage(
+                    verifyResponse,
+                    verifyData,
+                    "Payment verification failed."
+                  )
+                );
               }
 
               setMessage(
@@ -385,9 +441,22 @@ export default function PreorderForm({
               onChange={(e) => setCustomer((prev) => ({ ...prev, phone: e.target.value }))}
             />
           </label>
+          <label className="form-control w-full">
+            <div className="label">
+              <span className="label-text">Flat / Door No.</span>
+            </div>
+            <input
+              className="input input-bordered w-full"
+              value={customer.addressLine2}
+              onChange={(e) =>
+                setCustomer((prev) => ({ ...prev, addressLine2: e.target.value }))
+              }
+              placeholder="F202, A-304, Villa 4"
+            />
+          </label>
           <div className="form-control w-full md:col-span-2">
             <div className="label">
-              <span className="label-text">Address *</span>
+              <span className="label-text">Building / Street Address *</span>
             </div>
             <input
               className="input input-bordered w-full"
@@ -429,19 +498,19 @@ export default function PreorderForm({
           {selectedPlace?.formattedAddress && (
             <div className="md:col-span-2 rounded-2xl border border-base-300 bg-base-200 p-4 text-sm">
               <div className="font-medium">Verified on Google Maps</div>
-              <div className="mt-1 opacity-80">{selectedPlace.formattedAddress}</div>
+              <div className="mt-1 opacity-80">{fullAddress}</div>
               <div className="mt-3 overflow-hidden rounded-xl border border-base-300 bg-base-100">
                 <iframe
                   title="Matched delivery location"
                   className="h-56 w-full"
                   loading="lazy"
                   referrerPolicy="no-referrer-when-downgrade"
-                  src={`https://www.google.com/maps?q=${encodeURIComponent(selectedPlace.formattedAddress)}&z=15&output=embed`}
+                  src={`https://www.google.com/maps?q=${encodeURIComponent(fullAddress)}&z=15&output=embed`}
                 />
               </div>
               <a
                 className="link link-primary mt-3 inline-block"
-                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedPlace.formattedAddress)}`}
+                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(fullAddress)}`}
                 target="_blank"
                 rel="noreferrer"
               >

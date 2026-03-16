@@ -98,13 +98,15 @@ export const findDeliveryBand = (deliveryBands = [], distanceKm) => {
 
 const resolveDestination = async ({ address, placeDetails }) => {
   if (placeDetails?.formattedAddress) {
+    const formattedAddress = address?.trim() || placeDetails.formattedAddress;
+
     return {
-      formattedAddress: placeDetails.formattedAddress,
+      formattedAddress,
       location: placeDetails.location,
       addressComponents: placeDetails.addressComponents || [],
       isInBangalore: isBangaloreAddress(
         placeDetails.addressComponents || [],
-        placeDetails.formattedAddress || ""
+        formattedAddress
       ),
     };
   }

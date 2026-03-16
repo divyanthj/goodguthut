@@ -1,7 +1,7 @@
 import { Inter } from "next/font/google";
-import PlausibleProvider from "next-plausible";
 import { getSEOTags } from "@/libs/seo";
 import ClientLayout from "@/components/LayoutClient";
+import DatafastAnalytics from "@/components/DatafastAnalytics";
 import config from "@/config";
 import "./globals.css";
 
@@ -25,12 +25,9 @@ metadata.icons = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en" data-theme={config.colors.theme} className={font.className}>
-      {config.domainName && (
-        <head>
-          <PlausibleProvider domain={config.domainName} />
-        </head>
-      )}
+      <head />
       <body>
+        <DatafastAnalytics />
         {/* ClientLayout contains all the client wrappers (Crisp chat support, toast messages, tooltips, etc.) */}
         <ClientLayout>{children}</ClientLayout>
       </body>

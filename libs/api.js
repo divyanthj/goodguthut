@@ -21,9 +21,14 @@ apiClient.interceptors.response.use(
       toast.error("Please login");
       // automatically redirect to /dashboard page after login
       return signIn(undefined, { callbackUrl: config.auth.callbackUrl });
+    } else if (error.response?.status === 429) {
+      message =
+        error?.response?.data?.error ||
+        "Too many attempts right now. Please wait a moment and try again.";
     } else if (error.response?.status === 403) {
-      // User not authorized, must subscribe/purchase/pick a plan
-      message = "Pick a plan to use this feature";
+      message =
+        error?.response?.data?.error ||
+        "This request was blocked by the site's security checks.";
     } else {
       message =
         error?.response?.data?.error || error.message || error.toString();

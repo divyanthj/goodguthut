@@ -4,6 +4,18 @@ import { calculateDeliveryQuote, isGoogleMapsConfigured } from "@/libs/delivery"
 import { getPlaceDetails } from "@/libs/places";
 import PreorderWindow from "@/models/PreorderWindow";
 import { getActiveWindowFilter, isWindowAcceptingOrders } from "@/libs/preorder-windows";
+import {
+  enforceBrowserOrigin,
+  isValidAddress,
+  isValidObjectId,
+  isValidPlaceId,
+  isValidSessionToken,
+  jsonError,
+  logAbuseEvent,
+  normalizeAddress,
+  normalizeSessionToken,
+  readJsonBody,
+} from "@/libs/request-protection";
 
 const findWindow = async (preorderWindowId) => {
   if (preorderWindowId) {
@@ -19,18 +31,44 @@ const findWindow = async (preorderWindowId) => {
 
 export async function POST(req) {
   try {
-    await connectMongo();
+    const originError = enforceBrowserOrigin(req);
 
-    const body = await req.json();
-    const address = body.address?.trim();
+    if (originError) {
+      return originError;
+    }
+
+    const body = await readJsonBody(req, { maxBytes: 6 * 1024 });
+    const address = normalizeAddress(body.address || "");
     const placeId = body.placeId?.trim() || "";
-    const sessionToken = body.sessionToken?.trim() || "";
+    const sessionToken = normalizeSessionToken(body.sessionToken || "");
     const preorderWindowId = body.preorderWindowId?.trim() || "";
 
     if (!address && !placeId) {
-      return NextResponse.json({ error: "Address is required." }, { status: 400 });
+      logAbuseEvent("delivery-quote-missing-address", req);
+      return jsonError("Address is required.", 400);
     }
 
+    if (address && !isValidAddress(address)) {
+      logAbuseEvent("delivery-quote-invalid-address", req, { addressLength: address.length });
+      return jsonError("Enter a valid address.", 400);
+    }
+
+    if (placeId && !isValidPlaceId(placeId)) {
+      logAbuseEvent("delivery-quote-invalid-place-id", req, { placeIdLength: placeId.length });
+      return jsonError("Invalid placeId.", 400);
+    }
+
+    if (!isValidSessionToken(sessionToken)) {
+      logAbuseEvent("delivery-quote-invalid-session-token", req);
+      return jsonError("Invalid address lookup session.", 400);
+    }
+
+    if (preorderWindowId && !isValidObjectId(preorderWindowId)) {
+      logAbuseEvent("delivery-quote-invalid-preorder-window-id", req);
+      return jsonError("Invalid preorder window.", 400);
+    }
+
+    await connectMongo();
     const preorderWindow = await findWindow(preorderWindowId);
 
     if (!preorderWindow) {
@@ -73,6 +111,17 @@ export async function POST(req) {
       placeId: placeDetails?.placeId || placeId,
     });
   } catch (e) {
+    if (e.message === "REQUEST_TOO_LARGE") {
+      logAbuseEvent("delivery-quote-request-too-large", req);
+      return jsonError("Request body is too large.", 413);
+    }
+
+    if (e.message === "INVALID_JSON") {
+      logAbuseEvent("delivery-quote-invalid-json", req);
+      return jsonError("Request body must be valid JSON.", 400);
+    }
+
+    logAbuseEvent("delivery-quote-upstream-error", req, { message: e.message });
     console.error(e);
     return NextResponse.json({ error: e.message }, { status: 400 });
   }

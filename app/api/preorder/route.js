@@ -7,6 +7,24 @@ import { getPlaceDetails } from "@/libs/places";
 import { isWindowAcceptingOrders, MAX_PER_ORDER_LIMIT } from "@/libs/preorder-windows";
 import { ensureSkuCatalogSeeded, getSkuMap, normalizeAllowedItemRefs } from "@/libs/sku-catalog";
 import { getRazorpayPublicConfig, isRazorpayConfigured } from "@/libs/razorpay";
+import {
+  enforceBrowserOrigin,
+  isValidAddress,
+  isValidEmail,
+  isValidName,
+  isValidObjectId,
+  isValidPhone,
+  isValidPlaceId,
+  isValidSessionToken,
+  jsonError,
+  logAbuseEvent,
+  normalizeAddress,
+  normalizeEmail,
+  normalizeName,
+  normalizePhone,
+  normalizeSessionToken,
+  readJsonBody,
+} from "@/libs/request-protection";
 
 const sanitizeItems = (items = []) => {
   return items
@@ -29,19 +47,21 @@ const isDatabaseUnavailable = (message = "") => {
 
 export async function POST(req) {
   try {
-    await connectMongo();
-    const skuCatalog = await ensureSkuCatalogSeeded();
-    const skuMap = getSkuMap(skuCatalog);
+    const originError = enforceBrowserOrigin(req);
 
-    const body = await req.json();
+    if (originError) {
+      return originError;
+    }
 
-    const customerName = body.customerName?.trim();
-    const email = body.email?.trim().toLowerCase();
-    const phone = body.phone?.trim();
-    const address = body.address?.trim();
+    const body = await readJsonBody(req, { maxBytes: 24 * 1024 });
+
+    const customerName = normalizeName(body.customerName || "");
+    const email = normalizeEmail(body.email || "");
+    const phone = normalizePhone(body.phone || "");
+    const address = normalizeAddress(body.address || "");
     const placeId = body.deliveryPlaceId?.trim() || "";
-    const sessionToken = body.addressSessionToken?.trim() || "";
-    const customerNotes = body.customerNotes?.trim() || "";
+    const sessionToken = normalizeSessionToken(body.addressSessionToken || "");
+    const customerNotes = (body.customerNotes || "").trim().slice(0, 500);
     const preorderWindowId = body.preorderWindowId?.trim() || "";
 
     const requestItems = sanitizeItems(body.items);
@@ -53,7 +73,43 @@ export async function POST(req) {
       );
     }
 
+    if (!isValidName(customerName)) {
+      logAbuseEvent("preorder-invalid-name", req, { nameLength: customerName.length });
+      return jsonError("Enter a valid name.", 400);
+    }
+
+    if (email && !isValidEmail(email)) {
+      logAbuseEvent("preorder-invalid-email", req, { emailLength: email.length });
+      return jsonError("Enter a valid email address.", 400);
+    }
+
+    if (!isValidPhone(phone)) {
+      logAbuseEvent("preorder-invalid-phone", req, { phoneLength: phone.length });
+      return jsonError("Enter a valid phone number.", 400);
+    }
+
+    if (!isValidAddress(address)) {
+      logAbuseEvent("preorder-invalid-address", req, { addressLength: address.length });
+      return jsonError("Enter a valid delivery address.", 400);
+    }
+
+    if (placeId && !isValidPlaceId(placeId)) {
+      logAbuseEvent("preorder-invalid-place-id", req, { placeIdLength: placeId.length });
+      return jsonError("Invalid delivery placeId.", 400);
+    }
+
+    if (!isValidSessionToken(sessionToken)) {
+      logAbuseEvent("preorder-invalid-session-token", req);
+      return jsonError("Invalid delivery lookup session.", 400);
+    }
+
+    if (preorderWindowId && !isValidObjectId(preorderWindowId)) {
+      logAbuseEvent("preorder-invalid-window-id", req);
+      return jsonError("Invalid preorder window.", 400);
+    }
+
     if (requestItems.length === 0) {
+      logAbuseEvent("preorder-empty-items", req);
       return NextResponse.json(
         {
           error:
@@ -62,6 +118,15 @@ export async function POST(req) {
         { status: 400 }
       );
     }
+
+    if (requestItems.length > 12) {
+      logAbuseEvent("preorder-too-many-items", req, { itemCount: requestItems.length });
+      return jsonError("Too many distinct products in one preorder.", 400);
+    }
+
+    await connectMongo();
+    const skuCatalog = await ensureSkuCatalogSeeded();
+    const skuMap = getSkuMap(skuCatalog);
 
     let preorderWindow = null;
     if (preorderWindowId) {
@@ -206,11 +271,23 @@ export async function POST(req) {
   } catch (e) {
     console.error(e);
 
+    if (e.message === "REQUEST_TOO_LARGE") {
+      logAbuseEvent("preorder-request-too-large", req);
+      return jsonError("Request body is too large.", 413);
+    }
+
+    if (e.message === "INVALID_JSON") {
+      logAbuseEvent("preorder-invalid-json", req);
+      return jsonError("Request body must be valid JSON.", 400);
+    }
+
     if (e.message?.startsWith("SKU ")) {
+      logAbuseEvent("preorder-invalid-sku", req, { message: e.message });
       return NextResponse.json({ error: e.message }, { status: 400 });
     }
 
     if (isDatabaseUnavailable(e.message)) {
+      logAbuseEvent("preorder-database-unavailable", req, { message: e.message });
       return NextResponse.json(
         {
           error:
@@ -220,6 +297,7 @@ export async function POST(req) {
       );
     }
 
+    logAbuseEvent("preorder-server-error", req, { message: e.message });
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
 }
