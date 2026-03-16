@@ -7,9 +7,41 @@ body {
   scroll-behavior: smooth !important;
 }
 
+body {
+  background: #e9e1d3;
+}
+
 /* It makes the HTML progress bar filling smooth when value change. */
 progress::-webkit-progress-value {
   transition: 0.6s width ease-out;
+}
+
+.page-shell {
+  background:
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.28), transparent 34%),
+    linear-gradient(180deg, #e9e1d3 0%, #f0ebdf 42%, #f4f0e8 100%);
+}
+
+.page-sparkles {
+  background-image: url("/images/sparkles.gif");
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  filter: grayscale(0.08) saturate(0.55) brightness(0.98) blur(1px);
+  opacity: 0.14;
+  transform: scale(1.04);
+  animation: pageSparklesDrift 48s linear infinite alternate;
+  mix-blend-mode: multiply;
+}
+
+@keyframes pageSparklesDrift {
+  from {
+    transform: scale(1.04) translate3d(0, 0, 0);
+  }
+
+  to {
+    transform: scale(1.08) translate3d(0, -1%, 0);
+  }
 }
 
 @layer base {
