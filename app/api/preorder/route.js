@@ -5,7 +5,7 @@ import PreorderWindow from "@/models/PreorderWindow";
 import { calculateDeliveryQuote } from "@/libs/delivery";
 import { getPlaceDetails } from "@/libs/places";
 import { isWindowAcceptingOrders, MAX_PER_ORDER_LIMIT } from "@/libs/preorder-windows";
-import { ensureSkuCatalogSeeded, getSkuMap, normalizeAllowedItemRefs } from "@/libs/sku-catalog";
+import { getSkuMap, listSkuCatalog, normalizeAllowedItemRefs } from "@/libs/sku-catalog";
 import { getRazorpayPublicConfig, isRazorpayConfigured } from "@/libs/razorpay";
 import {
   enforceBrowserOrigin,
@@ -125,7 +125,7 @@ export async function POST(req) {
     }
 
     await connectMongo();
-    const skuCatalog = await ensureSkuCatalogSeeded();
+    const skuCatalog = await listSkuCatalog();
     const skuMap = getSkuMap(skuCatalog);
 
     let preorderWindow = null;

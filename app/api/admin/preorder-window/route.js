@@ -11,7 +11,7 @@ import {
   normalizePreorderWindowPayload,
   sortPreorderWindows,
 } from "@/libs/preorder-windows";
-import { ensureSkuCatalogSeeded } from "@/libs/sku-catalog";
+import { listSkuCatalog } from "@/libs/sku-catalog";
 
 const getAdminSession = async () => {
   const session = await getServerSession(authOptions);
@@ -35,7 +35,7 @@ export async function GET() {
   }
 
   await connectMongo();
-  const skuCatalog = await ensureSkuCatalogSeeded();
+  const skuCatalog = await listSkuCatalog();
 
   const preorderWindows = await PreorderWindow.find({})
     .sort({ status: 1, deliveryDate: -1, updatedAt: -1, createdAt: -1 });
@@ -58,7 +58,7 @@ export async function POST(req) {
 
   try {
     const body = await req.json();
-    const skuCatalog = await ensureSkuCatalogSeeded();
+    const skuCatalog = await listSkuCatalog();
     const { payload, allowedItems } = normalizePreorderWindowPayload({
       body,
       fallbackTitle: "Preorder batch",

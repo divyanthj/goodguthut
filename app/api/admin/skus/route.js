@@ -4,7 +4,7 @@ import { authOptions } from "@/libs/next-auth";
 import { isAdminEmail } from "@/libs/admin";
 import connectMongo from "@/libs/mongoose";
 import Sku from "@/models/Sku";
-import { ensureSkuCatalogSeeded } from "@/libs/sku-catalog";
+import { listSkuCatalog } from "@/libs/sku-catalog";
 
 const getAdminSession = async () => {
   const session = await getServerSession(authOptions);
@@ -36,7 +36,7 @@ export async function GET() {
   }
 
   await connectMongo();
-  const skuCatalog = await ensureSkuCatalogSeeded();
+  const skuCatalog = await listSkuCatalog();
 
   return NextResponse.json({ skuCatalog });
 }
@@ -51,7 +51,6 @@ export async function POST(req) {
   await connectMongo();
 
   try {
-    await ensureSkuCatalogSeeded();
     const payload = normalizeSkuPayload(await req.json());
 
     if (!payload.sku || !payload.name) {

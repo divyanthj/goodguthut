@@ -1,13 +1,12 @@
 import connectMongo from "@/libs/mongoose";
 import { getAdminSessionState } from "@/libs/admin-auth";
 import PreorderWindow from "@/models/PreorderWindow";
-import Sku from "@/models/Sku";
 import { createDefaultPreorderWindow } from "@/libs/preorder-catalog";
 import AdminLoginButton from "@/components/AdminLoginButton";
 import AdminPreorderConsole from "@/components/AdminPreorderConsole";
 import AdminNav from "@/components/AdminNav";
 import { sortPreorderWindows } from "@/libs/preorder-windows";
-import { ensureSkuCatalogSeeded } from "@/libs/sku-catalog";
+import { listSkuCatalog } from "@/libs/sku-catalog";
 
 export default async function AdminPage() {
   const { session, isAdmin } = await getAdminSessionState();
@@ -46,18 +45,13 @@ export default async function AdminPage() {
   }
 
   await connectMongo();
-  await ensureSkuCatalogSeeded();
   const preorderWindowDocs = await PreorderWindow.find({}).sort({
     status: 1,
     deliveryDate: -1,
     updatedAt: -1,
     createdAt: -1,
   });
-  const skuCatalogDocs = await Sku.find({}).sort({
-    status: 1,
-    name: 1,
-    sku: 1,
-  });
+  const skuCatalogDocs = await listSkuCatalog();
   const initialWindows = sortPreorderWindows(JSON.parse(JSON.stringify(preorderWindowDocs)));
   const initialSkuCatalog = JSON.parse(JSON.stringify(skuCatalogDocs));
   const defaultWindow = createDefaultPreorderWindow();

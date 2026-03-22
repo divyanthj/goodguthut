@@ -1,6 +1,12 @@
 import Sku from "@/models/Sku";
-import PreorderWindow from "@/models/PreorderWindow";
-import { createDefaultSkuCatalog } from "@/libs/preorder-catalog";
+
+const LEGACY_SEEDED_SKU_CODES = new Set([
+  "GGH-BUG-330",
+  "GGH-CUK-250",
+  "GGH-KCK-250",
+  "GGH-MSP-300",
+  "GGH-PSP-300",
+]);
 
 const normalizeLegacyAllowedItem = (item) => {
   if (!item) {
@@ -44,54 +50,14 @@ export const normalizeAllowedItemRefs = (allowedItems = []) => {
     .map((item) => ({ sku: item.sku }));
 };
 
-const getSeedSkusFromWindows = async () => {
-  const windows = await PreorderWindow.find({})
-    .sort({ updatedAt: -1, createdAt: -1 })
-    .select({ allowedItems: 1 });
-  const seedMap = new Map();
+export const isLegacySeededSkuCode = (sku = "") => LEGACY_SEEDED_SKU_CODES.has((sku || "").trim().toUpperCase());
 
-  windows.forEach((windowDoc) => {
-    (windowDoc.allowedItems || []).forEach((allowedItem) => {
-      const normalized = normalizeLegacyAllowedItem(allowedItem);
+export const filterSkuCatalog = (skuCatalog = []) =>
+  skuCatalog.filter((item) => !isLegacySeededSkuCode(item?.sku));
 
-      if (!normalized?.sku || seedMap.has(normalized.sku)) {
-        return;
-      }
-
-      seedMap.set(normalized.sku, {
-        sku: normalized.sku,
-        name: normalized.name || normalized.sku,
-        notes: normalized.notes || "",
-        unitPrice: normalized.unitPrice || 0,
-        status: normalized.status || "active",
-      });
-    });
-  });
-
-  return [...seedMap.values()];
-};
-
-export const ensureSkuCatalogSeeded = async () => {
-  const existingSkus = await Sku.find({}).select({ sku: 1 }).lean();
-  const existingSkuCodes = new Set(existingSkus.map((item) => item.sku));
-  const defaultSkus = createDefaultSkuCatalog();
-  const legacySkus = await getSeedSkusFromWindows();
-  const seedCandidates = [...legacySkus, ...defaultSkus];
-  const seenCandidates = new Set();
-  const docsToInsert = seedCandidates.filter((item) => {
-    if (existingSkuCodes.has(item.sku) || seenCandidates.has(item.sku)) {
-      return false;
-    }
-
-    seenCandidates.add(item.sku);
-    return true;
-  });
-
-  if (docsToInsert.length > 0) {
-    await Sku.insertMany(docsToInsert, { ordered: false });
-  }
-
-  return Sku.find({}).sort({ status: 1, name: 1, sku: 1 });
+export const listSkuCatalog = async () => {
+  const skuCatalog = await Sku.find({}).sort({ status: 1, name: 1, sku: 1 });
+  return filterSkuCatalog(skuCatalog);
 };
 
 export const getSkuMap = (skuCatalog = []) =>

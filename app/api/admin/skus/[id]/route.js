@@ -4,7 +4,6 @@ import { authOptions } from "@/libs/next-auth";
 import { isAdminEmail } from "@/libs/admin";
 import connectMongo from "@/libs/mongoose";
 import Sku from "@/models/Sku";
-import { ensureSkuCatalogSeeded } from "@/libs/sku-catalog";
 
 const getAdminSession = async () => {
   const session = await getServerSession(authOptions);
@@ -35,7 +34,6 @@ export async function GET(_req, { params }) {
   }
 
   await connectMongo();
-  await ensureSkuCatalogSeeded();
 
   const sku = await Sku.findById(params.id);
 
@@ -56,7 +54,6 @@ export async function PUT(req, { params }) {
   await connectMongo();
 
   try {
-    await ensureSkuCatalogSeeded();
     const payload = normalizeSkuUpdatePayload(await req.json());
 
     if (!payload.name) {

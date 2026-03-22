@@ -21,6 +21,16 @@ const buildFallbackWindow = () => ({
 const buildCartFromItems = (items = []) =>
   Object.fromEntries(items.map((item) => [item.sku, 0]));
 
+const normalizeLineupItems = (items = []) =>
+  items
+    .filter((item) => item?.sku && item.status !== "archived")
+    .map((item) => ({
+      sku: item.sku,
+      name: item.name,
+      note: item.notes || "",
+      unitPrice: Number(item.unitPrice || 0),
+    }));
+
 const formatDeliveryDate = (value) => {
   if (!value) {
     return "";
@@ -34,6 +44,7 @@ const formatDeliveryDate = (value) => {
 
 export default function Page() {
   const [preorderWindow, setPreorderWindow] = useState(buildFallbackWindow);
+  const [skuCatalog, setSkuCatalog] = useState([]);
   const [cart, setCart] = useState(() => buildCartFromItems(buildFallbackWindow().allowedItems));
   const [isLoadingWindow, setIsLoadingWindow] = useState(true);
 
@@ -54,11 +65,17 @@ export default function Page() {
         }
 
         const nextWindow = data?.preorderWindow || buildFallbackWindow();
+        const nextSkuCatalog = data?.skuCatalog || [];
         setPreorderWindow(nextWindow);
+        setSkuCatalog(nextSkuCatalog);
         setCart((currentCart) => {
           const nextCart = {};
+          const sourceItems =
+            nextWindow?.status === "open" && nextWindow.allowedItems?.length
+              ? nextWindow.allowedItems
+              : nextSkuCatalog;
 
-          (nextWindow.allowedItems || []).forEach((item) => {
+          sourceItems.forEach((item) => {
             nextCart[item.sku] = Number(currentCart[item.sku] || 0);
           });
 
@@ -68,6 +85,7 @@ export default function Page() {
         if (isMounted) {
           const fallbackWindow = buildFallbackWindow();
           setPreorderWindow(fallbackWindow);
+          setSkuCatalog([]);
           setCart(buildCartFromItems(fallbackWindow.allowedItems));
         }
       } finally {
@@ -85,17 +103,12 @@ export default function Page() {
   }, []);
 
   const lineup = useMemo(() => {
-    const allowedItems = preorderWindow?.allowedItems?.length
-      ? preorderWindow.allowedItems.filter((item) => item.status !== "archived")
-      : [];
+    if (preorderWindow?.status === "open" && preorderWindow.allowedItems?.length) {
+      return normalizeLineupItems(preorderWindow.allowedItems);
+    }
 
-    return allowedItems.map((item) => ({
-      sku: item.sku,
-      name: item.name,
-      note: item.notes || "",
-      unitPrice: Number(item.unitPrice || 0),
-    }));
-  }, [preorderWindow]);
+    return normalizeLineupItems(skuCatalog);
+  }, [preorderWindow, skuCatalog]);
 
   const isPreorderOpen = preorderWindow?.status === "open";
 
@@ -190,7 +203,7 @@ export default function Page() {
         )}
         {!isLoadingWindow && !isPreorderOpen && (
           <div className="mt-4 rounded-lg bg-[#f7f1e6]/92 p-4 text-sm text-[#3f5348] shadow-md">
-            We are currently not taking preorders. Check back in with us later.
+            There are no preorders open right now. The lineup is below, and we&apos;ll announce the next batch soon, so keep a lookout.
           </div>
         )}
         {!isLoadingWindow && isPreorderOpen && preorderWindow.deliveryDate && (
@@ -250,9 +263,9 @@ export default function Page() {
                         ? `${preorderWindow.currency || "INR"} ${drink.unitPrice.toFixed(2)}`
                         : "Price available after admin setup"}
                     </div>
-                    {isPreorderOpen && (
-                      <div className="card-actions justify-end">
-                        {qty === 0 ? (
+                    <div className="card-actions justify-end">
+                      {isPreorderOpen ? (
+                        qty === 0 ? (
                           <button
                             type="button"
                             className="btn btn-primary btn-sm"
@@ -281,9 +294,13 @@ export default function Page() {
                               +
                             </button>
                           </div>
-                        )}
-                      </div>
-                    )}
+                        )
+                      ) : (
+                        <div className="text-xs font-medium uppercase tracking-[0.16em] text-[#6f7d74]">
+                          Preorders closed
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </article>
               );
