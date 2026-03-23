@@ -54,6 +54,7 @@ export async function PUT(req, { params }) {
 
   try {
     const body = await req.json();
+    const wantsImmediateOpen = body.openImmediately === true;
     const skuCatalog = await listSkuCatalog();
     const { payload, allowedItems } = normalizePreorderWindowPayload({
       body,
@@ -89,7 +90,9 @@ export async function PUT(req, { params }) {
 
     const willBeOpen = payload.status === "open";
 
-    if (willBeOpen && !payload.opensAt) {
+    if (willBeOpen && wantsImmediateOpen) {
+      payload.opensAt = null;
+    } else if (willBeOpen && !payload.opensAt) {
       payload.opensAt = existingWindow.opensAt || new Date();
     }
 
@@ -155,8 +158,8 @@ export async function PATCH(req, { params }) {
 
     preorderWindow.status = nextStatus;
 
-    if (nextStatus === "open" && !preorderWindow.opensAt) {
-      preorderWindow.opensAt = new Date();
+    if (nextStatus === "open") {
+      preorderWindow.opensAt = null;
     }
 
     if (nextStatus === "open") {

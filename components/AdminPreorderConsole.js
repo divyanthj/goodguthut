@@ -91,6 +91,10 @@ const createWindowConfig = (windowData) => ({
   deliveryBands: windowData.deliveryBands?.length ? windowData.deliveryBands : [createEmptyDeliveryBand()],
   allowedItems: normalizeAllowedItems(windowData.allowedItems),
   allowCustomerNotes: windowData.allowCustomerNotes !== false,
+  openImmediately:
+    windowData.status === "open"
+      ? !windowData.opensAt || new Date(windowData.opensAt).getTime() <= Date.now()
+      : false,
 });
 
 const buildNewBatchConfig = (defaultWindow, previousWindow) => {
@@ -181,7 +185,7 @@ const canScheduleAfterLiveWindow = (windowData, liveOpenWindow) => {
     return true;
   }
 
-  if (!liveOpenWindow.closesAt || !windowData.opensAt) {
+  if (windowData.openImmediately || !liveOpenWindow.closesAt || !windowData.opensAt) {
     return false;
   }
 
@@ -381,7 +385,13 @@ export default function AdminPreorderConsole({
   }, [windowConfig.pickupAddress, pickupSessionToken, selectedPickupPlace]);
 
   const setField = (field, value) => {
-    setWindowConfig((current) => ({ ...current, [field]: value }));
+    setWindowConfig((current) => {
+      if (field === "status" && value !== "open") {
+        return { ...current, status: value, openImmediately: false };
+      }
+
+      return { ...current, [field]: value };
+    });
   };
 
   const updateDeliveryBand = (index, field, value) => {
@@ -749,7 +759,30 @@ export default function AdminPreorderConsole({
                 </label>
                 <label className="form-control w-full">
                   <div className="label"><span className="label-text">Opens at (optional)</span></div>
-                  <input type="datetime-local" className="input input-bordered" value={windowConfig.opensAt} onChange={(event) => setField("opensAt", event.target.value)} />
+                  <input
+                    type="datetime-local"
+                    className="input input-bordered"
+                    value={windowConfig.opensAt}
+                    disabled={windowConfig.status === "open" && windowConfig.openImmediately}
+                    onChange={(event) => setField("opensAt", event.target.value)}
+                  />
+                  {windowConfig.status === "open" && (
+                    <label className="label cursor-pointer justify-start gap-3">
+                      <input
+                        type="checkbox"
+                        className="checkbox checkbox-sm"
+                        checked={windowConfig.openImmediately}
+                        onChange={(event) =>
+                          setWindowConfig((current) => ({
+                            ...current,
+                            openImmediately: event.target.checked,
+                            opensAt: event.target.checked ? "" : current.opensAt,
+                          }))
+                        }
+                      />
+                      <span className="label-text">Open immediately</span>
+                    </label>
+                  )}
                 </label>
                 <label className="form-control w-full">
                   <div className="label"><span className="label-text">Close date/time (optional)</span></div>

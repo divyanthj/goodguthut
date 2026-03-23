@@ -58,6 +58,7 @@ export async function POST(req) {
 
   try {
     const body = await req.json();
+    const wantsImmediateOpen = body.openImmediately === true;
     const skuCatalog = await listSkuCatalog();
     const { payload, allowedItems } = normalizePreorderWindowPayload({
       body,
@@ -85,7 +86,9 @@ export async function POST(req) {
       );
     }
 
-    if (payload.status === "open" && !payload.opensAt) {
+    if (payload.status === "open" && wantsImmediateOpen) {
+      payload.opensAt = null;
+    } else if (payload.status === "open" && !payload.opensAt) {
       payload.opensAt = new Date();
     }
 
