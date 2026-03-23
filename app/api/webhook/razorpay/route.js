@@ -4,12 +4,8 @@ import connectMongo from "@/libs/mongoose";
 import Preorder from "@/models/Preorder";
 import { verifyRazorpayWebhookSignature } from "@/libs/razorpay";
 
-const getPreorderIdFromEvent = (event) => {
-  return (
-    event?.payload?.payment?.entity?.notes?.preorderId ||
-    event?.payload?.order?.entity?.notes?.preorderId ||
-    ""
-  );
+const getRazorpayOrderIdFromEvent = (event) => {
+  return event?.payload?.payment?.entity?.order_id || event?.payload?.order?.entity?.id || "";
 };
 
 export async function POST(req) {
@@ -24,16 +20,16 @@ export async function POST(req) {
     await connectMongo();
 
     const event = JSON.parse(body);
-    const preorderId = getPreorderIdFromEvent(event);
+    const razorpayOrderId = getRazorpayOrderIdFromEvent(event);
 
-    if (!preorderId) {
+    if (!razorpayOrderId) {
       return NextResponse.json({ ok: true });
     }
 
-    const preorder = await Preorder.findById(preorderId);
+    const preorder = await Preorder.findOne({ "payment.orderId": razorpayOrderId });
 
     if (!preorder) {
-      return NextResponse.json({ error: "Preorder not found" }, { status: 404 });
+      return NextResponse.json({ ok: true });
     }
 
     const paymentEntity = event?.payload?.payment?.entity;

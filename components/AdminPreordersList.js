@@ -23,28 +23,26 @@ const formatDate = (value) => {
 
 const getPaymentBadgeLabel = (preorder) => {
   if (preorder.payment?.provider === "razorpay") {
-    if (preorder.payment?.status === "paid") {
-      return "payment: paid via Razorpay";
-    }
-
-    if (preorder.payment?.status === "order_created") {
-      return "payment: checkout started";
-    }
-
-    if (preorder.payment?.status === "failed") {
-      return "payment: Razorpay failed";
-    }
-
-    return "payment: awaiting Razorpay";
+    return preorder.payment?.status === "paid" ? "payment: paid via Razorpay" : "payment: Razorpay";
   }
 
-  return "payment: manual after confirmation";
+  return "payment: manual";
 };
 
 const toDateTimeLocal = (value) => {
   const date = value ? new Date(value) : new Date();
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
   return local.toISOString().slice(0, 16);
+};
+
+const getConfirmationLabel = (preorder) => {
+  if (preorder.payment?.provider === "razorpay") {
+    return preorder.status === "fulfilled" ? "Paid and delivered" : "Paid and confirmed";
+  }
+
+  return preorder.status === "confirmed" || preorder.status === "fulfilled"
+    ? "Confirmed"
+    : "Awaiting contact";
 };
 
 export default function AdminPreordersList({ initialPreorders }) {
@@ -337,7 +335,7 @@ export default function AdminPreordersList({ initialPreorders }) {
                   </div>
                   <div>
                     <div className="text-xs uppercase tracking-[0.16em] opacity-60">Confirmation</div>
-                    <div className="mt-1">{preorder.status === "confirmed" || preorder.status === "fulfilled" ? "Confirmed" : "Awaiting contact"}</div>
+                    <div className="mt-1">{getConfirmationLabel(preorder)}</div>
                   </div>
                   <div>
                     <div className="text-xs uppercase tracking-[0.16em] opacity-60">Distance</div>

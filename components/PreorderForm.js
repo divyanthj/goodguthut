@@ -308,21 +308,6 @@ export default function PreorderForm({
       }
 
       if (data.razorpay?.isConfigured && Number(data.total || 0) > 0) {
-        const paymentResponse = await fetch(`/api/preorder/${data.id}/payment`, {
-          method: "POST",
-        });
-        const paymentData = await paymentResponse.json();
-
-        if (!paymentResponse.ok) {
-          throw new Error(
-            getApiErrorMessage(
-              paymentResponse,
-              paymentData,
-              "Could not start Razorpay checkout."
-            )
-          );
-        }
-
         const Razorpay = await loadRazorpay();
 
         if (!Razorpay) {
@@ -330,15 +315,18 @@ export default function PreorderForm({
         }
 
         const checkout = new Razorpay({
-          ...paymentData.razorpay,
+          ...data.razorpay,
           handler: async (paymentResult) => {
             try {
-              const verifyResponse = await fetch(`/api/preorder/${data.id}/payment`, {
+              const verifyResponse = await fetch("/api/preorder/payment", {
                 method: "PATCH",
                 headers: {
                   "Content-Type": "application/json",
                 },
-                body: JSON.stringify(paymentResult),
+                body: JSON.stringify({
+                  ...paymentResult,
+                  checkoutToken: data.checkoutToken,
+                }),
               });
               const verifyData = await verifyResponse.json();
 
@@ -374,9 +362,7 @@ export default function PreorderForm({
           },
           modal: {
             ondismiss: () => {
-              setError(
-                "Payment was not completed. Your preorder was saved, but it will stay unconfirmed until payment succeeds."
-              );
+              setError("Payment was not completed, so the preorder was not created.");
               setIsSubmitting(false);
             },
           },

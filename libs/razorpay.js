@@ -14,6 +14,55 @@ export const getRazorpayPublicConfig = () => ({
   isConfigured: isRazorpayConfigured(),
 });
 
+const toBase64Url = (value) => Buffer.from(value).toString("base64url");
+const fromBase64Url = (value) => Buffer.from(value, "base64url").toString("utf8");
+
+export const createSignedCheckoutToken = (payload) => {
+  if (!razorpayKeySecret) {
+    throw new Error("Razorpay is not configured. Add RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET.");
+  }
+
+  const expiresAt = Date.now() + 30 * 60 * 1000;
+  const data = toBase64Url(JSON.stringify({ ...payload, expiresAt }));
+  const signature = crypto
+    .createHmac("sha256", razorpayKeySecret)
+    .update(data)
+    .digest("base64url");
+
+  return `${data}.${signature}`;
+};
+
+export const verifySignedCheckoutToken = (token = "") => {
+  if (!razorpayKeySecret || !token.includes(".")) {
+    return null;
+  }
+
+  const [data, signature] = token.split(".");
+  const expectedSignature = crypto
+    .createHmac("sha256", razorpayKeySecret)
+    .update(data)
+    .digest("base64url");
+
+  const expectedBuffer = Buffer.from(expectedSignature);
+  const actualBuffer = Buffer.from(signature || "");
+
+  if (expectedBuffer.length !== actualBuffer.length) {
+    return null;
+  }
+
+  if (!crypto.timingSafeEqual(expectedBuffer, actualBuffer)) {
+    return null;
+  }
+
+  const parsed = JSON.parse(fromBase64Url(data));
+
+  if (!parsed?.expiresAt || parsed.expiresAt < Date.now()) {
+    return null;
+  }
+
+  return parsed;
+};
+
 export const verifyRazorpayPaymentSignature = ({
   orderId = "",
   paymentId = "",

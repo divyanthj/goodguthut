@@ -1,41 +1,18 @@
 import { NextResponse } from "next/server";
-import connectMongo from "@/libs/mongoose";
 import Preorder from "@/models/Preorder";
-import PreorderWindow from "@/models/PreorderWindow";
-import { calculateDeliveryQuote } from "@/libs/delivery";
-import { getPlaceDetails } from "@/libs/places";
-import { isWindowAcceptingOrders, MAX_PER_ORDER_LIMIT } from "@/libs/preorder-windows";
-import { getSkuMap, listSkuCatalog, normalizeAllowedItemRefs } from "@/libs/sku-catalog";
-import { getRazorpayPublicConfig, isRazorpayConfigured } from "@/libs/razorpay";
+import { buildPreorderRequest } from "@/libs/preorder-request";
+import {
+  createRazorpayOrder,
+  createSignedCheckoutToken,
+  getRazorpayPublicConfig,
+  isRazorpayConfigured,
+} from "@/libs/razorpay";
 import {
   enforceBrowserOrigin,
-  isValidAddress,
-  isValidEmail,
-  isValidName,
-  isValidObjectId,
-  isValidPhone,
-  isValidPlaceId,
-  isValidSessionToken,
   jsonError,
   logAbuseEvent,
-  normalizeAddress,
-  normalizeEmail,
-  normalizeName,
-  normalizePhone,
-  normalizeSessionToken,
   readJsonBody,
 } from "@/libs/request-protection";
-
-const sanitizeItems = (items = []) => {
-  return items
-    .map((item) => ({
-      sku: (item.sku || "").trim().toUpperCase(),
-      productName: (item.productName || "").trim(),
-      quantity: Number(item.quantity || 0),
-      unitPrice: Number(item.unitPrice || 0),
-    }))
-    .filter((item) => item.sku && item.productName && item.quantity > 0);
-};
 
 const isDatabaseUnavailable = (message = "") => {
   return (
@@ -43,6 +20,30 @@ const isDatabaseUnavailable = (message = "") => {
     message.includes("buffering timed out") ||
     message.includes("Could not connect to MongoDB")
   );
+};
+
+const createPreorderDocument = async (orderRequest, payment = {}) => {
+  return Preorder.create({
+    customerName: orderRequest.customerName,
+    email: orderRequest.email,
+    phone: orderRequest.phone,
+    address: orderRequest.address,
+    normalizedDeliveryAddress: orderRequest.normalizedDeliveryAddress,
+    customerNotes: orderRequest.customerNotes,
+    preorderWindow: orderRequest.preorderWindow?.id || null,
+    preorderWindowLabel: orderRequest.preorderWindow?.title || "",
+    deliveryDate: orderRequest.preorderWindow?.deliveryDate || null,
+    currency: orderRequest.currency,
+    items: orderRequest.items,
+    totalQuantity: orderRequest.totalQuantity,
+    subtotal: orderRequest.subtotal,
+    deliveryFee: orderRequest.deliveryFee,
+    deliveryDistanceKm: orderRequest.deliveryDistanceKm,
+    total: orderRequest.total,
+    source: "landing",
+    status: payment.provider === "razorpay" ? "confirmed" : "pending",
+    payment,
+  });
 };
 
 export async function POST(req) {
@@ -54,203 +55,55 @@ export async function POST(req) {
     }
 
     const body = await readJsonBody(req, { maxBytes: 24 * 1024 });
+    const orderRequest = await buildPreorderRequest(body);
 
-    const customerName = normalizeName(body.customerName || "");
-    const email = normalizeEmail(body.email || "");
-    const phone = normalizePhone(body.phone || "");
-    const address = normalizeAddress(body.address || "");
-    const placeId = body.deliveryPlaceId?.trim() || "";
-    const sessionToken = normalizeSessionToken(body.addressSessionToken || "");
-    const customerNotes = (body.customerNotes || "").trim().slice(0, 500);
-    const preorderWindowId = body.preorderWindowId?.trim() || "";
-
-    const requestItems = sanitizeItems(body.items);
-
-    if (!customerName || !phone || !address) {
-      return NextResponse.json(
-        { error: "Name, phone number, and address are required" },
-        { status: 400 }
-      );
-    }
-
-    if (!isValidName(customerName)) {
-      logAbuseEvent("preorder-invalid-name", req, { nameLength: customerName.length });
-      return jsonError("Enter a valid name.", 400);
-    }
-
-    if (email && !isValidEmail(email)) {
-      logAbuseEvent("preorder-invalid-email", req, { emailLength: email.length });
-      return jsonError("Enter a valid email address.", 400);
-    }
-
-    if (!isValidPhone(phone)) {
-      logAbuseEvent("preorder-invalid-phone", req, { phoneLength: phone.length });
-      return jsonError("Enter a valid phone number.", 400);
-    }
-
-    if (!isValidAddress(address)) {
-      logAbuseEvent("preorder-invalid-address", req, { addressLength: address.length });
-      return jsonError("Enter a valid delivery address.", 400);
-    }
-
-    if (placeId && !isValidPlaceId(placeId)) {
-      logAbuseEvent("preorder-invalid-place-id", req, { placeIdLength: placeId.length });
-      return jsonError("Invalid delivery placeId.", 400);
-    }
-
-    if (!isValidSessionToken(sessionToken)) {
-      logAbuseEvent("preorder-invalid-session-token", req);
-      return jsonError("Invalid delivery lookup session.", 400);
-    }
-
-    if (preorderWindowId && !isValidObjectId(preorderWindowId)) {
-      logAbuseEvent("preorder-invalid-window-id", req);
-      return jsonError("Invalid preorder window.", 400);
-    }
-
-    if (requestItems.length === 0) {
-      logAbuseEvent("preorder-empty-items", req);
-      return NextResponse.json(
-        {
-          error:
-            "Add at least one product quantity (SKU + quantity) before placing preorder",
+    if (isRazorpayConfigured() && Number(orderRequest.total || 0) > 0) {
+      const razorpayOrder = await createRazorpayOrder({
+        amount: Math.round(Number(orderRequest.total) * 100),
+        currency: orderRequest.currency || "INR",
+        receipt: `checkout_${Date.now()}`,
+        notes: {
+          customerName: orderRequest.customerName,
+          customerEmail: orderRequest.email || "",
         },
-        { status: 400 }
-      );
-    }
-
-    if (requestItems.length > 12) {
-      logAbuseEvent("preorder-too-many-items", req, { itemCount: requestItems.length });
-      return jsonError("Too many distinct products in one preorder.", 400);
-    }
-
-    await connectMongo();
-    const skuCatalog = await listSkuCatalog();
-    const skuMap = getSkuMap(skuCatalog);
-
-    let preorderWindow = null;
-    if (preorderWindowId) {
-      preorderWindow = await PreorderWindow.findById(preorderWindowId);
-      if (!preorderWindow) {
-        return NextResponse.json(
-          { error: "Selected preorder window was not found" },
-          { status: 400 }
-        );
-      }
-
-      if (!isWindowAcceptingOrders(preorderWindow)) {
-        return NextResponse.json(
-          { error: "Preorders are closed for the selected delivery window" },
-          { status: 400 }
-        );
-      }
-    }
-
-    const allowedItemsBySku = preorderWindow
-      ? new Map(
-          normalizeAllowedItemRefs(preorderWindow.allowedItems).map((item) => [item.sku, skuMap.get(item.sku)])
-        )
-      : null;
-
-    const items = requestItems.map((item) => {
-      const allowedItem = allowedItemsBySku?.get(item.sku);
-      const catalogItem = skuMap.get(item.sku);
-
-      if (preorderWindow && !allowedItem) {
-        throw new Error(`SKU ${item.sku} is not available in this preorder window`);
-      }
-
-      if (!catalogItem || catalogItem.status !== "active") {
-        throw new Error(`SKU ${item.sku} is not currently available`);
-      }
-
-      if (item.quantity > MAX_PER_ORDER_LIMIT) {
-        throw new Error(
-          `SKU ${item.sku} maximum quantity per preorder is ${MAX_PER_ORDER_LIMIT}`
-        );
-      }
-      const unitPrice = Math.max(0, Number(catalogItem.unitPrice ?? item.unitPrice ?? 0));
-
-      return {
-        sku: item.sku,
-        productName: catalogItem.name || item.productName,
-        quantity: item.quantity,
-        unitPrice,
-        lineTotal: item.quantity * unitPrice,
-      };
-    });
-
-    const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
-    const subtotal = items.reduce((sum, item) => sum + item.lineTotal, 0);
-    const minimumOrderQuantity = Math.max(1, Number(preorderWindow?.minimumOrderQuantity || 1));
-
-    if (totalQuantity < minimumOrderQuantity) {
-      return NextResponse.json(
-        {
-          error: `Minimum preorder quantity is ${minimumOrderQuantity}.`,
-        },
-        { status: 400 }
-      );
-    }
-
-    let deliveryFee = 0;
-    let deliveryDistanceKm = 0;
-    let normalizedDeliveryAddress = address;
-
-    if (preorderWindow?.pickupAddress && preorderWindow?.deliveryBands?.length) {
-      if (!placeId) {
-        return NextResponse.json(
-          { error: "Please select a delivery address from the suggestions." },
-          { status: 400 }
-        );
-      }
-
-      const placeDetails = await getPlaceDetails({ placeId, sessionToken });
-      const deliveryQuote = await calculateDeliveryQuote({
-        pickupAddress: preorderWindow.pickupAddress,
-        deliveryBands: preorderWindow.deliveryBands,
-        address,
-        placeDetails,
       });
 
-      if (!deliveryQuote.isDeliverable) {
-        return NextResponse.json(
-          { error: deliveryQuote.reason || "We do not deliver there yet." },
-          { status: 400 }
-        );
-      }
+      const checkoutToken = createSignedCheckoutToken({
+        orderRequest,
+        razorpayOrderId: razorpayOrder.id,
+        amount: razorpayOrder.amount,
+        currency: razorpayOrder.currency,
+      });
 
-      deliveryFee = deliveryQuote.deliveryFee;
-      deliveryDistanceKm = deliveryQuote.distanceKm;
-      normalizedDeliveryAddress = deliveryQuote.normalizedAddress;
+      return NextResponse.json({
+        totalQuantity: orderRequest.totalQuantity,
+        subtotal: orderRequest.subtotal,
+        deliveryFee: orderRequest.deliveryFee,
+        deliveryDistanceKm: orderRequest.deliveryDistanceKm,
+        total: orderRequest.total,
+        currency: orderRequest.currency,
+        checkoutToken,
+        razorpay: {
+          ...getRazorpayPublicConfig(),
+          orderId: razorpayOrder.id,
+          amount: razorpayOrder.amount,
+          currency: razorpayOrder.currency,
+          name: "Good Gut Hut",
+          description: "Preorder payment",
+          prefill: {
+            name: orderRequest.customerName,
+            email: orderRequest.email,
+            contact: orderRequest.phone,
+          },
+        },
+      });
     }
 
-    const total = subtotal + deliveryFee;
-
-    const preorder = await Preorder.create({
-      customerName,
-      email: email || "",
-      phone,
-      address,
-      normalizedDeliveryAddress,
-      customerNotes,
-      preorderWindow: preorderWindow?._id || null,
-      preorderWindowLabel: preorderWindow?.title || "",
-      deliveryDate: preorderWindow?.deliveryDate || null,
-      currency: preorderWindow?.currency || "INR",
-      items,
-      totalQuantity,
-      subtotal,
-      deliveryFee,
-      deliveryDistanceKm,
-      total,
-      source: "landing",
-      payment: {
-        provider: isRazorpayConfigured() ? "razorpay" : "",
-        status: isRazorpayConfigured() ? "pending" : "not_required",
-        amount: total,
-        currency: preorderWindow?.currency || "INR",
-      },
+    const preorder = await createPreorderDocument(orderRequest, {
+      provider: "",
+      status: "not_required",
+      amount: orderRequest.total,
+      currency: orderRequest.currency,
     });
 
     return NextResponse.json({
@@ -264,9 +117,8 @@ export async function POST(req) {
       currency: preorder.currency,
       paymentStatus: preorder.payment?.status,
       razorpay: getRazorpayPublicConfig(),
-      confirmationMessage: isRazorpayConfigured()
-        ? "Preorder received. Complete payment to confirm this order automatically."
-        : "Preorder received. We will contact you on WhatsApp or by text to confirm your order before payment.",
+      confirmationMessage:
+        "Preorder received. We will contact you on WhatsApp or by text to confirm your order before payment.",
     });
   } catch (e) {
     console.error(e);
@@ -281,8 +133,25 @@ export async function POST(req) {
       return jsonError("Request body must be valid JSON.", 400);
     }
 
-    if (e.message?.startsWith("SKU ")) {
-      logAbuseEvent("preorder-invalid-sku", req, { message: e.message });
+    if (
+      e.message?.startsWith("SKU ") ||
+      e.message === "Invalid preorder window." ||
+      e.message === "Selected preorder window was not found" ||
+      e.message === "Preorders are closed for the selected delivery window" ||
+      e.message === "Name, phone number, and address are required" ||
+      e.message === "Enter a valid name." ||
+      e.message === "Enter a valid email address." ||
+      e.message === "Enter a valid phone number." ||
+      e.message === "Enter a valid delivery address." ||
+      e.message === "Invalid delivery placeId." ||
+      e.message === "Invalid delivery lookup session." ||
+      e.message === "Add at least one product quantity (SKU + quantity) before placing preorder" ||
+      e.message === "Too many distinct products in one preorder." ||
+      e.message === "Please select a delivery address from the suggestions." ||
+      e.message === "We do not deliver there yet." ||
+      e.message?.startsWith("Minimum preorder quantity is ")
+    ) {
+      logAbuseEvent("preorder-invalid-request", req, { message: e.message });
       return NextResponse.json({ error: e.message }, { status: 400 });
     }
 
