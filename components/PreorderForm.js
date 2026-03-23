@@ -71,6 +71,7 @@ export default function PreorderForm({
   const [deliveryQuote, setDeliveryQuote] = useState(null);
   const [isQuotingDelivery, setIsQuotingDelivery] = useState(false);
   const [deliveryError, setDeliveryError] = useState("");
+  const [addressLookupError, setAddressLookupError] = useState("");
   const [addressSuggestions, setAddressSuggestions] = useState([]);
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
   const [selectedPlace, setSelectedPlace] = useState(null);
@@ -115,9 +116,10 @@ export default function PreorderForm({
   useEffect(() => {
     const input = customer.address.trim();
 
-    if (!deliveryConfigured || input.length < 3) {
+    if (input.length < 3) {
       setAddressSuggestions([]);
       setIsLoadingSuggestions(false);
+      setAddressLookupError("");
       return undefined;
     }
 
@@ -128,6 +130,7 @@ export default function PreorderForm({
 
     const timeoutId = setTimeout(async () => {
       setIsLoadingSuggestions(true);
+      setAddressLookupError("");
 
       try {
         const response = await fetch("/api/preorder/address-autocomplete", {
@@ -150,15 +153,18 @@ export default function PreorderForm({
         }
 
         setAddressSuggestions(data.suggestions || []);
-      } catch (_autocompleteError) {
+      } catch (autocompleteError) {
         setAddressSuggestions([]);
+        setAddressLookupError(
+          autocompleteError.message || "Could not load address suggestions."
+        );
       } finally {
         setIsLoadingSuggestions(false);
       }
     }, 250);
 
     return () => clearTimeout(timeoutId);
-  }, [customer.address, deliveryConfigured, addressSessionToken, selectedPlace]);
+  }, [customer.address, addressSessionToken, selectedPlace]);
 
   useEffect(() => {
     setDeliveryError("");
@@ -217,11 +223,13 @@ export default function PreorderForm({
     setSelectedPlace(null);
     setDeliveryQuote(null);
     setDeliveryError("");
+    setAddressLookupError("");
   };
 
   const handleSuggestionSelect = async (suggestion) => {
     setIsLoadingSuggestions(true);
     setDeliveryError("");
+    setAddressLookupError("");
 
     try {
       const response = await fetch("/api/preorder/address-place", {
@@ -247,7 +255,7 @@ export default function PreorderForm({
       setCustomer((prev) => ({ ...prev, address: data.place.formattedAddress }));
       setAddressSuggestions([]);
     } catch (selectionError) {
-      setDeliveryError(selectionError.message || "Could not verify that address.");
+      setAddressLookupError(selectionError.message || "Could not verify that address.");
     } finally {
       setIsLoadingSuggestions(false);
     }
@@ -479,6 +487,9 @@ export default function PreorderForm({
             )}
             {isLoadingSuggestions && customer.address.trim().length >= 3 && (
               <div className="mt-2 text-xs opacity-70">Looking up addresses...</div>
+            )}
+            {addressLookupError && (
+              <div className="mt-2 text-sm text-error">{addressLookupError}</div>
             )}
           </div>
           {selectedPlace?.formattedAddress && (
