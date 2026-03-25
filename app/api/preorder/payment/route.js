@@ -3,6 +3,8 @@ import connectMongo from "@/libs/mongoose";
 import Preorder from "@/models/Preorder";
 import {
   extractRazorpayPaymentResult,
+  getRazorpayPaymentVerificationError,
+  verifyRazorpayPaymentWithApi,
   verifyRazorpayPaymentSignature,
   verifySignedCheckoutToken,
 } from "@/libs/razorpay";
@@ -45,15 +47,35 @@ export async function PATCH(req) {
     const body = await req.json();
     const { orderId, paymentId, signature } = extractRazorpayPaymentResult(body);
     const checkoutToken = body.checkoutToken || "";
-
-    if (!verifyRazorpayPaymentSignature({ orderId, paymentId, signature })) {
-      return NextResponse.json({ error: "Payment signature verification failed." }, { status: 400 });
-    }
-
     const checkoutSession = verifySignedCheckoutToken(checkoutToken);
 
     if (!checkoutSession) {
       return NextResponse.json({ error: "This payment session has expired. Please try again." }, { status: 400 });
+    }
+
+    const hasValidSignature = verifyRazorpayPaymentSignature({ orderId, paymentId, signature });
+
+    if (!hasValidSignature) {
+      const paymentCheck = await verifyRazorpayPaymentWithApi({
+        orderId,
+        paymentId,
+        expectedAmount: checkoutSession.amount,
+        expectedCurrency: checkoutSession.currency,
+      });
+
+      if (!paymentCheck.ok) {
+        return NextResponse.json(
+          {
+            error: getRazorpayPaymentVerificationError({
+              orderId,
+              paymentId,
+              signature,
+              paymentCheck,
+            }),
+          },
+          { status: 400 }
+        );
+      }
     }
 
     if (

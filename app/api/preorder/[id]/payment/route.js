@@ -3,7 +3,9 @@ import connectMongo from "@/libs/mongoose";
 import {
   createRazorpayOrder,
   extractRazorpayPaymentResult,
+  getRazorpayPaymentVerificationError,
   getRazorpayPublicConfig,
+  verifyRazorpayPaymentWithApi,
   verifyRazorpayPaymentSignature,
 } from "@/libs/razorpay";
 import Preorder from "@/models/Preorder";
@@ -85,8 +87,29 @@ export async function PATCH(req, { params }) {
     const body = await req.json();
     const { orderId, paymentId, signature } = extractRazorpayPaymentResult(body);
 
-    if (!verifyRazorpayPaymentSignature({ orderId, paymentId, signature })) {
-      return NextResponse.json({ error: "Payment signature verification failed." }, { status: 400 });
+    const hasValidSignature = verifyRazorpayPaymentSignature({ orderId, paymentId, signature });
+
+    if (!hasValidSignature) {
+      const paymentCheck = await verifyRazorpayPaymentWithApi({
+        orderId,
+        paymentId,
+        expectedAmount: Math.round(Number(preorder.total || preorder.payment?.amount || 0) * 100),
+        expectedCurrency: preorder.currency,
+      });
+
+      if (!paymentCheck.ok) {
+        return NextResponse.json(
+          {
+            error: getRazorpayPaymentVerificationError({
+              orderId,
+              paymentId,
+              signature,
+              paymentCheck,
+            }),
+          },
+          { status: 400 }
+        );
+      }
     }
 
     if (preorder.payment?.orderId && preorder.payment.orderId !== orderId) {

@@ -156,6 +156,133 @@ export const createRazorpayOrder = async ({ amount, currency, receipt, notes = {
   return response.json();
 };
 
+export const fetchRazorpayPayment = async (paymentId = "") => {
+  const normalizedPaymentId = normalizeString(paymentId);
+
+  if (!isRazorpayConfigured() || !normalizedPaymentId) {
+    return null;
+  }
+
+  const authToken = Buffer.from(`${razorpayKeyId}:${razorpayKeySecret}`).toString("base64");
+  const response = await fetch(`https://api.razorpay.com/v1/payments/${normalizedPaymentId}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Basic ${authToken}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`Razorpay payment lookup failed: ${errorBody}`);
+  }
+
+  return response.json();
+};
+
+export const verifyRazorpayPaymentWithApi = async ({
+  orderId = "",
+  paymentId = "",
+  expectedAmount = null,
+  expectedCurrency = "",
+}) => {
+  const normalizedOrderId = normalizeString(orderId);
+  const normalizedPaymentId = normalizeString(paymentId);
+  const normalizedCurrency = normalizeString(expectedCurrency).toUpperCase();
+
+  if (!normalizedOrderId || !normalizedPaymentId) {
+    return { ok: false, reason: "missing_ids" };
+  }
+
+  let payment;
+
+  try {
+    payment = await fetchRazorpayPayment(normalizedPaymentId);
+  } catch (error) {
+    return {
+      ok: false,
+      reason: "api_lookup_failed",
+      message: error?.message || "Razorpay payment lookup failed.",
+    };
+  }
+
+  if (!payment) {
+    return { ok: false, reason: "missing_payment" };
+  }
+
+  const paymentOrderId = normalizeString(payment.order_id);
+  const paymentStatus = normalizeString(payment.status).toLowerCase();
+  const paymentCurrency = normalizeString(payment.currency).toUpperCase();
+  const paymentAmount = Number(payment.amount || 0);
+  const normalizedExpectedAmount =
+    expectedAmount === null || expectedAmount === undefined ? null : Number(expectedAmount);
+
+  if (paymentOrderId !== normalizedOrderId) {
+    return { ok: false, reason: "order_mismatch", payment };
+  }
+
+  if (!["authorized", "captured"].includes(paymentStatus)) {
+    return { ok: false, reason: "payment_not_successful", payment };
+  }
+
+  if (normalizedCurrency && paymentCurrency && paymentCurrency !== normalizedCurrency) {
+    return { ok: false, reason: "currency_mismatch", payment };
+  }
+
+  if (normalizedExpectedAmount !== null && paymentAmount !== normalizedExpectedAmount) {
+    return { ok: false, reason: "amount_mismatch", payment };
+  }
+
+  return { ok: true, payment };
+};
+
+export const getRazorpayPaymentVerificationError = ({
+  orderId = "",
+  paymentId = "",
+  signature = "",
+  paymentCheck = null,
+} = {}) => {
+  const normalizedOrderId = normalizeString(orderId);
+  const normalizedPaymentId = normalizeString(paymentId);
+  const normalizedSignature = normalizeString(signature);
+  const reason = paymentCheck?.reason || "signature_verification_failed";
+  const paymentStatus = normalizeString(paymentCheck?.payment?.status).toLowerCase();
+
+  if (!normalizedOrderId || !normalizedPaymentId) {
+    return "Payment verification failed because Razorpay did not return a valid order ID or payment ID.";
+  }
+
+  if (!normalizedSignature && reason === "signature_verification_failed") {
+    return "Payment verification failed because Razorpay did not return a payment signature.";
+  }
+
+  if (reason === "api_lookup_failed") {
+    return `Payment verification failed because Razorpay payment lookup did not succeed for payment ${normalizedPaymentId}.`;
+  }
+
+  if (reason === "missing_payment") {
+    return `Payment verification failed because payment ${normalizedPaymentId} could not be found in Razorpay.`;
+  }
+
+  if (reason === "order_mismatch") {
+    return `Payment verification failed because payment ${normalizedPaymentId} does not belong to order ${normalizedOrderId}.`;
+  }
+
+  if (reason === "amount_mismatch") {
+    return `Payment verification failed because Razorpay returned a different amount for payment ${normalizedPaymentId}.`;
+  }
+
+  if (reason === "currency_mismatch") {
+    return `Payment verification failed because Razorpay returned a different currency for payment ${normalizedPaymentId}.`;
+  }
+
+  if (reason === "payment_not_successful") {
+    return `Payment verification failed because Razorpay reports payment ${normalizedPaymentId} as ${paymentStatus || "not successful"}.`;
+  }
+
+  return `Payment verification failed for order ${normalizedOrderId} and payment ${normalizedPaymentId}.`;
+};
+
 export const verifyRazorpayWebhookSignature = (body, signature) => {
   const normalizedSignature = normalizeString(signature).toLowerCase();
 
