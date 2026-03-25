@@ -26,6 +26,9 @@ const formatItemSummary = (items = []) => {
     .join("\n");
 };
 
+const formatMoney = (currency = "INR", amount = 0) =>
+  `${currency} ${Number(amount || 0).toFixed(2)}`;
+
 export const sendPreorderConfirmationEmail = async ({ preorder }) => {
   if (!preorder?.email) {
     return { skipped: true };
@@ -37,6 +40,12 @@ export const sendPreorderConfirmationEmail = async ({ preorder }) => {
     ? `Hello ${preorder.customerName},`
     : "Hello,";
   const itemSummary = formatItemSummary(preorder.items);
+  const paymentBreakdown = [
+    "Amount paid:",
+    `Subtotal: ${formatMoney(preorder.currency, preorder.subtotal)}`,
+    `Delivery: ${formatMoney(preorder.currency, preorder.deliveryFee)}`,
+    `Total: ${formatMoney(preorder.currency, preorder.total || preorder.payment?.amount)}`,
+  ].join("\n");
   const content = [
     `${greeting}`,
     "",
@@ -44,7 +53,7 @@ export const sendPreorderConfirmationEmail = async ({ preorder }) => {
     "",
     `Delivery date: ${deliveryDate}`,
     itemSummary ? `Order details:\n${itemSummary}` : "",
-    itemSummary ? "" : "",
+    paymentBreakdown,
     `For any questions or clarifications, WhatsApp ${SUPPORT_PHONE}. We will get back to you within 24 hours.`,
   ].filter(Boolean).join("\n");
 
