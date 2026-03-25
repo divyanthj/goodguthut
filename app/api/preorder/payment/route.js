@@ -111,14 +111,19 @@ export async function PATCH(req) {
       })
     );
 
+    let emailDelivery = { status: "skipped" };
+
     try {
       await sendPreorderConfirmationEmail({ preorder });
+      emailDelivery = { status: "sent" };
     } catch (emailError) {
       console.error("Failed to send preorder confirmation email", emailError);
+      emailDelivery = { status: "failed" };
     }
 
     return NextResponse.json({
       preorder,
+      emailDelivery,
       confirmationMessage: "Payment received. Your preorder is confirmed.",
     });
   } catch (e) {

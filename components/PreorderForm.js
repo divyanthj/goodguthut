@@ -118,7 +118,6 @@ export default function PreorderForm({
 }) {
   const [customer, setCustomer] = useState(initialCustomer);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [successState, setSuccessState] = useState(null);
   const [deliveryQuote, setDeliveryQuote] = useState(null);
@@ -316,7 +315,6 @@ export default function PreorderForm({
 
   const onSubmit = async (e) => {
     e.preventDefault();
-    setMessage("");
     setError("");
 
     if (selectedItems.length === 0) {
@@ -402,16 +400,13 @@ export default function PreorderForm({
                 );
               }
 
-              setMessage(
-                verifyData.confirmationMessage ||
-                  "Payment received. Your preorder is confirmed."
-              );
               setSuccessState({
                 customerName: customer.customerName,
                 email: customer.email,
-                deliveryDate: verifyData?.preorder?.deliveryDate || "",
-                isPaid: true,
-              });
+        deliveryDate: verifyData?.preorder?.deliveryDate || "",
+        isPaid: true,
+        emailDeliveryStatus: verifyData?.emailDelivery?.status || "unknown",
+      });
               setCustomer(initialCustomer);
               setSelectedPlace(null);
               setAddressSuggestions([]);
@@ -440,15 +435,12 @@ export default function PreorderForm({
         return;
       }
 
-      setMessage(
-        data.confirmationMessage ||
-          "Preorder received. We will contact you on WhatsApp or by text to confirm your order before payment."
-      );
       setSuccessState({
         customerName: customer.customerName,
         email: customer.email,
         deliveryDate: data?.preorder?.deliveryDate || "",
         isPaid: false,
+        emailDeliveryStatus: "not_applicable",
       });
       setCustomer(initialCustomer);
       setSelectedPlace(null);
@@ -502,9 +494,13 @@ export default function PreorderForm({
               Receipt and support
             </div>
             <p className="mt-3 text-sm leading-7">
-              {successState.email
+              {successState.emailDeliveryStatus === "sent" && successState.email
                 ? `A receipt and confirmation have been sent to ${successState.email}.`
-                : "Your order is confirmed. If you want a receipt by email next time, add your email address during checkout."}
+                : successState.emailDeliveryStatus === "failed" && successState.email
+                  ? `Your order is confirmed, but we could not send the receipt email to ${successState.email} just yet.`
+                  : successState.email
+                    ? `Your order is confirmed for ${successState.email}.`
+                    : "Your order is confirmed. If you want a receipt by email next time, add your email address during checkout."}
             </p>
             <p className="mt-3 text-sm leading-7">
               Need anything before delivery? Call or WhatsApp <span className="font-semibold">{SUPPORT_PHONE}</span>.
@@ -701,12 +697,6 @@ export default function PreorderForm({
           </button>
           {selectedItems.length > 0 && <div className="badge badge-outline">{selectedItems.length} item(s) selected</div>}
         </div>
-
-        {message && (
-          <div className="alert alert-success">
-            <span>{message}</span>
-          </div>
-        )}
         {error && (
           <div className="alert alert-error">
             <span>{error}</span>
