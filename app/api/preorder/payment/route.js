@@ -45,7 +45,7 @@ export async function PATCH(req) {
     await connectMongo();
 
     const body = await req.json();
-    const { orderId, paymentId, signature } = extractRazorpayPaymentResult(body);
+    const { orderId: callbackOrderId, paymentId, signature } = extractRazorpayPaymentResult(body);
     const checkoutToken = body.checkoutToken || "";
     const checkoutSession = verifySignedCheckoutToken(checkoutToken);
 
@@ -53,21 +53,28 @@ export async function PATCH(req) {
       return NextResponse.json({ error: "This payment session has expired. Please try again." }, { status: 400 });
     }
 
-    const hasValidSignature = verifyRazorpayPaymentSignature({ orderId, paymentId, signature });
+    const hasValidSignature = verifyRazorpayPaymentSignature({
+      orderId: callbackOrderId || checkoutSession.razorpayOrderId || "",
+      paymentId,
+      signature,
+    });
+    let verifiedOrderId = callbackOrderId || checkoutSession.razorpayOrderId || "";
+    let paymentCheck = null;
 
     if (!hasValidSignature) {
-      const paymentCheck = await verifyRazorpayPaymentWithApi({
-        orderId,
+      paymentCheck = await verifyRazorpayPaymentWithApi({
+        orderId: callbackOrderId || checkoutSession.razorpayOrderId || "",
         paymentId,
         expectedAmount: checkoutSession.amount,
         expectedCurrency: checkoutSession.currency,
+        expectedPhone: checkoutSession.orderRequest?.phone || "",
       });
 
       if (!paymentCheck.ok) {
         return NextResponse.json(
           {
             error: getRazorpayPaymentVerificationError({
-              orderId,
+              orderId: callbackOrderId || checkoutSession.razorpayOrderId || "",
               paymentId,
               signature,
               paymentCheck,
@@ -76,16 +83,17 @@ export async function PATCH(req) {
           { status: 400 }
         );
       }
+
+      verifiedOrderId = paymentCheck.payment?.order_id || verifiedOrderId;
     }
 
-    if (
-      checkoutSession.razorpayOrderId !== orderId ||
-      Number(checkoutSession.amount || 0) <= 0
-    ) {
+    if (Number(checkoutSession.amount || 0) <= 0) {
       return NextResponse.json({ error: "Payment order does not match this checkout session." }, { status: 400 });
     }
 
-    const existingPreorder = await Preorder.findOne({ "payment.orderId": orderId });
+    const existingPreorder = await Preorder.findOne({
+      $or: [{ "payment.paymentId": paymentId }, { "payment.orderId": verifiedOrderId }],
+    });
 
     if (existingPreorder) {
       return NextResponse.json({
@@ -96,7 +104,7 @@ export async function PATCH(req) {
 
     const preorder = await Preorder.create(
       buildPreorderPayload(checkoutSession.orderRequest, {
-        orderId,
+        orderId: verifiedOrderId,
         paymentId,
         signature,
       })

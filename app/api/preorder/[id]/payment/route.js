@@ -35,6 +35,7 @@ export async function POST(_req, { params }) {
         preorderId: preorder.id,
         customerName: preorder.customerName,
         customerEmail: preorder.email || "",
+        customerPhone: preorder.phone || "",
       },
     });
 
@@ -85,23 +86,30 @@ export async function PATCH(req, { params }) {
     }
 
     const body = await req.json();
-    const { orderId, paymentId, signature } = extractRazorpayPaymentResult(body);
+    const { orderId: callbackOrderId, paymentId, signature } = extractRazorpayPaymentResult(body);
 
-    const hasValidSignature = verifyRazorpayPaymentSignature({ orderId, paymentId, signature });
+    const hasValidSignature = verifyRazorpayPaymentSignature({
+      orderId: callbackOrderId || preorder.payment?.orderId || "",
+      paymentId,
+      signature,
+    });
+    let verifiedOrderId = callbackOrderId || preorder.payment?.orderId || "";
+    let paymentCheck = null;
 
     if (!hasValidSignature) {
-      const paymentCheck = await verifyRazorpayPaymentWithApi({
-        orderId,
+      paymentCheck = await verifyRazorpayPaymentWithApi({
+        orderId: callbackOrderId || preorder.payment?.orderId || "",
         paymentId,
         expectedAmount: Math.round(Number(preorder.total || preorder.payment?.amount || 0) * 100),
         expectedCurrency: preorder.currency,
+        expectedPhone: preorder.phone || "",
       });
 
       if (!paymentCheck.ok) {
         return NextResponse.json(
           {
             error: getRazorpayPaymentVerificationError({
-              orderId,
+              orderId: callbackOrderId || preorder.payment?.orderId || "",
               paymentId,
               signature,
               paymentCheck,
@@ -110,10 +118,8 @@ export async function PATCH(req, { params }) {
           { status: 400 }
         );
       }
-    }
 
-    if (preorder.payment?.orderId && preorder.payment.orderId !== orderId) {
-      return NextResponse.json({ error: "Payment order does not match this preorder." }, { status: 400 });
+      verifiedOrderId = paymentCheck.payment?.order_id || verifiedOrderId;
     }
 
     preorder.status = "confirmed";
@@ -123,7 +129,7 @@ export async function PATCH(req, { params }) {
       status: "paid",
       amount: Number(preorder.total || preorder.payment?.amount || 0),
       currency: preorder.currency,
-      orderId,
+      orderId: verifiedOrderId,
       paymentId,
       signature,
       paidAt: new Date(),

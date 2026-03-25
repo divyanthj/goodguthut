@@ -65,6 +65,7 @@ export async function POST(req) {
         notes: {
           customerName: orderRequest.customerName,
           customerEmail: orderRequest.email || "",
+          customerPhone: orderRequest.phone || "",
         },
       });
 

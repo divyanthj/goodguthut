@@ -12,6 +12,8 @@ const normalizeString = (value = "") => {
   return String(value).trim();
 };
 
+const normalizePhoneNumber = (value = "") => normalizeString(value).replace(/\D/g, "");
+
 export const isRazorpayConfigured = () => {
   return Boolean(razorpayKeyId && razorpayKeySecret);
 };
@@ -185,13 +187,14 @@ export const verifyRazorpayPaymentWithApi = async ({
   paymentId = "",
   expectedAmount = null,
   expectedCurrency = "",
+  expectedPhone = "",
 }) => {
-  const normalizedOrderId = normalizeString(orderId);
   const normalizedPaymentId = normalizeString(paymentId);
   const normalizedCurrency = normalizeString(expectedCurrency).toUpperCase();
+  const normalizedExpectedPhone = normalizePhoneNumber(expectedPhone);
 
-  if (!normalizedOrderId || !normalizedPaymentId) {
-    return { ok: false, reason: "missing_ids" };
+  if (!normalizedPaymentId) {
+    return { ok: false, reason: "missing_payment_id" };
   }
 
   let payment;
@@ -214,12 +217,9 @@ export const verifyRazorpayPaymentWithApi = async ({
   const paymentStatus = normalizeString(payment.status).toLowerCase();
   const paymentCurrency = normalizeString(payment.currency).toUpperCase();
   const paymentAmount = Number(payment.amount || 0);
+  const paymentContact = normalizePhoneNumber(payment.contact);
   const normalizedExpectedAmount =
     expectedAmount === null || expectedAmount === undefined ? null : Number(expectedAmount);
-
-  if (paymentOrderId !== normalizedOrderId) {
-    return { ok: false, reason: "order_mismatch", payment };
-  }
 
   if (!["authorized", "captured"].includes(paymentStatus)) {
     return { ok: false, reason: "payment_not_successful", payment };
@@ -231,6 +231,19 @@ export const verifyRazorpayPaymentWithApi = async ({
 
   if (normalizedExpectedAmount !== null && paymentAmount !== normalizedExpectedAmount) {
     return { ok: false, reason: "amount_mismatch", payment };
+  }
+
+  if (
+    normalizedExpectedPhone &&
+    paymentContact &&
+    !paymentContact.endsWith(normalizedExpectedPhone) &&
+    !normalizedExpectedPhone.endsWith(paymentContact)
+  ) {
+    return { ok: false, reason: "phone_mismatch", payment };
+  }
+
+  if (orderId && paymentOrderId && paymentOrderId !== normalizeString(orderId)) {
+    return { ok: true, payment, warning: "order_mismatch_ignored" };
   }
 
   return { ok: true, payment };
@@ -247,9 +260,10 @@ export const getRazorpayPaymentVerificationError = ({
   const normalizedSignature = normalizeString(signature);
   const reason = paymentCheck?.reason || "signature_verification_failed";
   const paymentStatus = normalizeString(paymentCheck?.payment?.status).toLowerCase();
+  const paymentOrderId = normalizeString(paymentCheck?.payment?.order_id);
 
-  if (!normalizedOrderId || !normalizedPaymentId) {
-    return "Payment verification failed because Razorpay did not return a valid order ID or payment ID.";
+  if (!normalizedPaymentId) {
+    return "Payment verification failed because Razorpay did not return a valid payment ID.";
   }
 
   if (!normalizedSignature && reason === "signature_verification_failed") {
@@ -264,8 +278,8 @@ export const getRazorpayPaymentVerificationError = ({
     return `Payment verification failed because payment ${normalizedPaymentId} could not be found in Razorpay.`;
   }
 
-  if (reason === "order_mismatch") {
-    return `Payment verification failed because payment ${normalizedPaymentId} does not belong to order ${normalizedOrderId}.`;
+  if (reason === "missing_payment_id") {
+    return "Payment verification failed because Razorpay did not return a valid payment ID.";
   }
 
   if (reason === "amount_mismatch") {
@@ -276,11 +290,19 @@ export const getRazorpayPaymentVerificationError = ({
     return `Payment verification failed because Razorpay returned a different currency for payment ${normalizedPaymentId}.`;
   }
 
+  if (reason === "phone_mismatch") {
+    return `Payment verification failed because Razorpay returned a different phone number for payment ${normalizedPaymentId}.`;
+  }
+
   if (reason === "payment_not_successful") {
     return `Payment verification failed because Razorpay reports payment ${normalizedPaymentId} as ${paymentStatus || "not successful"}.`;
   }
 
-  return `Payment verification failed for order ${normalizedOrderId} and payment ${normalizedPaymentId}.`;
+  if (paymentOrderId) {
+    return `Payment verification failed for payment ${normalizedPaymentId}. Razorpay linked it to order ${paymentOrderId}.`;
+  }
+
+  return `Payment verification failed for payment ${normalizedPaymentId}.`;
 };
 
 export const verifyRazorpayWebhookSignature = (body, signature) => {

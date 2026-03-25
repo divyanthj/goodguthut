@@ -54,6 +54,46 @@ const buildFullAddress = (addressLine2, address) => {
   return `${unit}, ${baseAddress}`;
 };
 
+const serializeRazorpayPaymentResult = (paymentResult = {}) => {
+  const rawPaymentResult =
+    paymentResult && typeof paymentResult === "object" ? paymentResult : {};
+
+  return {
+    razorpay_order_id:
+      rawPaymentResult.razorpay_order_id ||
+      rawPaymentResult.orderId ||
+      rawPaymentResult.order_id ||
+      "",
+    razorpay_payment_id:
+      rawPaymentResult.razorpay_payment_id ||
+      rawPaymentResult.paymentId ||
+      rawPaymentResult.payment_id ||
+      "",
+    razorpay_signature:
+      rawPaymentResult.razorpay_signature ||
+      rawPaymentResult.signature ||
+      rawPaymentResult.paymentSignature ||
+      "",
+    paymentResult: {
+      razorpay_order_id:
+        rawPaymentResult.razorpay_order_id ||
+        rawPaymentResult.orderId ||
+        rawPaymentResult.order_id ||
+        "",
+      razorpay_payment_id:
+        rawPaymentResult.razorpay_payment_id ||
+        rawPaymentResult.paymentId ||
+        rawPaymentResult.payment_id ||
+        "",
+      razorpay_signature:
+        rawPaymentResult.razorpay_signature ||
+        rawPaymentResult.signature ||
+        rawPaymentResult.paymentSignature ||
+        "",
+    },
+  };
+};
+
 export default function PreorderForm({
   selectedItems,
   preorderWindowId,
@@ -326,13 +366,14 @@ export default function PreorderForm({
           ...data.razorpay,
           handler: async (paymentResult) => {
             try {
+              const serializedPaymentResult = serializeRazorpayPaymentResult(paymentResult);
               const verifyResponse = await fetch("/api/preorder/payment", {
                 method: "PATCH",
                 headers: {
                   "Content-Type": "application/json",
                 },
                 body: JSON.stringify({
-                  ...paymentResult,
+                  ...serializedPaymentResult,
                   checkoutToken: data.checkoutToken,
                 }),
               });
