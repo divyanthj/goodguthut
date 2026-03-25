@@ -13,6 +13,15 @@ const normalizeString = (value = "") => {
 };
 
 const normalizePhoneNumber = (value = "") => normalizeString(value).replace(/\D/g, "");
+const getComparablePhoneNumber = (value = "") => {
+  const digits = normalizePhoneNumber(value);
+
+  if (digits.length <= 10) {
+    return digits;
+  }
+
+  return digits.slice(-10);
+};
 
 export const isRazorpayConfigured = () => {
   return Boolean(razorpayKeyId && razorpayKeySecret);
@@ -191,7 +200,7 @@ export const verifyRazorpayPaymentWithApi = async ({
 }) => {
   const normalizedPaymentId = normalizeString(paymentId);
   const normalizedCurrency = normalizeString(expectedCurrency).toUpperCase();
-  const normalizedExpectedPhone = normalizePhoneNumber(expectedPhone);
+  const normalizedExpectedPhone = getComparablePhoneNumber(expectedPhone);
 
   if (!normalizedPaymentId) {
     return { ok: false, reason: "missing_payment_id" };
@@ -217,7 +226,7 @@ export const verifyRazorpayPaymentWithApi = async ({
   const paymentStatus = normalizeString(payment.status).toLowerCase();
   const paymentCurrency = normalizeString(payment.currency).toUpperCase();
   const paymentAmount = Number(payment.amount || 0);
-  const paymentContact = normalizePhoneNumber(payment.contact);
+  const paymentContact = getComparablePhoneNumber(payment.contact);
   const normalizedExpectedAmount =
     expectedAmount === null || expectedAmount === undefined ? null : Number(expectedAmount);
 
@@ -236,8 +245,7 @@ export const verifyRazorpayPaymentWithApi = async ({
   if (
     normalizedExpectedPhone &&
     paymentContact &&
-    !paymentContact.endsWith(normalizedExpectedPhone) &&
-    !normalizedExpectedPhone.endsWith(paymentContact)
+    paymentContact !== normalizedExpectedPhone
   ) {
     return { ok: false, reason: "phone_mismatch", payment };
   }
