@@ -51,13 +51,15 @@ export default function Page() {
   useEffect(() => {
     let isMounted = true;
 
-    const loadWindow = async () => {
+    const loadWindow = async ({ showLoading = true } = {}) => {
       if (isMounted) {
-        setIsLoadingWindow(true);
+        setIsLoadingWindow(showLoading);
       }
 
       try {
-        const response = await fetch("/api/preorder/window");
+        const response = await fetch("/api/preorder/window", {
+          cache: "no-store",
+        });
         const data = await response.json();
 
         if (!isMounted) {
@@ -95,10 +97,26 @@ export default function Page() {
       }
     };
 
+    const refreshWindow = () => {
+      loadWindow({ showLoading: false });
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        refreshWindow();
+      }
+    };
+
     loadWindow();
+    const intervalId = window.setInterval(refreshWindow, 30000);
+    window.addEventListener("focus", refreshWindow);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
       isMounted = false;
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refreshWindow);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, []);
 
