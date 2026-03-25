@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRazorpayCheckout } from "@/components/RazorpayCheckout";
 
 const initialCustomer = {
@@ -128,6 +128,7 @@ export default function PreorderForm({
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
   const [selectedPlace, setSelectedPlace] = useState(null);
   const [addressSessionToken, setAddressSessionToken] = useState(() => createSessionToken());
+  const isCompletingPaymentRef = useRef(false);
   const loadRazorpay = useRazorpayCheckout();
 
   const totalQuantity = useMemo(
@@ -164,6 +165,13 @@ export default function PreorderForm({
       !isSubmitting &&
       !isBlockedByDelivery
   );
+
+  useEffect(() => {
+    if (successState) {
+      setIsSubmitting(false);
+      isCompletingPaymentRef.current = false;
+    }
+  }, [successState]);
 
   useEffect(() => {
     const input = customer.address.trim();
@@ -376,6 +384,7 @@ export default function PreorderForm({
         const checkout = new Razorpay({
           ...data.razorpay,
           handler: async (paymentResult) => {
+            isCompletingPaymentRef.current = true;
             try {
               const serializedPaymentResult = serializeRazorpayPaymentResult(paymentResult);
               const verifyResponse = await fetch("/api/preorder/payment", {
@@ -415,16 +424,20 @@ export default function PreorderForm({
               setDeliveryError("");
               onOrderPlaced?.();
             } catch (verificationError) {
+              isCompletingPaymentRef.current = false;
+              setIsSubmitting(false);
               setError(
                 verificationError.message ||
                   "Payment was captured, but confirmation has not synced yet."
               );
-            } finally {
-              setIsSubmitting(false);
             }
           },
           modal: {
             ondismiss: () => {
+              if (isCompletingPaymentRef.current) {
+                return;
+              }
+
               setError("Payment was not completed, so the preorder was not created.");
               setIsSubmitting(false);
             },

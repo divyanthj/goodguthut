@@ -15,6 +15,7 @@ export const emailTemplate = ({
   title = config.appName,
   subtitle = config.appDescription,
   content = "",
+  contentHtml = "",
   logoUrl = `https://${config.domainName}/icon.png`,
   footer = `Need help? Call or WhatsApp +919916331569 or email ${config.mailgun.supportEmail}.`,
 }) => `<!DOCTYPE html>
@@ -87,6 +88,45 @@ export const emailTemplate = ({
         line-height: 1.8;
         color: #42584d;
       }
+      .section-title {
+        margin: 28px 0 10px;
+        font-size: 20px;
+        line-height: 1.3;
+        color: #2f4a3e;
+      }
+      .summary-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 8px;
+      }
+      .summary-table td {
+        padding: 8px 0;
+        border-bottom: 1px solid #eadfcd;
+        font-size: 15px;
+        line-height: 1.6;
+        color: #42584d;
+      }
+      .summary-table td:last-child {
+        text-align: right;
+        font-weight: 600;
+      }
+      .summary-total td {
+        font-size: 18px;
+        font-weight: 700;
+        color: #2f4a3e;
+        border-bottom: 0;
+        padding-top: 14px;
+      }
+      .item-list {
+        margin: 10px 0 0;
+        padding-left: 20px;
+      }
+      .item-list li {
+        margin: 0 0 10px;
+      }
+      .meta-line {
+        margin: 0 0 10px;
+      }
       .footer {
         padding: 0 32px 30px;
         font-family: Arial, sans-serif;
@@ -110,7 +150,7 @@ export const emailTemplate = ({
               </td>
             </tr>
             <tr>
-              <td class="content">${formatContent(content)}</td>
+              <td class="content">${contentHtml || formatContent(content)}</td>
             </tr>
             <tr>
               <td class="footer">${escapeHtml(footer)}</td>
