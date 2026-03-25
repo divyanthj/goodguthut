@@ -7,7 +7,7 @@ const getFromEmail = () => {
     return process.env.RESEND_FROM_EMAIL;
   }
 
-  return config.resend.fromAdmin;
+  return "Good Gut Hut <noreply@resend.goodguthut.com>";
 };
 
 export const sendResendEmail = async ({ to, subject, html, text, replyTo }) => {

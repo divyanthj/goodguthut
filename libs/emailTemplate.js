@@ -15,6 +15,7 @@ export const emailTemplate = ({
   title = config.appName,
   subtitle = config.appDescription,
   content = "",
+  logoUrl = `https://${config.domainName}/icon.png`,
   footer = `Need help? Call or WhatsApp +919916331569 or email ${config.mailgun.supportEmail}.`,
 }) => `<!DOCTYPE html>
 <html lang="en">
@@ -48,6 +49,14 @@ export const emailTemplate = ({
         background: linear-gradient(135deg, #2f4a3e 0%, #406351 100%);
         color: #f8f3e7;
         text-align: center;
+      }
+      .logo {
+        display: block;
+        width: 72px;
+        height: 72px;
+        margin: 0 auto 16px;
+        border-radius: 18px;
+        background: rgba(255, 253, 248, 0.12);
       }
       .eyebrow {
         margin: 0 0 12px;
@@ -94,6 +103,7 @@ export const emailTemplate = ({
           <table role="presentation" width="100%" cellspacing="0" cellpadding="0" class="card">
             <tr>
               <td class="hero">
+                <img src="${escapeHtml(logoUrl)}" alt="${escapeHtml(config.appName)}" class="logo" width="72" height="72" />
                 <p class="eyebrow">${escapeHtml(eyebrow)}</p>
                 <h1 class="title">${escapeHtml(title)}</h1>
                 <p class="subtitle">${escapeHtml(subtitle)}</p>
