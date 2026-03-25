@@ -28,8 +28,7 @@ const formatItemSummary = (items = []) => {
     .map((item) => {
       const quantity = Number(item.quantity || 0);
       const label = item.productName || item.name || item.sku || "Item";
-      const unitLabel = quantity === 1 ? "unit" : "units";
-      return `${quantity} ${unitLabel} of ${label}`;
+      return `${label} x ${quantity}`;
     })
     .join("\n");
 };
@@ -40,8 +39,7 @@ const formatItemSummaryHtml = (items = []) =>
     .map((item) => {
       const quantity = Number(item.quantity || 0);
       const label = escapeHtml(item.productName || item.name || item.sku || "Item");
-      const unitLabel = quantity === 1 ? "unit" : "units";
-      return `<li>${quantity} ${unitLabel} of ${label}</li>`;
+      return `<li>${label} <span aria-hidden="true">&times;</span> ${quantity}</li>`;
     })
     .join("");
 
