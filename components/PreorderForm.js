@@ -12,6 +12,7 @@ const initialCustomer = {
 };
 
 const MAX_QTY = 10;
+const SUPPORT_PHONE = "+919916331569";
 
 const createSessionToken = () => {
   if (typeof crypto !== "undefined" && crypto.randomUUID) {
@@ -52,6 +53,17 @@ const buildFullAddress = (addressLine2, address) => {
   }
 
   return `${unit}, ${baseAddress}`;
+};
+
+const formatDeliveryDate = (value) => {
+  if (!value) {
+    return "";
+  }
+
+  return new Date(value).toLocaleString("en-IN", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
 };
 
 const serializeRazorpayPaymentResult = (paymentResult = {}) => {
@@ -108,6 +120,7 @@ export default function PreorderForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [successState, setSuccessState] = useState(null);
   const [deliveryQuote, setDeliveryQuote] = useState(null);
   const [isQuotingDelivery, setIsQuotingDelivery] = useState(false);
   const [deliveryError, setDeliveryError] = useState("");
@@ -393,6 +406,12 @@ export default function PreorderForm({
                 verifyData.confirmationMessage ||
                   "Payment received. Your preorder is confirmed."
               );
+              setSuccessState({
+                customerName: customer.customerName,
+                email: customer.email,
+                deliveryDate: verifyData?.preorder?.deliveryDate || "",
+                isPaid: true,
+              });
               setCustomer(initialCustomer);
               setSelectedPlace(null);
               setAddressSuggestions([]);
@@ -425,6 +444,12 @@ export default function PreorderForm({
         data.confirmationMessage ||
           "Preorder received. We will contact you on WhatsApp or by text to confirm your order before payment."
       );
+      setSuccessState({
+        customerName: customer.customerName,
+        email: customer.email,
+        deliveryDate: data?.preorder?.deliveryDate || "",
+        isPaid: false,
+      });
       setCustomer(initialCustomer);
       setSelectedPlace(null);
       setAddressSuggestions([]);
@@ -438,6 +463,57 @@ export default function PreorderForm({
       setIsSubmitting(false);
     }
   };
+
+  if (successState) {
+    return (
+      <section className="card mt-6 overflow-hidden border border-[#d8cdbb] bg-[#fbf7f0]/96 shadow-xl">
+        <div className="bg-gradient-to-br from-[#2f4a3e] via-[#3b5b4a] to-[#567764] px-6 py-10 text-[#f7f1e6] md:px-10">
+          <div className="text-xs font-semibold uppercase tracking-[0.28em] text-[#d8ccb8]">
+            Preorder confirmed
+          </div>
+          <h3 className="mt-3 text-3xl font-semibold md:text-4xl">
+            Thank you for your preorder
+          </h3>
+          <p className="mt-4 max-w-2xl text-sm leading-7 text-[#efe6d8] md:text-base">
+            {successState.customerName
+              ? `${successState.customerName}, your Good Gut Hut order is in and confirmed.`
+              : "Your Good Gut Hut order is in and confirmed."}{" "}
+            We&apos;ll prepare your batch with care and keep things smooth from here.
+          </p>
+        </div>
+        <div className="grid gap-4 px-6 py-6 md:grid-cols-2 md:px-10">
+          <div className="rounded-2xl border border-[#dfd1be] bg-[#fffdf8] p-5 text-[#365244] shadow-sm">
+            <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[#6b7d74]">
+              What happens next
+            </div>
+            <p className="mt-3 text-sm leading-7">
+              {successState.isPaid
+                ? "Your payment has been received and your preorder has been locked in."
+                : "Your preorder is received and we&apos;ll contact you shortly to confirm payment and delivery."}
+            </p>
+            {successState.deliveryDate && (
+              <p className="mt-3 text-sm leading-7">
+                Delivery date: <span className="font-semibold">{formatDeliveryDate(successState.deliveryDate)}</span>
+              </p>
+            )}
+          </div>
+          <div className="rounded-2xl border border-[#dfd1be] bg-[#f7f1e6] p-5 text-[#365244] shadow-sm">
+            <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[#6b7d74]">
+              Receipt and support
+            </div>
+            <p className="mt-3 text-sm leading-7">
+              {successState.email
+                ? `A receipt and confirmation have been sent to ${successState.email}.`
+                : "Your order is confirmed. If you want a receipt by email next time, add your email address during checkout."}
+            </p>
+            <p className="mt-3 text-sm leading-7">
+              Need anything before delivery? Call or WhatsApp <span className="font-semibold">{SUPPORT_PHONE}</span>.
+            </p>
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <form onSubmit={onSubmit} className="card mt-6 bg-base-100 shadow-xl">

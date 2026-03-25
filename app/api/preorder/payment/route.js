@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { sendPreorderConfirmationEmail } from "@/libs/emailSender";
 import connectMongo from "@/libs/mongoose";
 import Preorder from "@/models/Preorder";
 import {
@@ -109,6 +110,12 @@ export async function PATCH(req) {
         signature,
       })
     );
+
+    try {
+      await sendPreorderConfirmationEmail({ preorder });
+    } catch (emailError) {
+      console.error("Failed to send preorder confirmation email", emailError);
+    }
 
     return NextResponse.json({
       preorder,

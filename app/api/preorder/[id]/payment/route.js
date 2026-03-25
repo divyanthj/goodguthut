@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { sendPreorderConfirmationEmail } from "@/libs/emailSender";
 import connectMongo from "@/libs/mongoose";
 import {
   createRazorpayOrder,
@@ -85,6 +86,8 @@ export async function PATCH(req, { params }) {
       return NextResponse.json({ error: "Preorder not found" }, { status: 404 });
     }
 
+    const wasAlreadyPaid = preorder.payment?.status === "paid";
+
     const body = await req.json();
     const { orderId: callbackOrderId, paymentId, signature } = extractRazorpayPaymentResult(body);
 
@@ -135,6 +138,14 @@ export async function PATCH(req, { params }) {
       paidAt: new Date(),
     };
     await preorder.save();
+
+    if (!wasAlreadyPaid) {
+      try {
+        await sendPreorderConfirmationEmail({ preorder });
+      } catch (emailError) {
+        console.error("Failed to send preorder confirmation email", emailError);
+      }
+    }
 
     return NextResponse.json({
       preorder,
