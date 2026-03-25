@@ -1,8 +1,16 @@
 import crypto from "crypto";
 
-const razorpayKeyId = process.env.RAZORPAY_KEY_ID || "";
-const razorpayKeySecret = process.env.RAZORPAY_KEY_SECRET || "";
-const razorpayWebhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET || "";
+const razorpayKeyId = (process.env.RAZORPAY_KEY_ID || "").trim();
+const razorpayKeySecret = (process.env.RAZORPAY_KEY_SECRET || "").trim();
+const razorpayWebhookSecret = (process.env.RAZORPAY_WEBHOOK_SECRET || "").trim();
+
+const normalizeString = (value = "") => {
+  if (value === null || value === undefined) {
+    return "";
+  }
+
+  return String(value).trim();
+};
 
 export const isRazorpayConfigured = () => {
   return Boolean(razorpayKeyId && razorpayKeySecret);
@@ -68,23 +76,55 @@ export const verifyRazorpayPaymentSignature = ({
   paymentId = "",
   signature = "",
 }) => {
-  if (!razorpayKeySecret || !orderId || !paymentId || !signature) {
+  const normalizedOrderId = normalizeString(orderId);
+  const normalizedPaymentId = normalizeString(paymentId);
+  const normalizedSignature = normalizeString(signature).toLowerCase();
+
+  if (!razorpayKeySecret || !normalizedOrderId || !normalizedPaymentId || !normalizedSignature) {
     return false;
   }
 
   const expectedSignature = crypto
     .createHmac("sha256", razorpayKeySecret)
-    .update(`${orderId}|${paymentId}`)
+    .update(`${normalizedOrderId}|${normalizedPaymentId}`)
     .digest("hex");
 
   const expectedBuffer = Buffer.from(expectedSignature);
-  const actualBuffer = Buffer.from(signature);
+  const actualBuffer = Buffer.from(normalizedSignature);
 
   if (expectedBuffer.length !== actualBuffer.length) {
     return false;
   }
 
   return crypto.timingSafeEqual(expectedBuffer, actualBuffer);
+};
+
+export const extractRazorpayPaymentResult = (body = {}) => {
+  const payload = body?.paymentResult && typeof body.paymentResult === "object"
+    ? body.paymentResult
+    : body?.response && typeof body.response === "object"
+      ? body.response
+      : body;
+
+  return {
+    orderId: normalizeString(
+      payload?.razorpay_order_id ||
+        payload?.orderId ||
+        payload?.order_id ||
+        payload?.order?.id
+    ),
+    paymentId: normalizeString(
+      payload?.razorpay_payment_id ||
+        payload?.paymentId ||
+        payload?.payment_id ||
+        payload?.payment?.id
+    ),
+    signature: normalizeString(
+      payload?.razorpay_signature ||
+        payload?.signature ||
+        payload?.paymentSignature
+    ),
+  };
 };
 
 export const createRazorpayOrder = async ({ amount, currency, receipt, notes = {} }) => {
@@ -117,7 +157,9 @@ export const createRazorpayOrder = async ({ amount, currency, receipt, notes = {
 };
 
 export const verifyRazorpayWebhookSignature = (body, signature) => {
-  if (!razorpayWebhookSecret || !signature) {
+  const normalizedSignature = normalizeString(signature).toLowerCase();
+
+  if (!razorpayWebhookSecret || !normalizedSignature) {
     return false;
   }
 
@@ -127,7 +169,7 @@ export const verifyRazorpayWebhookSignature = (body, signature) => {
     .digest("hex");
 
   const expectedBuffer = Buffer.from(expectedSignature);
-  const actualBuffer = Buffer.from(signature);
+  const actualBuffer = Buffer.from(normalizedSignature);
 
   if (expectedBuffer.length !== actualBuffer.length) {
     return false;

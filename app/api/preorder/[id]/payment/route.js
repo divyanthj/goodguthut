@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import connectMongo from "@/libs/mongoose";
 import {
   createRazorpayOrder,
+  extractRazorpayPaymentResult,
   getRazorpayPublicConfig,
   verifyRazorpayPaymentSignature,
 } from "@/libs/razorpay";
@@ -82,9 +83,7 @@ export async function PATCH(req, { params }) {
     }
 
     const body = await req.json();
-    const orderId = body.razorpay_order_id || "";
-    const paymentId = body.razorpay_payment_id || "";
-    const signature = body.razorpay_signature || "";
+    const { orderId, paymentId, signature } = extractRazorpayPaymentResult(body);
 
     if (!verifyRazorpayPaymentSignature({ orderId, paymentId, signature })) {
       return NextResponse.json({ error: "Payment signature verification failed." }, { status: 400 });

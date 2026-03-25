@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import connectMongo from "@/libs/mongoose";
 import Preorder from "@/models/Preorder";
-import { verifyRazorpayPaymentSignature, verifySignedCheckoutToken } from "@/libs/razorpay";
+import {
+  extractRazorpayPaymentResult,
+  verifyRazorpayPaymentSignature,
+  verifySignedCheckoutToken,
+} from "@/libs/razorpay";
 
 const buildPreorderPayload = (orderRequest, paymentResult) => ({
   customerName: orderRequest.customerName,
@@ -39,9 +43,7 @@ export async function PATCH(req) {
     await connectMongo();
 
     const body = await req.json();
-    const orderId = body.razorpay_order_id || "";
-    const paymentId = body.razorpay_payment_id || "";
-    const signature = body.razorpay_signature || "";
+    const { orderId, paymentId, signature } = extractRazorpayPaymentResult(body);
     const checkoutToken = body.checkoutToken || "";
 
     if (!verifyRazorpayPaymentSignature({ orderId, paymentId, signature })) {
