@@ -21,6 +21,16 @@ const formatDate = (value) => {
   });
 };
 
+const formatDateOnly = (value) => {
+  if (!value) {
+    return "-";
+  }
+
+  return new Date(value).toLocaleDateString("en-IN", {
+    dateStyle: "medium",
+  });
+};
+
 const getPaymentBadgeLabel = (preorder) => {
   if (preorder.payment?.provider === "razorpay") {
     return preorder.payment?.status === "paid" ? "payment: paid via Razorpay" : "payment: Razorpay";
@@ -37,24 +47,44 @@ const toDateTimeLocal = (value) => {
 
 const getConfirmationLabel = (preorder) => {
   if (preorder.payment?.provider === "razorpay") {
-    return preorder.status === "fulfilled" ? "Paid and delivered" : "Paid and confirmed";
+    if (preorder.status === "fulfilled") {
+      return "Paid and delivered";
+    }
+
+    if (preorder.status === "shipped") {
+      return "Paid and shipped";
+    }
+
+    return "Paid and confirmed";
   }
 
-  return preorder.status === "confirmed" || preorder.status === "fulfilled"
-    ? "Confirmed"
-    : "Awaiting contact";
+  if (preorder.status === "fulfilled") {
+    return "Delivered";
+  }
+
+  if (preorder.status === "shipped") {
+    return "Shipped";
+  }
+
+  return preorder.status === "confirmed" ? "Confirmed" : "Awaiting contact";
 };
 
 export default function AdminPreordersList({ initialPreorders }) {
   const [preorders, setPreorders] = useState(initialPreorders);
   const [savingId, setSavingId] = useState("");
   const [deletingId, setDeletingId] = useState("");
+  const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const confirmedProductionSummary = useMemo(() => {
     const batches = new Map();
 
     preorders
-      .filter((preorder) => preorder.status === "confirmed" || preorder.status === "fulfilled")
+      .filter(
+        (preorder) =>
+          preorder.status === "confirmed" ||
+          preorder.status === "shipped" ||
+          preorder.status === "fulfilled"
+      )
       .forEach((preorder) => {
         const batchKey = preorder.preorderWindow || preorder.preorderWindowLabel || "unassigned";
         const existingBatch = batches.get(batchKey) || {
@@ -93,6 +123,7 @@ export default function AdminPreordersList({ initialPreorders }) {
 
   const updateStatus = async (preorderId, status) => {
     setSavingId(preorderId);
+    setMessage("");
     setError("");
 
     try {
@@ -124,6 +155,7 @@ export default function AdminPreordersList({ initialPreorders }) {
 
   const markDelivered = async (preorderId, deliveredAt) => {
     setSavingId(preorderId);
+    setMessage("");
     setError("");
 
     try {
@@ -161,6 +193,7 @@ export default function AdminPreordersList({ initialPreorders }) {
     }
 
     setDeletingId(preorderId);
+    setMessage("");
     setError("");
 
     try {
@@ -181,6 +214,53 @@ export default function AdminPreordersList({ initialPreorders }) {
     }
   };
 
+  const markShipped = async (preorderId, trackingLink) => {
+    setSavingId(preorderId);
+    setMessage("");
+    setError("");
+
+    try {
+      const response = await fetch(`/api/admin/preorders/${preorderId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          markShipped: true,
+          trackingLink,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Could not update preorder.");
+      }
+
+      setPreorders((current) =>
+        current.map((preorder) =>
+          preorder.id === preorderId ? data.preorder : preorder
+        )
+      );
+      const shipmentSummary = trackingLink?.trim()
+        ? "Order marked as shipped and tracking link saved."
+        : "Order marked as shipped and ETA set for 1 hour from shipment.";
+      const emailSummary =
+        data.emailDelivery?.status === "sent"
+          ? " Shipped email sent."
+          : data.emailDelivery?.status === "skipped"
+            ? " No shipped email was sent because this preorder has no customer email."
+            : " Shipped email could not be sent.";
+      setMessage(
+        `${shipmentSummary}${emailSummary}`
+      );
+    } catch (updateError) {
+      setError(updateError.message || "Could not update preorder.");
+    } finally {
+      setSavingId("");
+    }
+  };
+
   if (preorders.length === 0) {
     return (
       <div className="rounded-2xl bg-base-100 p-8 shadow-md">
@@ -198,13 +278,19 @@ export default function AdminPreordersList({ initialPreorders }) {
         </div>
       )}
 
+      {message && (
+        <div className="alert alert-success">
+          <span>{message}</span>
+        </div>
+      )}
+
       {confirmedProductionSummary.length > 0 && (
         <section className="rounded-2xl bg-base-100 p-5 shadow-md">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold">Confirmed production summary</h2>
               <p className="text-sm opacity-70">
-                Bottle counts are based only on confirmed and fulfilled preorders. Each quantity equals one 200 ml bottle.
+                Bottle counts are based on confirmed, shipped, and fulfilled preorders. Each quantity equals one 200 ml bottle.
               </p>
             </div>
             <div className="badge badge-outline">
@@ -218,7 +304,7 @@ export default function AdminPreordersList({ initialPreorders }) {
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <div className="font-semibold">{batch.batchLabel}</div>
-                    <div className="text-sm opacity-70">Delivery: {formatDate(batch.deliveryDate)}</div>
+                    <div className="text-sm opacity-70">Delivery: {formatDateOnly(batch.deliveryDate)}</div>
                   </div>
                   <div className="text-right text-sm">
                     <div>{batch.confirmedOrderCount} confirmed order(s)</div>
@@ -327,11 +413,15 @@ export default function AdminPreordersList({ initialPreorders }) {
                   </div>
                   <div>
                     <div className="text-xs uppercase tracking-[0.16em] opacity-60">Delivery date</div>
-                    <div className="mt-1">{formatDate(preorder.deliveryDate)}</div>
+                    <div className="mt-1">{formatDateOnly(preorder.deliveryDate)}</div>
                   </div>
                   <div>
                     <div className="text-xs uppercase tracking-[0.16em] opacity-60">Delivered at</div>
                     <div className="mt-1">{formatDate(preorder.deliveredAt)}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase tracking-[0.16em] opacity-60">Shipped at</div>
+                    <div className="mt-1">{formatDate(preorder.shipment?.shippedAt)}</div>
                   </div>
                   <div>
                     <div className="text-xs uppercase tracking-[0.16em] opacity-60">Confirmation</div>
@@ -361,6 +451,25 @@ export default function AdminPreordersList({ initialPreorders }) {
                     <div className="text-xs uppercase tracking-[0.16em] opacity-60">Total</div>
                     <div className="mt-1 font-medium">{formatCurrency(preorder.currency, preorder.total || preorder.subtotal)}</div>
                   </div>
+                  <div className="sm:col-span-2">
+                    <div className="text-xs uppercase tracking-[0.16em] opacity-60">Tracking</div>
+                    <div className="mt-1 break-all">
+                      {preorder.shipment?.trackingLink ? (
+                        <a
+                          className="link link-primary"
+                          href={preorder.shipment.trackingLink}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {preorder.shipment.trackingLink}
+                        </a>
+                      ) : preorder.shipment?.estimatedArrivalAt ? (
+                        `Estimated arrival around ${formatDate(preorder.shipment.estimatedArrivalAt)}`
+                      ) : (
+                        "-"
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -383,6 +492,33 @@ export default function AdminPreordersList({ initialPreorders }) {
 
           <div className="mt-4 rounded-xl bg-base-200 p-4">
             <div className="flex flex-wrap items-end gap-3">
+              <label className="form-control min-w-[280px] flex-1">
+                <div className="label py-0">
+                  <span className="label-text">Tracking link (optional)</span>
+                </div>
+                <input
+                  type="url"
+                  className="input input-bordered"
+                  defaultValue={preorder.shipment?.trackingLink || ""}
+                  id={`tracking-link-${preorder.id}`}
+                  placeholder="https://..."
+                />
+              </label>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                disabled={
+                  savingId === preorder.id ||
+                  deletingId === preorder.id ||
+                  preorder.status !== "confirmed"
+                }
+                onClick={() => {
+                  const element = document.getElementById(`tracking-link-${preorder.id}`);
+                  markShipped(preorder.id, element?.value || "");
+                }}
+              >
+                {savingId === preorder.id ? "Saving..." : "Mark as shipped"}
+              </button>
               <label className="form-control">
                 <div className="label py-0">
                   <span className="label-text">Delivered at</span>
@@ -400,7 +536,9 @@ export default function AdminPreordersList({ initialPreorders }) {
                 disabled={
                   savingId === preorder.id ||
                   deletingId === preorder.id ||
-                  (preorder.status !== "confirmed" && preorder.status !== "fulfilled")
+                  (preorder.status !== "confirmed" &&
+                    preorder.status !== "shipped" &&
+                    preorder.status !== "fulfilled")
                 }
                 onClick={() => {
                   const element = document.getElementById(`delivered-at-${preorder.id}`);

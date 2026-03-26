@@ -38,7 +38,10 @@ export async function POST(req) {
     switch (event.event) {
       case "payment.captured":
       case "order.paid": {
-        preorder.status = preorder.status === "fulfilled" ? "fulfilled" : "confirmed";
+        preorder.status =
+          preorder.status === "fulfilled" || preorder.status === "shipped"
+            ? preorder.status
+            : "confirmed";
         preorder.payment = {
           ...(preorder.payment?.toObject?.() || preorder.payment || {}),
           provider: "razorpay",

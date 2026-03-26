@@ -125,7 +125,10 @@ export async function PATCH(req, { params }) {
       verifiedOrderId = paymentCheck.payment?.order_id || verifiedOrderId;
     }
 
-    preorder.status = "confirmed";
+    preorder.status =
+      preorder.status === "fulfilled" || preorder.status === "shipped"
+        ? preorder.status
+        : "confirmed";
     preorder.payment = {
       ...(preorder.payment?.toObject?.() || preorder.payment || {}),
       provider: "razorpay",

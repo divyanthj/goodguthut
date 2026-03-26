@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import connectMongo from "@/libs/mongoose";
 import { getAdminSessionState } from "@/libs/admin-auth";
 import Preorder from "@/models/Preorder";
+import {
+  preparePreorderShippedNotifications,
+  sendPreorderShippedEmail,
+} from "@/libs/shipment-notifications";
 
 export async function PATCH(req, { params }) {
   const { session, isAdmin } = await getAdminSessionState();
@@ -20,8 +24,47 @@ export async function PATCH(req, { params }) {
     const body = await req.json();
     const nextStatus = body.status;
 
+    if (body.markShipped) {
+      const preorder = await Preorder.findById(params.id);
+
+      if (!preorder) {
+        return NextResponse.json({ error: "Preorder not found." }, { status: 404 });
+      }
+
+      const trackingLink = (body.trackingLink || "").trim();
+      const shippedAt = new Date();
+      const estimatedArrivalAt = trackingLink
+        ? null
+        : new Date(shippedAt.getTime() + 60 * 60 * 1000);
+
+      preorder.set("shipment", {
+        ...(preorder.shipment?.toObject?.() || preorder.shipment || {}),
+        shippedAt,
+        trackingLink,
+        estimatedArrivalAt,
+      });
+
+      if (preorder.status !== "fulfilled") {
+        preorder.status = "shipped";
+      }
+
+      await preorder.save();
+
+      const notificationScaffold = await preparePreorderShippedNotifications({ preorder });
+      let emailDelivery = { status: "skipped" };
+
+      try {
+        emailDelivery = await sendPreorderShippedEmail({ preorder });
+      } catch (emailError) {
+        console.error("Failed to send preorder shipped email", emailError);
+        emailDelivery = { status: "failed" };
+      }
+
+      return NextResponse.json({ preorder, notificationScaffold, emailDelivery });
+    }
+
     if (nextStatus) {
-      if (!["confirmed", "fulfilled", "cancelled", "pending"].includes(nextStatus)) {
+      if (!["confirmed", "shipped", "fulfilled", "cancelled", "pending"].includes(nextStatus)) {
         return NextResponse.json({ error: "Invalid preorder status." }, { status: 400 });
       }
 

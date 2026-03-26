@@ -113,6 +113,25 @@ const preorderDiscountSchema = mongoose.Schema(
   { _id: false }
 );
 
+const preorderShipmentSchema = mongoose.Schema(
+  {
+    shippedAt: {
+      type: Date,
+      default: null,
+    },
+    trackingLink: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    estimatedArrivalAt: {
+      type: Date,
+      default: null,
+    },
+  },
+  { _id: false }
+);
+
 const preorderSchema = mongoose.Schema(
   {
     customerName: {
@@ -215,11 +234,15 @@ const preorderSchema = mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["pending", "payment_pending", "paid", "confirmed", "cancelled", "fulfilled"],
+      enum: ["pending", "payment_pending", "paid", "confirmed", "shipped", "cancelled", "fulfilled"],
       default: "pending",
     },
     payment: {
       type: preorderPaymentSchema,
+      default: () => ({}),
+    },
+    shipment: {
+      type: preorderShipmentSchema,
       default: () => ({}),
     },
   },
