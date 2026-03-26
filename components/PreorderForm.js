@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRazorpayCheckout } from "@/components/RazorpayCheckout";
 
 const initialCustomer = {
@@ -13,6 +13,7 @@ const initialCustomer = {
 
 const MAX_QTY = 10;
 const SUPPORT_PHONE = "+919916331569";
+const normalizeDiscountCode = (value = "") => value.trim().toUpperCase().replace(/\s+/g, "");
 
 const createSessionToken = () => {
   if (typeof crypto !== "undefined" && crypto.randomUUID) {
@@ -123,6 +124,10 @@ export default function PreorderForm({
   const [deliveryQuote, setDeliveryQuote] = useState(null);
   const [isQuotingDelivery, setIsQuotingDelivery] = useState(false);
   const [deliveryError, setDeliveryError] = useState("");
+  const [discountCodeInput, setDiscountCodeInput] = useState("");
+  const [appliedDiscount, setAppliedDiscount] = useState(null);
+  const [discountError, setDiscountError] = useState("");
+  const [isApplyingDiscount, setIsApplyingDiscount] = useState(false);
   const [addressLookupError, setAddressLookupError] = useState("");
   const [addressSuggestions, setAddressSuggestions] = useState([]);
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
@@ -148,7 +153,10 @@ export default function PreorderForm({
   const deliveryConfigured = Boolean(pickupAddress && deliveryBands.length > 0);
   const requiresSelectedAddress = deliveryConfigured;
   const fullAddress = buildFullAddress(customer.addressLine2, customer.address);
-  const total = subtotal + Number(deliveryQuote?.deliveryFee || 0);
+  const appliedDiscountCode = appliedDiscount?.code || "";
+  const discountAmount = Number(appliedDiscount?.discountAmount || 0);
+  const discountedSubtotal = Math.max(0, subtotal - discountAmount);
+  const total = discountedSubtotal + Number(deliveryQuote?.deliveryFee || 0);
   const hasMandatoryFields =
     customer.customerName.trim() && customer.phone.trim() && customer.address.trim();
   const meetsMinQty = totalQuantity >= minTotalQuantity;
@@ -172,6 +180,61 @@ export default function PreorderForm({
       isCompletingPaymentRef.current = false;
     }
   }, [successState]);
+
+  const applyDiscountCode = useCallback(
+    async (codeValue = discountCodeInput, { silent = false } = {}) => {
+      const normalizedCode = normalizeDiscountCode(codeValue);
+
+      if (!normalizedCode) {
+        setAppliedDiscount(null);
+        setDiscountError("");
+        return;
+      }
+
+      if (selectedItems.length === 0) {
+        setAppliedDiscount(null);
+        setDiscountError("Add at least one item before applying a discount code.");
+        return;
+      }
+
+      if (!silent) {
+        setIsApplyingDiscount(true);
+      }
+      setDiscountError("");
+
+      try {
+        const response = await fetch("/api/preorder/discount", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            preorderWindowId,
+            items: selectedItems,
+            discountCode: normalizedCode,
+          }),
+        });
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            getApiErrorMessage(response, data, "Could not apply discount code.")
+          );
+        }
+
+        setAppliedDiscount(data.discount || null);
+        setDiscountCodeInput(data.discount?.code || normalizedCode);
+      } catch (applyError) {
+        setAppliedDiscount(null);
+        setDiscountError(applyError.message || "Could not apply discount code.");
+      } finally {
+        if (!silent) {
+          setIsApplyingDiscount(false);
+        }
+      }
+    },
+    [discountCodeInput, preorderWindowId, selectedItems]
+  );
 
   useEffect(() => {
     const input = customer.address.trim();
@@ -225,6 +288,21 @@ export default function PreorderForm({
 
     return () => clearTimeout(timeoutId);
   }, [customer.address, addressSessionToken, selectedPlace]);
+
+  useEffect(() => {
+    if (!appliedDiscountCode || selectedItems.length === 0) {
+      if (selectedItems.length === 0) {
+        setAppliedDiscount(null);
+      }
+      return;
+    }
+
+    const syncDiscount = async () => {
+      await applyDiscountCode(appliedDiscountCode, { silent: true });
+    };
+
+    syncDiscount();
+  }, [appliedDiscountCode, applyDiscountCode, preorderWindowId, selectedItems]);
 
   useEffect(() => {
     setDeliveryError("");
@@ -360,6 +438,7 @@ export default function PreorderForm({
           ...customer,
           address: fullAddress,
           preorderWindowId,
+          discountCode: discountCodeInput,
           deliveryPlaceId: selectedPlace?.placeId || "",
           addressSessionToken,
           items: selectedItems,
@@ -422,6 +501,9 @@ export default function PreorderForm({
               setAddressSessionToken(createSessionToken());
               setDeliveryQuote(null);
               setDeliveryError("");
+              setDiscountCodeInput("");
+              setAppliedDiscount(null);
+              setDiscountError("");
               onOrderPlaced?.();
             } catch (verificationError) {
               isCompletingPaymentRef.current = false;
@@ -461,6 +543,9 @@ export default function PreorderForm({
       setAddressSessionToken(createSessionToken());
       setDeliveryQuote(null);
       setDeliveryError("");
+      setDiscountCodeInput("");
+      setAppliedDiscount(null);
+      setDiscountError("");
       onOrderPlaced?.();
     } catch (err) {
       setError(err.message || "Something went wrong.");
@@ -685,6 +770,52 @@ export default function PreorderForm({
             <div className="text-sm opacity-80">Total quantity: {totalQuantity}</div>
             <div className="text-sm opacity-80">Minimum quantity required: {minTotalQuantity}</div>
             <div className="text-sm font-medium opacity-90">Subtotal: {currency} {subtotal.toFixed(2)}</div>
+            <div className="rounded-xl border border-base-300 bg-base-100 p-3">
+              <div className="flex flex-col gap-3 md:flex-row md:items-end">
+                <label className="form-control flex-1">
+                  <div className="label py-0">
+                    <span className="label-text">Discount code</span>
+                  </div>
+                  <input
+                    className="input input-bordered"
+                    value={discountCodeInput}
+                    onChange={(event) => {
+                      const nextValue = event.target.value;
+                      setDiscountCodeInput(nextValue);
+                      if (normalizeDiscountCode(nextValue) !== appliedDiscount?.code) {
+                        setAppliedDiscount(null);
+                      }
+                      setDiscountError("");
+                    }}
+                    placeholder="SUMMER10"
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  disabled={isApplyingDiscount || selectedItems.length === 0 || !discountCodeInput.trim()}
+                  onClick={() => applyDiscountCode()}
+                >
+                  {isApplyingDiscount ? "Applying..." : "Apply code"}
+                </button>
+              </div>
+              {appliedDiscount?.code && (
+                <div className="mt-3 text-sm text-success">
+                  {appliedDiscount.code} applied for {Number(appliedDiscount.amount || 0)}% off the subtotal.
+                </div>
+              )}
+              {discountError && <div className="mt-2 text-sm text-error">{discountError}</div>}
+            </div>
+            {discountAmount > 0 && (
+              <div className="text-sm font-medium text-success">
+                Discount: -{currency} {discountAmount.toFixed(2)}
+              </div>
+            )}
+            {discountAmount > 0 && (
+              <div className="text-sm font-medium opacity-90">
+                Subtotal after discount: {currency} {discountedSubtotal.toFixed(2)}
+              </div>
+            )}
             <div className="text-sm font-medium opacity-90">
               Delivery: {deliveryQuote ? `${currency} ${Number(deliveryQuote.deliveryFee).toFixed(2)}` : isQuotingDelivery ? "Calculating..." : `${currency} 0.00`}
             </div>

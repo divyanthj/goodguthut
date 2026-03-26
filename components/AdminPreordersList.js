@@ -346,6 +346,18 @@ export default function AdminPreordersList({ initialPreorders }) {
                     <div className="mt-1">{formatCurrency(preorder.currency, preorder.subtotal)}</div>
                   </div>
                   <div>
+                    <div className="text-xs uppercase tracking-[0.16em] opacity-60">Discount</div>
+                    <div className="mt-1">
+                      {preorder.discount?.discountAmount > 0
+                        ? `${preorder.discount.code} (-${formatCurrency(preorder.currency, preorder.discount.discountAmount)})`
+                        : "-"}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase tracking-[0.16em] opacity-60">Delivery fee</div>
+                    <div className="mt-1">{formatCurrency(preorder.currency, preorder.deliveryFee)}</div>
+                  </div>
+                  <div>
                     <div className="text-xs uppercase tracking-[0.16em] opacity-60">Total</div>
                     <div className="mt-1 font-medium">{formatCurrency(preorder.currency, preorder.total || preorder.subtotal)}</div>
                   </div>

@@ -1,6 +1,7 @@
 import connectMongo from "@/libs/mongoose";
 import PreorderWindow from "@/models/PreorderWindow";
 import { calculateDeliveryQuote } from "@/libs/delivery";
+import { resolveDiscountCode, normalizeDiscountCode } from "@/libs/discount-codes";
 import { getPlaceDetails } from "@/libs/places";
 import { isWindowAcceptingOrders, MAX_PER_ORDER_LIMIT } from "@/libs/preorder-windows";
 import { getSkuMap, listSkuCatalog, normalizeAllowedItemRefs } from "@/libs/sku-catalog";
@@ -39,6 +40,7 @@ export const buildPreorderRequest = async (body = {}) => {
   const sessionToken = normalizeSessionToken(body.addressSessionToken || "");
   const customerNotes = (body.customerNotes || "").trim().slice(0, 500);
   const preorderWindowId = body.preorderWindowId?.trim() || "";
+  const discountCodeInput = normalizeDiscountCode(body.discountCode || "");
   const requestItems = sanitizePreorderItems(body.items);
 
   if (!customerName || !phone || !address) {
@@ -138,6 +140,11 @@ export const buildPreorderRequest = async (body = {}) => {
     throw new Error(`Minimum preorder quantity is ${minimumOrderQuantity}.`);
   }
 
+  const { discount } = await resolveDiscountCode({
+    code: discountCodeInput,
+    subtotal,
+  });
+
   let deliveryFee = 0;
   let deliveryDistanceKm = 0;
   let normalizedDeliveryAddress = address;
@@ -164,7 +171,7 @@ export const buildPreorderRequest = async (body = {}) => {
     normalizedDeliveryAddress = deliveryQuote.normalizedAddress;
   }
 
-  const total = subtotal + deliveryFee;
+  const total = discount.subtotalAfterDiscount + deliveryFee;
 
   return {
     customerName,
@@ -185,6 +192,7 @@ export const buildPreorderRequest = async (body = {}) => {
     items,
     totalQuantity,
     subtotal,
+    discount,
     deliveryFee,
     deliveryDistanceKm,
     total,

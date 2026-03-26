@@ -61,6 +61,9 @@ export const sendPreorderConfirmationEmail = async ({ preorder }) => {
   const paymentBreakdown = [
     "Amount paid:",
     `Subtotal: ${formatMoney(preorder.currency, preorder.subtotal)}`,
+    preorder.discount?.discountAmount > 0
+      ? `Discount (${preorder.discount.code}): -${formatMoney(preorder.currency, preorder.discount.discountAmount)}`
+      : "",
     `Delivery: ${formatMoney(preorder.currency, preorder.deliveryFee)}`,
     `Total: ${formatMoney(preorder.currency, preorder.total || preorder.payment?.amount)}`,
   ].join("\n");
@@ -86,6 +89,14 @@ export const sendPreorderConfirmationEmail = async ({ preorder }) => {
         <td>Subtotal</td>
         <td>${escapeHtml(formatMoney(preorder.currency, preorder.subtotal))}</td>
       </tr>
+      ${
+        preorder.discount?.discountAmount > 0
+          ? `<tr>
+        <td>Discount (${escapeHtml(preorder.discount.code)})</td>
+        <td>-${escapeHtml(formatMoney(preorder.currency, preorder.discount.discountAmount))}</td>
+      </tr>`
+          : ""
+      }
       <tr>
         <td>Delivery</td>
         <td>${escapeHtml(formatMoney(preorder.currency, preorder.deliveryFee))}</td>

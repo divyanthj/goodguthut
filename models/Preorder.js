@@ -85,6 +85,34 @@ const preorderPaymentSchema = mongoose.Schema(
   { _id: false }
 );
 
+const preorderDiscountSchema = mongoose.Schema(
+  {
+    code: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      default: "",
+    },
+    amount: {
+      type: Number,
+      min: 0,
+      max: 100,
+      default: 0,
+    },
+    discountAmount: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+    subtotalAfterDiscount: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+  },
+  { _id: false }
+);
+
 const preorderSchema = mongoose.Schema(
   {
     customerName: {
@@ -155,6 +183,10 @@ const preorderSchema = mongoose.Schema(
       type: Number,
       min: 0,
       default: 0,
+    },
+    discount: {
+      type: preorderDiscountSchema,
+      default: () => ({}),
     },
     deliveryFee: {
       type: Number,

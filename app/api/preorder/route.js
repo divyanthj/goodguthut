@@ -37,6 +37,7 @@ const createPreorderDocument = async (orderRequest, payment = {}) => {
     items: orderRequest.items,
     totalQuantity: orderRequest.totalQuantity,
     subtotal: orderRequest.subtotal,
+    discount: orderRequest.discount,
     deliveryFee: orderRequest.deliveryFee,
     deliveryDistanceKm: orderRequest.deliveryDistanceKm,
     total: orderRequest.total,
@@ -79,6 +80,7 @@ export async function POST(req) {
       return NextResponse.json({
         totalQuantity: orderRequest.totalQuantity,
         subtotal: orderRequest.subtotal,
+        discount: orderRequest.discount,
         deliveryFee: orderRequest.deliveryFee,
         deliveryDistanceKm: orderRequest.deliveryDistanceKm,
         total: orderRequest.total,
@@ -112,6 +114,7 @@ export async function POST(req) {
       status: preorder.status,
       totalQuantity: preorder.totalQuantity,
       subtotal: preorder.subtotal,
+      discount: preorder.discount,
       deliveryFee: preorder.deliveryFee,
       deliveryDistanceKm: preorder.deliveryDistanceKm,
       total: preorder.total,
@@ -149,6 +152,8 @@ export async function POST(req) {
       e.message === "Add at least one product quantity (SKU + quantity) before placing preorder" ||
       e.message === "Too many distinct products in one preorder." ||
       e.message === "Please select a delivery address from the suggestions." ||
+      e.message === "Discount code not found." ||
+      e.message === "This discount code is no longer active." ||
       e.message === "We do not deliver there yet." ||
       e.message?.startsWith("Minimum preorder quantity is ")
     ) {
