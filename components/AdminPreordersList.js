@@ -78,7 +78,7 @@ const buildWhatsAppUrl = (phone, message) => {
     return "";
   }
 
-  return `https://wa.me/${normalizedPhone}?text=${encodeURIComponent(message)}`;
+  return `https://web.whatsapp.com/send?phone=${normalizedPhone}&text=${encodeURIComponent(message)}`;
 };
 
 const copyToClipboard = async (value) => {
@@ -249,7 +249,6 @@ export default function AdminPreordersList({ initialPreorders }) {
   };
 
   const markShipped = async (preorderId, trackingLink) => {
-    const whatsappWindow = typeof window !== "undefined" ? window.open("", "_blank", "noopener,noreferrer") : null;
     setSavingId(preorderId);
     setMessage("");
     setError("");
@@ -290,13 +289,7 @@ export default function AdminPreordersList({ initialPreorders }) {
         }
       }
 
-      if (whatsappWindow) {
-        if (whatsappUrl) {
-          whatsappWindow.location.replace(whatsappUrl);
-        } else {
-          whatsappWindow.close();
-        }
-      } else if (whatsappUrl) {
+      if (whatsappUrl) {
         window.open(whatsappUrl, "_blank", "noopener,noreferrer");
       }
 
@@ -312,9 +305,6 @@ export default function AdminPreordersList({ initialPreorders }) {
         `${shipmentSummary}${whatsappSummary}`
       );
     } catch (updateError) {
-      if (whatsappWindow) {
-        whatsappWindow.close();
-      }
       setError(updateError.message || "Could not update preorder.");
     } finally {
       setSavingId("");
