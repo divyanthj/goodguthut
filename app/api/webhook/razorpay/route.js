@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
+import { sendPreorderConfirmationNotifications } from "@/libs/emailSender";
 import connectMongo from "@/libs/mongoose";
 import Preorder from "@/models/Preorder";
 import { verifyRazorpayWebhookSignature } from "@/libs/razorpay";
@@ -38,6 +39,10 @@ export async function POST(req) {
     switch (event.event) {
       case "payment.captured":
       case "order.paid": {
+        const shouldSendConfirmationNotifications =
+          !preorder.notifications?.confirmationEmailSentAt ||
+          !preorder.notifications?.confirmationWhatsappSentAt;
+
         preorder.status =
           preorder.status === "fulfilled" || preorder.status === "shipped"
             ? preorder.status
@@ -57,6 +62,15 @@ export async function POST(req) {
             : new Date(),
         };
         await preorder.save();
+
+        if (shouldSendConfirmationNotifications) {
+          try {
+            await sendPreorderConfirmationNotifications({ preorder });
+          } catch (notificationError) {
+            console.error("Failed to send preorder confirmation notifications", notificationError);
+          }
+        }
+
         break;
       }
       case "payment.failed": {

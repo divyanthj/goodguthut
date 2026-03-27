@@ -69,6 +69,40 @@ const getConfirmationLabel = (preorder) => {
   return preorder.status === "confirmed" ? "Confirmed" : "Awaiting contact";
 };
 
+const normalizeWhatsAppPhone = (value = "") => String(value).replace(/\D/g, "");
+
+const buildWhatsAppUrl = (phone, message) => {
+  const normalizedPhone = normalizeWhatsAppPhone(phone);
+
+  if (!normalizedPhone || !message) {
+    return "";
+  }
+
+  return `https://wa.me/${normalizedPhone}?text=${encodeURIComponent(message)}`;
+};
+
+const copyToClipboard = async (value) => {
+  if (!value) {
+    return false;
+  }
+
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(value);
+    return true;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = value;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "absolute";
+  textarea.style.left = "-9999px";
+  document.body.appendChild(textarea);
+  textarea.select();
+  const copied = document.execCommand("copy");
+  document.body.removeChild(textarea);
+  return copied;
+};
+
 export default function AdminPreordersList({ initialPreorders }) {
   const [preorders, setPreorders] = useState(initialPreorders);
   const [savingId, setSavingId] = useState("");
@@ -215,6 +249,7 @@ export default function AdminPreordersList({ initialPreorders }) {
   };
 
   const markShipped = async (preorderId, trackingLink) => {
+    const whatsappWindow = typeof window !== "undefined" ? window.open("", "_blank", "noopener,noreferrer") : null;
     setSavingId(preorderId);
     setMessage("");
     setError("");
@@ -242,19 +277,44 @@ export default function AdminPreordersList({ initialPreorders }) {
           preorder.id === preorderId ? data.preorder : preorder
         )
       );
+      const whatsappMessage = data.notificationScaffold?.notifications?.whatsapp?.text || "";
+      const whatsappPhone = data.preorder?.phone || "";
+      const whatsappUrl = buildWhatsAppUrl(whatsappPhone, whatsappMessage);
+      let clipboardCopied = false;
+
+      if (whatsappMessage) {
+        try {
+          clipboardCopied = await copyToClipboard(whatsappMessage);
+        } catch (clipboardError) {
+          console.error("Could not copy shipped WhatsApp message", clipboardError);
+        }
+      }
+
+      if (whatsappWindow) {
+        if (whatsappUrl) {
+          whatsappWindow.location.replace(whatsappUrl);
+        } else {
+          whatsappWindow.close();
+        }
+      } else if (whatsappUrl) {
+        window.open(whatsappUrl, "_blank", "noopener,noreferrer");
+      }
+
       const shipmentSummary = trackingLink?.trim()
         ? "Order marked as shipped and tracking link saved."
         : "Order marked as shipped and ETA set for 1 hour from shipment.";
-      const emailSummary =
-        data.emailDelivery?.status === "sent"
-          ? " Shipped email sent."
-          : data.emailDelivery?.status === "skipped"
-            ? " No shipped email was sent because this preorder has no customer email."
-            : " Shipped email could not be sent.";
+      const whatsappSummary = whatsappUrl
+        ? clipboardCopied
+          ? " Shipped WhatsApp message copied to clipboard and opened in WhatsApp."
+          : " WhatsApp opened with the shipped message prefilled."
+        : " No WhatsApp action was opened because this preorder has no phone number.";
       setMessage(
-        `${shipmentSummary}${emailSummary}`
+        `${shipmentSummary}${whatsappSummary}`
       );
     } catch (updateError) {
+      if (whatsappWindow) {
+        whatsappWindow.close();
+      }
       setError(updateError.message || "Could not update preorder.");
     } finally {
       setSavingId("");

@@ -4,7 +4,6 @@ import { getAdminSessionState } from "@/libs/admin-auth";
 import Preorder from "@/models/Preorder";
 import {
   preparePreorderShippedNotifications,
-  sendPreorderShippedEmail,
 } from "@/libs/shipment-notifications";
 
 export async function PATCH(req, { params }) {
@@ -51,16 +50,13 @@ export async function PATCH(req, { params }) {
       await preorder.save();
 
       const notificationScaffold = await preparePreorderShippedNotifications({ preorder });
-      let emailDelivery = { status: "skipped" };
 
-      try {
-        emailDelivery = await sendPreorderShippedEmail({ preorder });
-      } catch (emailError) {
-        console.error("Failed to send preorder shipped email", emailError);
-        emailDelivery = { status: "failed" };
-      }
-
-      return NextResponse.json({ preorder, notificationScaffold, emailDelivery });
+      return NextResponse.json({
+        preorder,
+        notificationScaffold,
+        emailDelivery: { status: "manual" },
+        whatsappDelivery: { status: "manual" },
+      });
     }
 
     if (nextStatus) {

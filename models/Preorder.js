@@ -132,6 +132,28 @@ const preorderShipmentSchema = mongoose.Schema(
   { _id: false }
 );
 
+const preorderNotificationsSchema = mongoose.Schema(
+  {
+    confirmationEmailSentAt: {
+      type: Date,
+      default: null,
+    },
+    confirmationWhatsappSentAt: {
+      type: Date,
+      default: null,
+    },
+    shippedEmailSentAt: {
+      type: Date,
+      default: null,
+    },
+    shippedWhatsappSentAt: {
+      type: Date,
+      default: null,
+    },
+  },
+  { _id: false }
+);
+
 const preorderSchema = mongoose.Schema(
   {
     customerName: {
@@ -243,6 +265,10 @@ const preorderSchema = mongoose.Schema(
     },
     shipment: {
       type: preorderShipmentSchema,
+      default: () => ({}),
+    },
+    notifications: {
+      type: preorderNotificationsSchema,
       default: () => ({}),
     },
   },

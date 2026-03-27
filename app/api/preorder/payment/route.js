@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { sendPreorderConfirmationEmail } from "@/libs/emailSender";
+import { sendPreorderConfirmationNotifications } from "@/libs/emailSender";
 import connectMongo from "@/libs/mongoose";
 import Preorder from "@/models/Preorder";
 import {
@@ -112,19 +112,25 @@ export async function PATCH(req) {
       })
     );
 
-    let emailDelivery = { status: "skipped" };
+    let notificationDelivery = {
+      email: { status: "skipped" },
+      whatsapp: { status: "skipped" },
+    };
 
     try {
-      await sendPreorderConfirmationEmail({ preorder });
-      emailDelivery = { status: "sent" };
-    } catch (emailError) {
-      console.error("Failed to send preorder confirmation email", emailError);
-      emailDelivery = { status: "failed" };
+      notificationDelivery = await sendPreorderConfirmationNotifications({ preorder });
+    } catch (notificationError) {
+      console.error("Failed to send preorder confirmation notifications", notificationError);
+      notificationDelivery = {
+        email: { status: "failed" },
+        whatsapp: { status: "failed" },
+      };
     }
 
     return NextResponse.json({
       preorder,
-      emailDelivery,
+      emailDelivery: notificationDelivery.email,
+      whatsappDelivery: notificationDelivery.whatsapp,
       confirmationMessage: "Payment received. Your preorder is confirmed.",
     });
   } catch (e) {
