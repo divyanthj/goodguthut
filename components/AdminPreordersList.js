@@ -71,6 +71,14 @@ const getConfirmationLabel = (preorder) => {
 
 const normalizeWhatsAppPhone = (value = "") => String(value).replace(/\D/g, "");
 
+const isMobileDevice = () => {
+  if (typeof navigator === "undefined") {
+    return false;
+  }
+
+  return /Android|iPhone|iPad|iPod|IEMobile|Opera Mini/i.test(navigator.userAgent || "");
+};
+
 const buildWhatsAppUrl = (phone, message) => {
   const normalizedPhone = normalizeWhatsAppPhone(phone);
 
@@ -78,7 +86,7 @@ const buildWhatsAppUrl = (phone, message) => {
     return "";
   }
 
-  return `https://web.whatsapp.com/send?phone=${normalizedPhone}&text=${encodeURIComponent(message)}`;
+  return `whatsapp://send?phone=${normalizedPhone}&text=${encodeURIComponent(message)}`;
 };
 
 const copyToClipboard = async (value) => {
@@ -290,7 +298,9 @@ export default function AdminPreordersList({ initialPreorders }) {
       }
 
       if (whatsappUrl) {
-        window.open(whatsappUrl, "_blank", "noopener,noreferrer");
+        if (isMobileDevice()) {
+          window.location.href = whatsappUrl;
+        }
       }
 
       const shipmentSummary = trackingLink?.trim()
@@ -298,8 +308,12 @@ export default function AdminPreordersList({ initialPreorders }) {
         : "Order marked as shipped and ETA set for 1 hour from shipment.";
       const whatsappSummary = whatsappUrl
         ? clipboardCopied
-          ? " Shipped WhatsApp message copied to clipboard and opened in WhatsApp."
-          : " WhatsApp opened with the shipped message prefilled."
+          ? isMobileDevice()
+            ? " Shipped WhatsApp message copied to clipboard and opened in the WhatsApp app."
+            : " Shipped WhatsApp message copied to clipboard."
+          : isMobileDevice()
+            ? " WhatsApp app opened with the shipped message prefilled."
+            : " Shipped WhatsApp message is ready to paste."
         : " No WhatsApp action was opened because this preorder has no phone number.";
       setMessage(
         `${shipmentSummary}${whatsappSummary}`
