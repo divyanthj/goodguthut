@@ -69,7 +69,27 @@ const getConfirmationLabel = (preorder) => {
   return preorder.status === "confirmed" ? "Confirmed" : "Awaiting contact";
 };
 
-const normalizeWhatsAppPhone = (value = "") => String(value).replace(/\D/g, "");
+const normalizeWhatsAppPhone = (value = "") => {
+  const digits = String(value).replace(/\D/g, "");
+
+  if (!digits) {
+    return "";
+  }
+
+  if (digits.startsWith("00")) {
+    return digits.slice(2);
+  }
+
+  if (digits.length === 10) {
+    return `91${digits}`;
+  }
+
+  if (digits.length === 11 && digits.startsWith("0")) {
+    return `91${digits.slice(1)}`;
+  }
+
+  return digits;
+};
 
 const isMobileDevice = () => {
   if (typeof navigator === "undefined") {
