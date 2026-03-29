@@ -38,7 +38,6 @@ const formatDeliveryDate = (value) => {
 
   return new Date(value).toLocaleString("en-IN", {
     dateStyle: "medium",
-    timeStyle: "short",
   });
 };
 
@@ -235,7 +234,7 @@ export default function Page() {
                   Delivery date: {formatDeliveryDate(preorderWindow.deliveryDate)}
                 </div>
                 <div className="mt-1 text-sm text-[#5f7068]">
-                  Add your SKUs for this batch and we&apos;ll prepare them for this delivery run.
+                  Add your items for this batch and we&apos;ll prepare them for this delivery run.
                 </div>
               </div>
               {preorderWindow.title && (
