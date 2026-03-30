@@ -21,6 +21,24 @@ const formatDate = (value) => {
 const formatCurrency = (currency, amount) =>
   `${currency || "INR"} ${Number(amount || 0).toFixed(2)}`;
 
+const cadenceToWeeklyFactor = (cadence = "") => {
+  switch (cadence) {
+    case "weekly":
+      return 1;
+    case "fortnightly":
+      return 0.5;
+    case "monthly":
+      return 0.25;
+    default:
+      return 0;
+  }
+};
+
+const formatWeeklyEquivalent = (value) => Number(value || 0).toFixed(2);
+const CONFIRMED_BILLING_STATUSES = new Set(["authenticated", "active", "pending", "completed"]);
+const PENDING_BILLING_STATUSES = new Set(["created"]);
+const EXCLUDED_STATUSES = new Set(["cancelled", "paused"]);
+
 export default function AdminSubscriptionsList({ initialSubscriptions }) {
   const [subscriptions, setSubscriptions] = useState(initialSubscriptions);
   const [savingId, setSavingId] = useState("");
@@ -32,6 +50,74 @@ export default function AdminSubscriptionsList({ initialSubscriptions }) {
     () => getSubscriptionSummaryCounts(subscriptions),
     [subscriptions]
   );
+  const weeklyCommitmentsSummary = useMemo(() => {
+    const items = new Map();
+    let confirmedSubscriptionCount = 0;
+    let pendingSubscriptionCount = 0;
+    let confirmedWeeklyEquivalentBottles = 0;
+    let pendingWeeklyEquivalentBottles = 0;
+    let confirmedWeeklyEquivalentRevenue = 0;
+    let pendingWeeklyEquivalentRevenue = 0;
+
+    subscriptions
+      .forEach((subscription) => {
+        if (EXCLUDED_STATUSES.has(subscription.status)) {
+          return;
+        }
+
+        const weeklyFactor = cadenceToWeeklyFactor(subscription.cadence);
+        const billingStatus = subscription.billing?.status || "";
+        const isConfirmed =
+          subscription.status === "active" || CONFIRMED_BILLING_STATUSES.has(billingStatus);
+        const isPending = !isConfirmed && PENDING_BILLING_STATUSES.has(billingStatus);
+
+        if (weeklyFactor <= 0 || (!isConfirmed && !isPending)) {
+          return;
+        }
+
+        if (isConfirmed) {
+          confirmedSubscriptionCount += 1;
+          confirmedWeeklyEquivalentBottles += Number(subscription.totalQuantity || 0) * weeklyFactor;
+          confirmedWeeklyEquivalentRevenue += Number(subscription.total || 0) * weeklyFactor;
+        } else if (isPending) {
+          pendingSubscriptionCount += 1;
+          pendingWeeklyEquivalentBottles += Number(subscription.totalQuantity || 0) * weeklyFactor;
+          pendingWeeklyEquivalentRevenue += Number(subscription.total || 0) * weeklyFactor;
+        }
+
+        (subscription.items || []).forEach((item) => {
+          const currentItem = items.get(item.sku) || {
+            sku: item.sku,
+            productName: item.productName,
+            confirmedWeeklyEquivalentBottles: 0,
+            pendingWeeklyEquivalentBottles: 0,
+            confirmedSubscribers: 0,
+            pendingSubscribers: 0,
+          };
+
+          if (isConfirmed) {
+            currentItem.confirmedWeeklyEquivalentBottles += Number(item.quantity || 0) * weeklyFactor;
+            currentItem.confirmedSubscribers += 1;
+          } else if (isPending) {
+            currentItem.pendingWeeklyEquivalentBottles += Number(item.quantity || 0) * weeklyFactor;
+            currentItem.pendingSubscribers += 1;
+          }
+          items.set(item.sku, currentItem);
+        });
+      });
+
+    return {
+      confirmedSubscriptionCount,
+      pendingSubscriptionCount,
+      confirmedWeeklyEquivalentBottles,
+      pendingWeeklyEquivalentBottles,
+      confirmedWeeklyEquivalentRevenue,
+      pendingWeeklyEquivalentRevenue,
+      items: [...items.values()].sort((left, right) =>
+        left.productName.localeCompare(right.productName)
+      ),
+    };
+  }, [subscriptions]);
 
   const saveStatus = async (subscriptionId, status) => {
     setSavingId(subscriptionId);
@@ -138,6 +224,89 @@ export default function AdminSubscriptionsList({ initialSubscriptions }) {
               <div className="mt-2 text-2xl font-semibold">{summary[status.value] || 0}</div>
             </div>
           ))}
+        </div>
+      </section>
+
+      <section className="rounded-2xl bg-base-100 p-5 shadow-md">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold">Weekly production summary</h2>
+            <p className="text-sm opacity-70">
+              Fortnightly counts as half a weekly run, and monthly counts as one quarter. Use confirmed bottles to plan this week&apos;s production and shipping; pending is your near-term pipeline.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-xl bg-base-200 p-4 text-sm">
+            <div className="text-xs uppercase tracking-[0.16em] opacity-60">Confirmed this week</div>
+            <div className="mt-2 text-2xl font-semibold">
+              {formatWeeklyEquivalent(weeklyCommitmentsSummary.confirmedWeeklyEquivalentBottles)}
+            </div>
+            <div className="mt-1 opacity-70">
+              {weeklyCommitmentsSummary.confirmedSubscriptionCount} subscription(s)
+            </div>
+          </div>
+          <div className="rounded-xl bg-base-200 p-4 text-sm">
+            <div className="text-xs uppercase tracking-[0.16em] opacity-60">Pending this week</div>
+            <div className="mt-2 text-2xl font-semibold">
+              {formatWeeklyEquivalent(weeklyCommitmentsSummary.pendingWeeklyEquivalentBottles)}
+            </div>
+            <div className="mt-1 opacity-70">
+              {weeklyCommitmentsSummary.pendingSubscriptionCount} subscription(s)
+            </div>
+          </div>
+          <div className="rounded-xl bg-base-200 p-4 text-sm">
+            <div className="text-xs uppercase tracking-[0.16em] opacity-60">Confirmed revenue</div>
+            <div className="mt-2 text-2xl font-semibold">
+              {formatCurrency("INR", weeklyCommitmentsSummary.confirmedWeeklyEquivalentRevenue)}
+            </div>
+          </div>
+          <div className="rounded-xl bg-base-200 p-4 text-sm">
+            <div className="text-xs uppercase tracking-[0.16em] opacity-60">Pending revenue</div>
+            <div className="mt-2 text-2xl font-semibold">
+              {formatCurrency("INR", weeklyCommitmentsSummary.pendingWeeklyEquivalentRevenue)}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-4 overflow-x-auto">
+          <table className="table table-sm">
+            <thead>
+              <tr>
+                <th>SKU</th>
+                <th>Product</th>
+                <th className="text-right">Confirmed subscribers</th>
+                <th className="text-right">Confirmed bottles</th>
+                <th className="text-right">Pending subscribers</th>
+                <th className="text-right">Pending bottles</th>
+              </tr>
+            </thead>
+            <tbody>
+              {weeklyCommitmentsSummary.items.length > 0 ? (
+                weeklyCommitmentsSummary.items.map((item) => (
+                  <tr key={`weekly-summary-${item.sku}`}>
+                    <td>{item.sku}</td>
+                    <td>{item.productName}</td>
+                    <td className="text-right">{item.confirmedSubscribers}</td>
+                    <td className="text-right font-medium">
+                      {formatWeeklyEquivalent(item.confirmedWeeklyEquivalentBottles)}
+                    </td>
+                    <td className="text-right">{item.pendingSubscribers}</td>
+                    <td className="text-right font-medium">
+                      {formatWeeklyEquivalent(item.pendingWeeklyEquivalentBottles)}
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={6} className="py-6 text-center opacity-70">
+                    No weekly commitments yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </section>
 

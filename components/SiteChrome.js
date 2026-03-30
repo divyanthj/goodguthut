@@ -40,12 +40,6 @@ export default function SiteChrome({ children }) {
           </div>
 
           <div className="flex items-center gap-2">
-            <Link
-              href="/subscriptions"
-              className={`btn btn-sm ${pathname?.startsWith("/subscriptions") ? "btn-primary" : "btn-ghost"}`}
-            >
-              Subscriptions
-            </Link>
             {showAdminLink && (
               <Link
                 href="/admin"
@@ -102,9 +96,6 @@ export default function SiteChrome({ children }) {
               </Link>
               <Link href="/#preorder" className="transition hover:text-primary">
                 Preorder
-              </Link>
-              <Link href="/subscriptions" className="transition hover:text-primary">
-                Subscriptions
               </Link>
               {config.mailgun.supportEmail && (
                 <a
