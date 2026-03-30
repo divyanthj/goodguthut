@@ -119,7 +119,7 @@ export const calculateDeliveryQuote = async ({
   deliveryBands = [],
   address,
   placeDetails,
-  maxDistanceKm = 20,
+  maxDistanceKm = 50,
 }) => {
   if (!pickupAddress?.trim() || !deliveryBands.length) {
     return {
