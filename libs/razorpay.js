@@ -245,6 +245,28 @@ export const cancelRazorpaySubscription = async ({
     },
   });
 
+export const pauseRazorpaySubscription = async ({
+  subscriptionId,
+  pauseAt = "now",
+}) =>
+  razorpayApiRequest(`/v1/subscriptions/${subscriptionId}/pause`, {
+    method: "POST",
+    body: {
+      pause_at: pauseAt,
+    },
+  });
+
+export const resumeRazorpaySubscription = async ({
+  subscriptionId,
+  resumeAt = "now",
+}) =>
+  razorpayApiRequest(`/v1/subscriptions/${subscriptionId}/resume`, {
+    method: "POST",
+    body: {
+      resume_at: resumeAt,
+    },
+  });
+
 export const fetchRazorpayPayment = async (paymentId = "") => {
   const normalizedPaymentId = normalizeString(paymentId);
 

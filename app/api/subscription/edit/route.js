@@ -293,3 +293,68 @@ export async function PATCH(req) {
     return jsonError(error.message || "Could not update subscription.", 500);
   }
 }
+
+export async function DELETE(req) {
+  const originError = enforceBrowserOrigin(req);
+
+  if (originError) {
+    return originError;
+  }
+
+  let body;
+
+  try {
+    body = await readJsonBody(req, { maxBytes: 8 * 1024 });
+  } catch (error) {
+    if (error.message === "REQUEST_TOO_LARGE") {
+      logAbuseEvent("subscription-cancel-request-too-large", req);
+      return jsonError("Request body is too large.", 413);
+    }
+
+    logAbuseEvent("subscription-cancel-invalid-json", req);
+    return jsonError("Request body must be valid JSON.", 400);
+  }
+
+  try {
+    const token = body.token || "";
+    const resolved = await resolveSubscriptionFromToken(token);
+
+    if (resolved.error === "expired") {
+      return jsonError("This edit link has expired. Request a fresh link below.", 410);
+    }
+
+    if (resolved.error === "not_found") {
+      return jsonError("Subscription not found.", 404);
+    }
+
+    if (resolved.error) {
+      return jsonError("This edit link is invalid. Request a fresh link below.", 400);
+    }
+
+    const subscription = resolved.subscription;
+
+    if (
+      subscription.billing?.subscriptionId &&
+      !["cancelled", "completed", "expired"].includes(subscription.billing?.status || "")
+    ) {
+      await cancelRazorpaySubscription({
+        subscriptionId: subscription.billing.subscriptionId,
+        cancelAtCycleEnd: false,
+      });
+      subscription.billing.status = "cancelled";
+      subscription.billing.cancelledAt = new Date();
+      subscription.billing.shortUrl = "";
+    }
+
+    subscription.status = "cancelled";
+    await subscription.save();
+
+    return NextResponse.json({
+      subscription: sanitizeSubscription(subscription),
+      message: "Subscription cancelled.",
+    });
+  } catch (error) {
+    console.error(error);
+    return jsonError(error.message || "Could not cancel subscription.", 500);
+  }
+}

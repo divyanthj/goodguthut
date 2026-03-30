@@ -85,6 +85,7 @@ export default function SubscriptionForm({
   const [successMessage, setSuccessMessage] = useState("");
   const [checkoutUrl, setCheckoutUrl] = useState("");
   const [didEmailChange, setDidEmailChange] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
   const [addressLookupError, setAddressLookupError] = useState("");
   const [addressSuggestions, setAddressSuggestions] = useState([]);
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
@@ -435,6 +436,11 @@ export default function SubscriptionForm({
       setSuccessMessage(data.message || "Subscription saved.");
       setCheckoutUrl(data.checkoutUrl || "");
 
+      if (mode === "create" && data.checkoutUrl) {
+        window.location.href = data.checkoutUrl;
+        return;
+      }
+
       if (mode === "create") {
         resetForCreate();
       } else if (data.subscription) {
@@ -479,16 +485,50 @@ export default function SubscriptionForm({
     }
   };
 
+  const cancelSubscription = async () => {
+    const shouldCancel = window.confirm("Cancel this subscription and stop its Razorpay mandate?");
+
+    if (!shouldCancel) {
+      return;
+    }
+
+    setIsCancelling(true);
+    setError("");
+    setSuccessMessage("");
+
+    try {
+      const response = await fetch("/api/subscription/edit", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ token }),
+      });
+
+      if (!response.ok) {
+        throw new Error(await getApiErrorMessage(response, "Could not cancel subscription."));
+      }
+
+      const data = await response.json();
+      setSuccessMessage(data.message || "Subscription cancelled.");
+      setBillingLocked(true);
+    } catch (cancelError) {
+      setError(cancelError.message || "Could not cancel subscription.");
+    } finally {
+      setIsCancelling(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <section className="rounded-[28px] border border-[#d6c6ae] bg-[#fbf7f0]/96 p-6 shadow-xl md:p-8">
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <div>
             <div className="text-xs font-semibold uppercase tracking-[0.24em] text-[#6b7d74]">
-              Choose your lineup
+              Build your box
             </div>
             <p className="mt-2 max-w-2xl text-sm leading-7 text-[#53675d]">
-              Set quantities per drink, then confirm your recurring cadence and delivery address below.
+              Pick the drinks you&apos;d like in your regular delivery, then choose how often you&apos;d like them.
             </p>
           </div>
           <div className="badge border-[#d1c4b0] bg-[#f7f1e6] text-[#2f5d49]">
@@ -521,7 +561,7 @@ export default function SubscriptionForm({
                         disabled={billingLocked}
                         onClick={() => updateQty(drink.sku, 1)}
                       >
-                        Add to cart
+                        Add
                       </button>
                     ) : (
                       <div className="join">
@@ -651,7 +691,7 @@ export default function SubscriptionForm({
                 disabled={billingLocked}
               />
               <div className="mt-2 text-xs text-[#6b7d74]">
-                Choose a suggestion so we can verify the address and calculate the recurring delivery fee.
+                Choose a suggested address so we can confirm delivery availability and charges.
               </div>
               {addressSuggestions.length > 0 && !billingLocked && (
                 <div className="mt-2 rounded-2xl border border-base-300 bg-base-100 shadow-lg">
@@ -705,20 +745,20 @@ export default function SubscriptionForm({
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <div className="text-sm font-semibold uppercase tracking-[0.2em] text-[#5f7068]">
-                  Subscription summary
+                  Order summary
                 </div>
                 <p className="mt-2 text-sm leading-7 text-[#53675d]">
-                  Your recurring amount will be based on this lineup and delivery address.
+                  Your recurring amount is based on the drinks you&apos;ve chosen and your delivery address.
                 </p>
               </div>
               <div className="badge border-[#d1c4b0] bg-[#f7f1e6] text-[#2f5d49]">
-                {totalQuantity} bottles selected
+                {totalQuantity} bottle{totalQuantity === 1 ? "" : "s"} selected
               </div>
             </div>
 
             {selectedItems.length === 0 ? (
               <p className="mt-4 text-sm opacity-70">
-                No drinks selected yet. Add quantities from the lineup above.
+                No drinks selected yet. Choose your quantities above to continue.
               </p>
             ) : (
               <div className="mt-4 overflow-x-auto">
@@ -766,10 +806,10 @@ export default function SubscriptionForm({
               )}
               {deliveryError && <div className="text-error">{deliveryError}</div>}
               {!deliveryError && needsAddressSelection && (
-                <div className="text-[#6b7d74]">Pick one of the suggested addresses to continue.</div>
+                <div className="text-[#6b7d74]">Please choose one of the suggested addresses to continue.</div>
               )}
               <div className="flex justify-between text-base font-semibold">
-                <span>Recurring total</span>
+                <span>Per delivery total</span>
                 <span>{currency} {total.toFixed(2)}</span>
               </div>
             </div>
@@ -789,23 +829,23 @@ export default function SubscriptionForm({
 
           {billingLocked && (
             <div className="rounded-2xl border border-[#ddcfb6] bg-[#f7f1e6] px-4 py-4 text-sm text-[#52655b]">
-              This subscription already has an active Razorpay mandate. Please email support if you need to change the billing setup.
+              This subscription is already linked to an active payment mandate. If you&apos;d like to make billing changes, please get in touch with us by email.
             </div>
           )}
 
           {didEmailChange && (
             <div className="rounded-2xl border border-[#ddcfb6] bg-[#f7f1e6] px-4 py-4 text-sm text-[#52655b]">
-              Your email changed, so we sent a fresh edit link to the new address.
+              We&apos;ve sent a fresh edit link to your new email address.
             </div>
           )}
 
           {checkoutUrl && (
             <div className="rounded-2xl border border-[#d6c6ae] bg-[#fff8ec] p-5 text-[#365244]">
               <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[#6b7d74]">
-                Complete recurring payment setup
+                One last step
               </div>
               <p className="mt-3 text-sm leading-7">
-                Finish your Razorpay auto-pay authorization to activate this subscription.
+                Complete your secure Razorpay auto-pay setup to activate your subscription.
               </p>
               <div className="mt-4 flex flex-wrap gap-3">
                 <a
@@ -822,17 +862,29 @@ export default function SubscriptionForm({
 
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="text-sm text-[#5f7068]">
-              No login required. We&apos;ll email you a secure edit link after submission.
+              No login required. We&apos;ll email you a secure link so you can update or cancel your subscription anytime.
             </div>
-            <button type="submit" disabled={!canSubmit} className="btn btn-primary min-w-[220px]">
-              {isSubmitting
-                ? mode === "edit"
-                  ? "Saving..."
-                  : "Starting subscription..."
-                : mode === "edit"
-                  ? "Save subscription changes"
-                  : "Start subscription"}
-            </button>
+            <div className="flex flex-wrap gap-3">
+              {mode === "edit" && (
+                <button
+                  type="button"
+                  className="btn btn-outline text-error"
+                  disabled={isCancelling || isSubmitting}
+                  onClick={cancelSubscription}
+                >
+                  {isCancelling ? "Cancelling..." : "Cancel subscription"}
+                </button>
+              )}
+              <button type="submit" disabled={!canSubmit} className="btn btn-primary min-w-[220px]">
+                {isSubmitting
+                  ? mode === "edit"
+                    ? "Saving..."
+                    : "Taking you to payment..."
+                  : mode === "edit"
+                    ? "Save changes"
+                    : "Continue"}
+              </button>
+            </div>
           </div>
         </div>
       </form>

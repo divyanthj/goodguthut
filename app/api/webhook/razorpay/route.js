@@ -83,6 +83,10 @@ export async function POST(req) {
             event.event === "subscription.expired" ? new Date() : subscription.billing?.expiredAt || null,
         };
 
+        if (event.event === "subscription.cancelled") {
+          subscription.billing.shortUrl = "";
+        }
+
         if (event.event === "subscription.activated" || event.event === "subscription.charged") {
           subscription.status = subscription.status === "cancelled" ? subscription.status : "active";
         }

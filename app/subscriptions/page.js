@@ -23,13 +23,13 @@ export default async function SubscriptionsPage() {
       <section className="relative z-10 mx-auto max-w-6xl px-4 py-12 md:px-6 md:py-16">
         <div className="rounded-[32px] border border-[#d1c4b0] bg-[#f3edde]/90 p-8 text-[#2f4a3e] shadow-lg backdrop-blur-[2px] md:p-12">
           <div className="badge border border-[#c6b79f] bg-[#f7f1e6] px-3 text-[#2f5d49] shadow-sm">
-            SUBSCRIPTIONS | AUTO-PAY SETUP
+            SMALL-BATCH SUBSCRIPTIONS
           </div>
           <h1 className="mt-5 max-w-3xl text-4xl font-semibold leading-tight md:text-6xl">
-            Never miss a batch.
+            Keep your favourites coming, week after week.
           </h1>
           <p className="mt-5 max-w-2xl text-base leading-8 text-[#456154] md:text-lg">
-            Build a recurring lineup with item-by-item quantities, verified delivery, and Razorpay auto-pay for weekly, fortnightly, or monthly replenishment.
+            Choose the drinks you love, set your preferred rhythm, and we&apos;ll help you keep a steady stock at home with easy recurring delivery.
           </p>
         </div>
       </section>

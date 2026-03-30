@@ -436,7 +436,9 @@ export default function AdminSubscriptionsList({ initialSubscriptions }) {
                   <div className="sm:col-span-2">
                     <div className="text-xs uppercase tracking-[0.16em] opacity-60">Setup link</div>
                     <div className="mt-1 break-all">
-                      {subscription.billing?.shortUrl ? (
+                      {subscription.billing?.status === "cancelled" ? (
+                        "Subscription cancelled"
+                      ) : subscription.billing?.shortUrl ? (
                         <a
                           className="link link-primary"
                           href={subscription.billing.shortUrl}
