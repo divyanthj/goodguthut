@@ -191,6 +191,12 @@ export default function Page() {
                 <a className="btn btn-primary" href="#lineup">
                   Explore the lineup
                 </a>
+                <a
+                  className="btn border-[#365244] bg-[#fff8ec] text-[#365244] hover:border-[#2f5d49] hover:bg-[#ece2cf]"
+                  href="/subscriptions"
+                >
+                  Subscribe by email
+                </a>
                 {isPreorderOpen && (
                   <a className="btn border-[#365244] bg-[#f7f1e6]/80 text-[#365244] hover:border-[#2f5d49] hover:bg-[#ece2cf]" href="#lineup">
                     Place a preorder

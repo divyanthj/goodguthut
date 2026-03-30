@@ -167,6 +167,84 @@ export const createRazorpayOrder = async ({ amount, currency, receipt, notes = {
   return response.json();
 };
 
+const razorpayApiRequest = async (path, { method = "GET", body } = {}) => {
+  if (!isRazorpayConfigured()) {
+    throw new Error("Razorpay is not configured. Add RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET.");
+  }
+
+  const authToken = Buffer.from(`${razorpayKeyId}:${razorpayKeySecret}`).toString("base64");
+  const response = await fetch(`https://api.razorpay.com${path}`, {
+    method,
+    headers: {
+      Authorization: `Basic ${authToken}`,
+      "Content-Type": "application/json",
+    },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`Razorpay request failed (${path}): ${errorBody}`);
+  }
+
+  return response.json();
+};
+
+export const createRazorpayPlan = async ({
+  period,
+  interval,
+  amount,
+  currency = "INR",
+  name,
+  description = "",
+  notes = {},
+}) =>
+  razorpayApiRequest("/v1/plans", {
+    method: "POST",
+    body: {
+      period,
+      interval,
+      item: {
+        name,
+        amount,
+        currency,
+        description,
+      },
+      notes,
+    },
+  });
+
+export const createRazorpaySubscription = async ({
+  planId,
+  totalCount,
+  quantity = 1,
+  customerNotify = true,
+  expireBy,
+  notes = {},
+}) =>
+  razorpayApiRequest("/v1/subscriptions", {
+    method: "POST",
+    body: {
+      plan_id: planId,
+      total_count: totalCount,
+      quantity,
+      customer_notify: customerNotify ? 1 : 0,
+      ...(expireBy ? { expire_by: expireBy } : {}),
+      notes,
+    },
+  });
+
+export const cancelRazorpaySubscription = async ({
+  subscriptionId,
+  cancelAtCycleEnd = false,
+}) =>
+  razorpayApiRequest(`/v1/subscriptions/${subscriptionId}/cancel`, {
+    method: "POST",
+    body: {
+      cancel_at_cycle_end: cancelAtCycleEnd ? 1 : 0,
+    },
+  });
+
 export const fetchRazorpayPayment = async (paymentId = "") => {
   const normalizedPaymentId = normalizeString(paymentId);
 
