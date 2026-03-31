@@ -152,7 +152,9 @@ export default function AdminSubscriptionsList({ initialSubscriptions }) {
   };
 
   const deleteSubscription = async (subscriptionId) => {
-    const shouldDelete = window.confirm("Delete this subscription permanently?");
+    const shouldDelete = window.confirm(
+      "Delete this subscription permanently? Any live Razorpay mandate will be cancelled first."
+    );
 
     if (!shouldDelete) {
       return;

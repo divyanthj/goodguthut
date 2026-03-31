@@ -108,11 +108,23 @@ export async function DELETE(_req, { params }) {
   await connectMongo();
 
   try {
-    const subscription = await Subscription.findByIdAndDelete(params.id);
+    const subscription = await Subscription.findById(params.id);
 
     if (!subscription) {
       return NextResponse.json({ error: "Subscription not found." }, { status: 404 });
     }
+
+    if (
+      subscription.billing?.subscriptionId &&
+      !["cancelled", "completed", "expired"].includes(subscription.billing?.status || "")
+    ) {
+      await cancelRazorpaySubscription({
+        subscriptionId: subscription.billing.subscriptionId,
+        cancelAtCycleEnd: false,
+      });
+    }
+
+    await Subscription.findByIdAndDelete(params.id);
 
     return NextResponse.json({ success: true });
   } catch (error) {

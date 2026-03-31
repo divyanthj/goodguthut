@@ -15,10 +15,11 @@ export default async function SubscriptionsPage() {
     });
 
   return (
-    <main className="page-shell relative isolate overflow-hidden bg-base-200">
-      <div aria-hidden="true" className="pointer-events-none fixed inset-0 opacity-70">
-        <div className="absolute inset-x-0 top-0 h-[360px] bg-[radial-gradient(circle_at_top,_rgba(255,249,236,0.95),_rgba(243,237,222,0.15)_60%)]" />
-      </div>
+    <main className="page-shell landing-page relative isolate overflow-hidden bg-base-200">
+      <div
+        aria-hidden="true"
+        className="page-sparkles pointer-events-none fixed inset-0"
+      />
 
       <section className="relative z-10 mx-auto max-w-6xl px-4 py-12 md:px-6 md:py-16">
         <div className="rounded-[32px] border border-[#d1c4b0] bg-[#f3edde]/90 p-8 text-[#2f4a3e] shadow-lg backdrop-blur-[2px] md:p-12">

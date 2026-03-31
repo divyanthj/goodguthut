@@ -9,8 +9,10 @@ import {
 import { buildSubscriptionRequest } from "@/libs/subscription-request";
 import { sendSubscriptionEditLinkEmail } from "@/libs/subscription-notifications";
 import {
+  createSignedCheckoutToken,
   createRazorpayPlan,
   createRazorpaySubscription,
+  getRazorpayPublicConfig,
   isRazorpayConfigured,
 } from "@/libs/razorpay";
 import { getSubscriptionCadenceConfig } from "@/libs/subscriptions";
@@ -18,6 +20,39 @@ import Subscription from "@/models/Subscription";
 
 const buildLineupSummary = (items = []) =>
   items.map((item) => `${item.productName} x ${item.quantity}`).join(", ");
+
+const buildSubscriptionCheckoutPayload = ({
+  subscription,
+  razorpaySubscription,
+  cadenceConfig,
+}) => {
+  const checkoutToken = createSignedCheckoutToken({
+    kind: "subscription_setup",
+    subscriptionRecordId: subscription.id,
+    razorpaySubscriptionId: razorpaySubscription.id,
+    amount: Math.round(Number(subscription.total || 0) * 100),
+    currency: subscription.currency || "INR",
+    email: subscription.email || "",
+    phone: subscription.phone || "",
+  });
+
+  return {
+    checkoutToken,
+    razorpay: {
+      ...getRazorpayPublicConfig(),
+      subscriptionId: razorpaySubscription.id,
+      amount: Math.round(Number(subscription.total || 0) * 100),
+      currency: subscription.currency || "INR",
+      name: "Good Gut Hut",
+      description: `${cadenceConfig.label} subscription`,
+      prefill: {
+        name: subscription.name,
+        email: subscription.email,
+        contact: subscription.phone,
+      },
+    },
+  };
+};
 
 export async function POST(req) {
   const originError = enforceBrowserOrigin(req);
@@ -63,7 +98,7 @@ export async function POST(req) {
       source: "landing",
     });
 
-    let checkoutUrl = "";
+    let checkoutPayload = null;
 
     if (isRazorpayConfigured() && Number(subscription.total || 0) > 0) {
       const cadenceConfig = getSubscriptionCadenceConfig(subscription.cadence);
@@ -92,13 +127,12 @@ export async function POST(req) {
         },
       });
 
-      checkoutUrl = razorpaySubscription.short_url || "";
       subscription.billing = {
         provider: "razorpay",
         status: razorpaySubscription.status || "created",
         planId: plan.id || "",
         subscriptionId: razorpaySubscription.id || "",
-        shortUrl: checkoutUrl,
+        shortUrl: razorpaySubscription.short_url || "",
         amount: subscription.total,
         currency: subscription.currency,
         totalCount: razorpaySubscription.total_count || cadenceConfig.totalCount,
@@ -116,6 +150,12 @@ export async function POST(req) {
           : null,
       };
       await subscription.save();
+
+      checkoutPayload = buildSubscriptionCheckoutPayload({
+        subscription,
+        razorpaySubscription,
+        cadenceConfig,
+      });
     }
 
     try {
@@ -128,10 +168,11 @@ export async function POST(req) {
 
     return NextResponse.json({
       id: subscription.id,
-      checkoutUrl,
-      requiresPaymentSetup: Boolean(checkoutUrl),
-      message: checkoutUrl
-        ? "Subscription request received. Continue to Razorpay to set up recurring auto-pay, and check your email for your secure edit link."
+      checkoutToken: checkoutPayload?.checkoutToken || "",
+      razorpay: checkoutPayload?.razorpay || getRazorpayPublicConfig(),
+      requiresPaymentSetup: Boolean(checkoutPayload?.checkoutToken),
+      message: checkoutPayload?.checkoutToken
+        ? "Subscription request received. Complete the secure Razorpay setup to activate recurring auto-pay, and check your email for your secure edit link."
         : "Subscription request received. Check your email for your secure edit link.",
     });
   } catch (error) {

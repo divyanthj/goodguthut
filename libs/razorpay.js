@@ -12,8 +12,9 @@ const normalizeString = (value = "") => {
   return String(value).trim();
 };
 
+export const normalizeComparableEmail = (value = "") => normalizeString(value).toLowerCase();
 const normalizePhoneNumber = (value = "") => normalizeString(value).replace(/\D/g, "");
-const getComparablePhoneNumber = (value = "") => {
+export const getComparablePhoneNumber = (value = "") => {
   const digits = normalizePhoneNumber(value);
 
   if (digits.length <= 10) {
@@ -110,6 +111,34 @@ export const verifyRazorpayPaymentSignature = ({
   return crypto.timingSafeEqual(expectedBuffer, actualBuffer);
 };
 
+export const verifyRazorpaySubscriptionSignature = ({
+  subscriptionId = "",
+  paymentId = "",
+  signature = "",
+}) => {
+  const normalizedSubscriptionId = normalizeString(subscriptionId);
+  const normalizedPaymentId = normalizeString(paymentId);
+  const normalizedSignature = normalizeString(signature).toLowerCase();
+
+  if (!razorpayKeySecret || !normalizedSubscriptionId || !normalizedPaymentId || !normalizedSignature) {
+    return false;
+  }
+
+  const expectedSignature = crypto
+    .createHmac("sha256", razorpayKeySecret)
+    .update(`${normalizedPaymentId}|${normalizedSubscriptionId}`)
+    .digest("hex");
+
+  const expectedBuffer = Buffer.from(expectedSignature);
+  const actualBuffer = Buffer.from(normalizedSignature);
+
+  if (expectedBuffer.length !== actualBuffer.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(expectedBuffer, actualBuffer);
+};
+
 export const extractRazorpayPaymentResult = (body = {}) => {
   const payload = body?.paymentResult && typeof body.paymentResult === "object"
     ? body.paymentResult
@@ -123,6 +152,34 @@ export const extractRazorpayPaymentResult = (body = {}) => {
         payload?.orderId ||
         payload?.order_id ||
         payload?.order?.id
+    ),
+    paymentId: normalizeString(
+      payload?.razorpay_payment_id ||
+        payload?.paymentId ||
+        payload?.payment_id ||
+        payload?.payment?.id
+    ),
+    signature: normalizeString(
+      payload?.razorpay_signature ||
+        payload?.signature ||
+        payload?.paymentSignature
+    ),
+  };
+};
+
+export const extractRazorpaySubscriptionResult = (body = {}) => {
+  const payload = body?.paymentResult && typeof body.paymentResult === "object"
+    ? body.paymentResult
+    : body?.response && typeof body.response === "object"
+      ? body.response
+      : body;
+
+  return {
+    subscriptionId: normalizeString(
+      payload?.razorpay_subscription_id ||
+        payload?.subscriptionId ||
+        payload?.subscription_id ||
+        payload?.subscription?.id
     ),
     paymentId: normalizeString(
       payload?.razorpay_payment_id ||
@@ -244,6 +301,16 @@ export const cancelRazorpaySubscription = async ({
       cancel_at_cycle_end: cancelAtCycleEnd ? 1 : 0,
     },
   });
+
+export const fetchRazorpaySubscription = async (subscriptionId = "") => {
+  const normalizedSubscriptionId = normalizeString(subscriptionId);
+
+  if (!isRazorpayConfigured() || !normalizedSubscriptionId) {
+    return null;
+  }
+
+  return razorpayApiRequest(`/v1/subscriptions/${normalizedSubscriptionId}`);
+};
 
 export const pauseRazorpaySubscription = async ({
   subscriptionId,
@@ -433,4 +500,29 @@ export const verifyRazorpayWebhookSignature = (body, signature) => {
   }
 
   return crypto.timingSafeEqual(expectedBuffer, actualBuffer);
+};
+
+export const verifyRazorpaySubscriptionCustomer = ({
+  payment = null,
+  expectedEmail = "",
+  expectedPhone = "",
+} = {}) => {
+  if (!payment || typeof payment !== "object") {
+    return { ok: false, reason: "missing_payment" };
+  }
+
+  const normalizedExpectedEmail = normalizeComparableEmail(expectedEmail);
+  const normalizedExpectedPhone = getComparablePhoneNumber(expectedPhone);
+  const paymentEmail = normalizeComparableEmail(payment.email);
+  const paymentContact = getComparablePhoneNumber(payment.contact);
+
+  if (normalizedExpectedEmail && paymentEmail && paymentEmail !== normalizedExpectedEmail) {
+    return { ok: false, reason: "email_mismatch", payment };
+  }
+
+  if (normalizedExpectedPhone && paymentContact && paymentContact !== normalizedExpectedPhone) {
+    return { ok: false, reason: "phone_mismatch", payment };
+  }
+
+  return { ok: true, payment };
 };

@@ -43,7 +43,7 @@ const subscriptionBillingSchema = mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["created", "authenticated", "active", "pending", "halted", "cancelled", "completed", "expired"],
+      enum: ["created", "authenticated", "active", "pending", "halted", "paused", "cancelled", "completed", "expired"],
       default: "created",
     },
     planId: {

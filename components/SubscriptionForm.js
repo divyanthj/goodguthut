@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { SUBSCRIPTION_CADENCES } from "@/libs/subscriptions";
+import { useRazorpayCheckout } from "@/components/RazorpayCheckout";
 
 const MAX_QTY = 10;
 
@@ -55,6 +56,46 @@ const buildFullAddress = (addressLine2, address) => {
   return `${unit}, ${baseAddress}`;
 };
 
+const serializeRazorpaySubscriptionResult = (paymentResult = {}) => {
+  const rawPaymentResult =
+    paymentResult && typeof paymentResult === "object" ? paymentResult : {};
+
+  return {
+    razorpay_subscription_id:
+      rawPaymentResult.razorpay_subscription_id ||
+      rawPaymentResult.subscriptionId ||
+      rawPaymentResult.subscription_id ||
+      "",
+    razorpay_payment_id:
+      rawPaymentResult.razorpay_payment_id ||
+      rawPaymentResult.paymentId ||
+      rawPaymentResult.payment_id ||
+      "",
+    razorpay_signature:
+      rawPaymentResult.razorpay_signature ||
+      rawPaymentResult.signature ||
+      rawPaymentResult.paymentSignature ||
+      "",
+    paymentResult: {
+      razorpay_subscription_id:
+        rawPaymentResult.razorpay_subscription_id ||
+        rawPaymentResult.subscriptionId ||
+        rawPaymentResult.subscription_id ||
+        "",
+      razorpay_payment_id:
+        rawPaymentResult.razorpay_payment_id ||
+        rawPaymentResult.paymentId ||
+        rawPaymentResult.payment_id ||
+        "",
+      razorpay_signature:
+        rawPaymentResult.razorpay_signature ||
+        rawPaymentResult.signature ||
+        rawPaymentResult.paymentSignature ||
+        "",
+    },
+  };
+};
+
 export default function SubscriptionForm({
   catalogItems = [],
   deliveryWindowId = "",
@@ -83,7 +124,6 @@ export default function SubscriptionForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
-  const [checkoutUrl, setCheckoutUrl] = useState("");
   const [didEmailChange, setDidEmailChange] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [addressLookupError, setAddressLookupError] = useState("");
@@ -114,7 +154,15 @@ export default function SubscriptionForm({
         !["created", "cancelled", "completed", "expired"].includes(initialValues?.billing?.status || "")
     )
   );
+  const [isCancelled, setIsCancelled] = useState(
+    Boolean(
+      initialValues?.status === "cancelled" ||
+        initialValues?.billing?.status === "cancelled"
+    )
+  );
   const initialEmailRef = useRef(initialValues?.email || "");
+  const isCompletingPaymentRef = useRef(false);
+  const loadRazorpay = useRazorpayCheckout();
 
   useEffect(() => {
     if (!initialValues) {
@@ -145,6 +193,12 @@ export default function SubscriptionForm({
         mode === "edit" &&
           initialValues?.billing?.subscriptionId &&
           !["created", "cancelled", "completed", "expired"].includes(initialValues?.billing?.status || "")
+      )
+    );
+    setIsCancelled(
+      Boolean(
+        initialValues?.status === "cancelled" ||
+          initialValues?.billing?.status === "cancelled"
       )
     );
     initialEmailRef.current = initialValues.email || "";
@@ -197,6 +251,7 @@ export default function SubscriptionForm({
     deliveryConfigured && customer.address.trim() && !selectedPlace && !hasVerifiedAddress;
   const canSubmit = Boolean(
     !billingLocked &&
+      !isCancelled &&
       !isSubmitting &&
       customer.name.trim() &&
       customer.email.trim() &&
@@ -377,6 +432,47 @@ export default function SubscriptionForm({
     setAddressLookupError("");
   };
 
+  const applySubscriptionState = (nextSubscription) => {
+    if (!nextSubscription) {
+      return;
+    }
+
+    setCustomer({
+      ...initialCustomer,
+      name: nextSubscription.name || "",
+      email: nextSubscription.email || "",
+      phone: nextSubscription.phone || "",
+      address: nextSubscription.address || "",
+    });
+    setCadence(nextSubscription.cadence || "weekly");
+    setCart(buildCartFromCatalog(catalogItems, nextSubscription.items || []));
+    setStoredPlaceId(nextSubscription.deliveryPlaceId || "");
+    setHasVerifiedAddress(
+      Boolean(nextSubscription.deliveryPlaceId || nextSubscription.normalizedDeliveryAddress)
+    );
+    setDeliveryQuote({
+      isDeliverable: true,
+      deliveryFee: Number(nextSubscription.deliveryFee || 0),
+      distanceKm: Number(nextSubscription.deliveryDistanceKm || 0),
+      normalizedAddress:
+        nextSubscription.normalizedDeliveryAddress || nextSubscription.address || "",
+    });
+    setBillingLocked(
+      Boolean(
+        nextSubscription.billing?.subscriptionId &&
+          !["created", "cancelled", "completed", "expired"].includes(
+            nextSubscription.billing?.status || ""
+          )
+      )
+    );
+    setIsCancelled(
+      Boolean(
+        nextSubscription.status === "cancelled" ||
+          nextSubscription.billing?.status === "cancelled"
+      )
+    );
+  };
+
   const onSubmit = async (event) => {
     event.preventDefault();
     setError("");
@@ -433,46 +529,84 @@ export default function SubscriptionForm({
       }
 
       const data = await response.json();
-      setSuccessMessage(data.message || "Subscription saved.");
-      setCheckoutUrl(data.checkoutUrl || "");
 
-      if (mode === "create" && data.checkoutUrl) {
-        window.location.href = data.checkoutUrl;
+      if (data.razorpay?.isConfigured && data.checkoutToken) {
+        const Razorpay = await loadRazorpay();
+
+        if (!Razorpay) {
+          throw new Error("Razorpay checkout is unavailable right now.");
+        }
+
+        const checkout = new Razorpay({
+          ...data.razorpay,
+          handler: async (paymentResult) => {
+            isCompletingPaymentRef.current = true;
+
+            try {
+              const serializedPaymentResult =
+                serializeRazorpaySubscriptionResult(paymentResult);
+              const verifyResponse = await fetch("/api/subscription/payment", {
+                method: "PATCH",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  ...serializedPaymentResult,
+                  checkoutToken: data.checkoutToken,
+                }),
+              });
+              const verifyData = await verifyResponse.json();
+
+              if (!verifyResponse.ok) {
+                throw new Error(
+                  verifyData?.error || "Payment verification failed."
+                );
+              }
+
+              setError("");
+              setSuccessMessage(
+                verifyData.confirmationMessage ||
+                  "Auto-pay is confirmed and your subscription is ready."
+              );
+              applySubscriptionState(verifyData.subscription);
+
+              if (mode === "create") {
+                resetForCreate();
+              }
+            } catch (verificationError) {
+              setError(
+                verificationError.message ||
+                  "Payment setup was completed, but confirmation has not synced yet."
+              );
+            } finally {
+              isCompletingPaymentRef.current = false;
+              setIsSubmitting(false);
+            }
+          },
+          modal: {
+            ondismiss: () => {
+              if (isCompletingPaymentRef.current) {
+                return;
+              }
+
+              setError(
+                "Payment setup was not completed, so the subscription is still waiting for confirmation."
+              );
+              setIsSubmitting(false);
+            },
+          },
+        });
+
+        checkout.open();
         return;
       }
+
+      setSuccessMessage(data.message || "Subscription saved.");
 
       if (mode === "create") {
         resetForCreate();
       } else if (data.subscription) {
-        const nextSubscription = data.subscription;
-        setCustomer({
-          ...initialCustomer,
-          name: nextSubscription.name || "",
-          email: nextSubscription.email || "",
-          phone: nextSubscription.phone || "",
-          address: nextSubscription.address || "",
-        });
-        setCadence(nextSubscription.cadence || "weekly");
-        setCart(buildCartFromCatalog(catalogItems, nextSubscription.items || []));
-        setStoredPlaceId(nextSubscription.deliveryPlaceId || "");
-        setHasVerifiedAddress(
-          Boolean(nextSubscription.deliveryPlaceId || nextSubscription.normalizedDeliveryAddress)
-        );
-        setDeliveryQuote({
-          isDeliverable: true,
-          deliveryFee: Number(nextSubscription.deliveryFee || 0),
-          distanceKm: Number(nextSubscription.deliveryDistanceKm || 0),
-          normalizedAddress:
-            nextSubscription.normalizedDeliveryAddress || nextSubscription.address || "",
-        });
-        setBillingLocked(
-          Boolean(
-            nextSubscription.billing?.subscriptionId &&
-              !["created", "cancelled", "completed", "expired"].includes(
-                nextSubscription.billing?.status || ""
-              )
-          )
-        );
+        applySubscriptionState(data.subscription);
       }
 
       if (customer.email.trim().toLowerCase() !== initialEmailRef.current.trim().toLowerCase()) {
@@ -512,6 +646,7 @@ export default function SubscriptionForm({
       const data = await response.json();
       setSuccessMessage(data.message || "Subscription cancelled.");
       setBillingLocked(true);
+      setIsCancelled(true);
     } catch (cancelError) {
       setError(cancelError.message || "Could not cancel subscription.");
     } finally {
@@ -833,30 +968,15 @@ export default function SubscriptionForm({
             </div>
           )}
 
-          {didEmailChange && (
+          {isCancelled && (
             <div className="rounded-2xl border border-[#ddcfb6] bg-[#f7f1e6] px-4 py-4 text-sm text-[#52655b]">
-              We&apos;ve sent a fresh edit link to your new email address.
+              This subscription has been cancelled.
             </div>
           )}
 
-          {checkoutUrl && (
-            <div className="rounded-2xl border border-[#d6c6ae] bg-[#fff8ec] p-5 text-[#365244]">
-              <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[#6b7d74]">
-                One last step
-              </div>
-              <p className="mt-3 text-sm leading-7">
-                Complete your secure Razorpay auto-pay setup to activate your subscription.
-              </p>
-              <div className="mt-4 flex flex-wrap gap-3">
-                <a
-                  href={checkoutUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="btn btn-primary"
-                >
-                  Continue to Razorpay
-                </a>
-              </div>
+          {didEmailChange && (
+            <div className="rounded-2xl border border-[#ddcfb6] bg-[#f7f1e6] px-4 py-4 text-sm text-[#52655b]">
+              We&apos;ve sent a fresh edit link to your new email address.
             </div>
           )}
 
@@ -865,7 +985,7 @@ export default function SubscriptionForm({
               No login required. We&apos;ll email you a secure link so you can update or cancel your subscription anytime.
             </div>
             <div className="flex flex-wrap gap-3">
-              {mode === "edit" && (
+              {mode === "edit" && !isCancelled && (
                 <button
                   type="button"
                   className="btn btn-outline text-error"
@@ -880,6 +1000,8 @@ export default function SubscriptionForm({
                   ? mode === "edit"
                     ? "Saving..."
                     : "Taking you to payment..."
+                  : isCancelled
+                    ? "Subscription cancelled"
                   : mode === "edit"
                     ? "Save changes"
                     : "Continue"}

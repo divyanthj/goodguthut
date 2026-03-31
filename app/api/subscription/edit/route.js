@@ -10,9 +10,11 @@ import { buildSubscriptionRequest } from "@/libs/subscription-request";
 import { sendSubscriptionEditLinkEmail } from "@/libs/subscription-notifications";
 import { verifySignedSubscriptionEditToken } from "@/libs/subscription-edit-links";
 import {
+  createSignedCheckoutToken,
   cancelRazorpaySubscription,
   createRazorpayPlan,
   createRazorpaySubscription,
+  getRazorpayPublicConfig,
   isRazorpayConfigured,
 } from "@/libs/razorpay";
 import {
@@ -66,6 +68,39 @@ const resolveSubscriptionFromToken = async (token) => {
 const buildLineupSummary = (items = []) =>
   items.map((item) => `${item.productName} x ${item.quantity}`).join(", ");
 
+const buildSubscriptionCheckoutPayload = ({
+  subscription,
+  razorpaySubscription,
+  cadenceConfig,
+}) => {
+  const checkoutToken = createSignedCheckoutToken({
+    kind: "subscription_setup",
+    subscriptionRecordId: subscription.id,
+    razorpaySubscriptionId: razorpaySubscription.id,
+    amount: Math.round(Number(subscription.total || 0) * 100),
+    currency: subscription.currency || "INR",
+    email: subscription.email || "",
+    phone: subscription.phone || "",
+  });
+
+  return {
+    checkoutToken,
+    razorpay: {
+      ...getRazorpayPublicConfig(),
+      subscriptionId: razorpaySubscription.id,
+      amount: Math.round(Number(subscription.total || 0) * 100),
+      currency: subscription.currency || "INR",
+      name: "Good Gut Hut",
+      description: `${cadenceConfig.label} subscription`,
+      prefill: {
+        name: subscription.name,
+        email: subscription.email,
+        contact: subscription.phone,
+      },
+    },
+  };
+};
+
 const syncBillingForSubscription = async (subscription) => {
   if (!isRazorpayConfigured() || Number(subscription.total || 0) <= 0) {
     subscription.billing = {
@@ -78,7 +113,7 @@ const syncBillingForSubscription = async (subscription) => {
       amount: subscription.total,
       currency: subscription.currency,
     };
-    return "";
+    return null;
   }
 
   if (
@@ -144,7 +179,11 @@ const syncBillingForSubscription = async (subscription) => {
       : null,
   };
 
-  return razorpaySubscription.short_url || "";
+  return buildSubscriptionCheckoutPayload({
+    subscription,
+    razorpaySubscription,
+    cadenceConfig,
+  });
 };
 
 export async function GET(req) {
@@ -235,7 +274,7 @@ export async function PATCH(req) {
     subscription.deliveryDistanceKm = nextRequest.deliveryDistanceKm;
     subscription.total = nextRequest.total;
 
-    const checkoutUrl = await syncBillingForSubscription(subscription);
+    const checkoutPayload = await syncBillingForSubscription(subscription);
     await subscription.save();
 
     let emailChanged = false;
@@ -262,12 +301,13 @@ export async function PATCH(req) {
     return NextResponse.json({
       subscription: sanitizeSubscription(subscription),
       emailChanged,
-      checkoutUrl,
-      requiresPaymentSetup: Boolean(checkoutUrl),
+      checkoutToken: checkoutPayload?.checkoutToken || "",
+      razorpay: checkoutPayload?.razorpay || getRazorpayPublicConfig(),
+      requiresPaymentSetup: Boolean(checkoutPayload?.checkoutToken),
       message: emailChanged
         ? "Subscription updated. We emailed a fresh edit link to your new address."
-        : checkoutUrl
-          ? "Subscription updated. Continue to Razorpay to confirm the recurring payment setup for these changes."
+        : checkoutPayload?.checkoutToken
+          ? "Subscription updated. Complete the secure Razorpay setup to confirm the recurring payment changes."
           : "Subscription updated.",
     });
   } catch (error) {
