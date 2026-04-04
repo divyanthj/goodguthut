@@ -4,6 +4,8 @@ import { sendResendEmail } from "@/libs/resend";
 import { sendWhatsAppMessage } from "@/libs/whatsapp";
 
 const SUPPORT_PHONE = "+919916331569";
+const shippedWhatsappConfig = config.preorderNotifications?.shippedWhatsapp || {};
+const pickupReadyWhatsappConfig = config.preorderNotifications?.pickupReadyWhatsapp || {};
 
 const escapeHtml = (value = "") =>
   String(value)
@@ -57,6 +59,10 @@ const formatItemSummaryHtml = (items = []) =>
 const formatMoney = (currency = "INR", amount = 0) =>
   `${currency} ${Number(amount || 0).toFixed(2)}`;
 
+const isPickupPreorder = (preorder) => preorder?.fulfillmentMethod === "pickup";
+const interpolateTemplate = (template = "", values = {}) =>
+  String(template || "").replace(/\{(\w+)\}/g, (_match, key) => values[key] ?? "");
+
 const buildTemplateComponent = (parameters = []) => ({
   type: "body",
   parameters: parameters.map((value) => ({
@@ -78,18 +84,23 @@ const saveNotificationTimestamp = async (preorder, path) => {
 };
 
 export const buildPreorderConfirmationNotifications = ({ preorder }) => {
+  const isPickup = isPickupPreorder(preorder);
   const deliveryDate = formatDeliveryDate(preorder?.deliveryDate);
   const itemSummary = formatItemSummary(preorder?.items);
   const itemSummaryInline = formatItemSummary(preorder?.items, ", ");
   const itemSummaryHtml = formatItemSummaryHtml(preorder?.items);
   const totalAmount = formatMoney(preorder?.currency, preorder?.total || preorder?.payment?.amount);
+  const fulfillmentLabel = isPickup ? "Pickup from" : "Delivery address";
+  const fulfillmentValue = isPickup
+    ? preorder?.pickupAddressSnapshot || preorder?.pickupDoorNumber || "-"
+    : preorder?.normalizedDeliveryAddress || preorder?.address || "-";
   const paymentBreakdown = [
     "Amount paid:",
     `Subtotal: ${formatMoney(preorder?.currency, preorder?.subtotal)}`,
     preorder?.discount?.discountAmount > 0
       ? `Discount (${preorder.discount.code}): -${formatMoney(preorder?.currency, preorder.discount.discountAmount)}`
       : "",
-    `Delivery: ${formatMoney(preorder?.currency, preorder?.deliveryFee)}`,
+    `${isPickup ? "Pickup" : "Delivery"}: ${formatMoney(preorder?.currency, preorder?.deliveryFee)}`,
     `Total: ${totalAmount}`,
   ]
     .filter(Boolean)
@@ -99,7 +110,8 @@ export const buildPreorderConfirmationNotifications = ({ preorder }) => {
     "",
     "Thank you for your preorder. Your payment has been received and your order is confirmed.",
     "",
-    `Delivery date: ${deliveryDate}`,
+    `${isPickup ? "Pickup date" : "Delivery date"}: ${deliveryDate}`,
+    `${fulfillmentLabel}: ${fulfillmentValue}`,
     itemSummary ? `Order details:\n${itemSummary}` : "",
     paymentBreakdown,
   ]
@@ -123,7 +135,8 @@ export const buildPreorderConfirmationNotifications = ({ preorder }) => {
               contentHtml: `
                 <p>${preorder?.customerName ? `Hello ${escapeHtml(preorder.customerName)},` : "Hello,"}</p>
                 <p>Thank you for your preorder. Your payment has been received and your order is confirmed.</p>
-                <p class="meta-line"><strong>Delivery date:</strong> ${escapeHtml(deliveryDate)}</p>
+                <p class="meta-line"><strong>${isPickup ? "Pickup date" : "Delivery date"}:</strong> ${escapeHtml(deliveryDate)}</p>
+                <p class="meta-line"><strong>${escapeHtml(fulfillmentLabel)}:</strong> ${escapeHtml(fulfillmentValue)}</p>
                 ${itemSummaryHtml ? `<h2 class="section-title">Order details</h2><ul class="item-list">${itemSummaryHtml}</ul>` : ""}
                 <h2 class="section-title">Amount paid</h2>
                 <table role="presentation" class="summary-table">
@@ -140,7 +153,7 @@ export const buildPreorderConfirmationNotifications = ({ preorder }) => {
                       : ""
                   }
                   <tr>
-                    <td>Delivery</td>
+                    <td>{isPickup ? "Pickup" : "Delivery"}</td>
                     <td>${escapeHtml(formatMoney(preorder?.currency, preorder?.deliveryFee))}</td>
                   </tr>
                   <tr class="summary-total">
@@ -161,7 +174,8 @@ export const buildPreorderConfirmationNotifications = ({ preorder }) => {
             status: "pending",
             text: [
               "Thank you for your preorder. Your payment has been received and your order is confirmed.",
-              `Delivery date: ${deliveryDate}`,
+              `${isPickup ? "Pickup date" : "Delivery date"}: ${deliveryDate}`,
+              `${fulfillmentLabel}: ${fulfillmentValue}`,
               itemSummaryInline ? `Order details: ${itemSummaryInline}` : "",
               `Total paid: ${totalAmount}`,
             ]
@@ -186,18 +200,25 @@ export const buildPreorderConfirmationNotifications = ({ preorder }) => {
 };
 
 export const buildPreorderShippedNotifications = ({ preorder }) => {
+  const isPickup = isPickupPreorder(preorder);
   const trackingLink = preorder?.shipment?.trackingLink || "";
   const estimatedArrivalAt = preorder?.shipment?.estimatedArrivalAt || null;
   const greeting = preorder?.customerName ? `Hello ${preorder.customerName},` : "Hello,";
-  const shippedLine = "Your Good Gut Hut order has been shipped.";
+  const shippedLine = isPickup
+    ? "Your Good Gut Hut order is ready for pickup."
+    : shippedWhatsappConfig.intro || "Your Good Gut Hut order has been shipped.";
   const itemSummary = formatItemSummary(preorder?.items);
   const itemSummaryInline = formatItemSummary(preorder?.items, ", ");
   const itemSummaryHtml = formatItemSummaryHtml(preorder?.items);
-  const trackingLine = trackingLink
-    ? `Track your order here: ${trackingLink}`
-    : estimatedArrivalAt
-      ? `Estimated arrival: around ${formatDateTime(estimatedArrivalAt)}.`
-      : "";
+  const trackingLine = isPickup
+    ? preorder?.pickupAddressSnapshot
+      ? `Pickup address: ${preorder.pickupAddressSnapshot}`
+      : ""
+    : trackingLink
+      ? `${shippedWhatsappConfig.trackingPrefix || "Track your order here:"} ${trackingLink}`
+      : estimatedArrivalAt
+        ? `${shippedWhatsappConfig.etaPrefix || "Estimated arrival: around"} ${formatDateTime(estimatedArrivalAt)}.`
+        : "";
   const notificationRecord = getNotificationRecord(preorder);
 
   return {
@@ -206,26 +227,40 @@ export const buildPreorderShippedNotifications = ({ preorder }) => {
         ? { status: "already_sent" }
         : {
             status: "pending",
-            subject: "Your Good Gut Hut order has been shipped",
-            text: [greeting, "", shippedLine, itemSummary ? `Items shipped:\n${itemSummary}` : "", trackingLine]
+            subject: isPickup
+              ? "Your Good Gut Hut order is ready for pickup"
+              : "Your Good Gut Hut order has been shipped",
+            text: [
+              greeting,
+              "",
+              shippedLine,
+              itemSummary ? `${isPickup ? "Items ready" : "Items shipped"}:\n${itemSummary}` : "",
+              trackingLine,
+              isPickup ? "Please let us know when you are coming to pick up the order." : "",
+            ]
               .filter(Boolean)
               .join("\n"),
             html: emailTemplate({
-              eyebrow: "Order Shipped",
-              title: "Your order has been shipped",
-              subtitle: trackingLink
-                ? "Your Good Gut Hut order is on the way. You can track its progress below."
-                : "Your Good Gut Hut order is on the way and should arrive soon.",
+              eyebrow: isPickup ? "Ready For Pickup" : "Order Shipped",
+              title: isPickup ? "Your order is ready for pickup" : "Your order has been shipped",
+              subtitle: isPickup
+                ? "Your Good Gut Hut order is ready. Please let us know when you are coming to pick it up."
+                : trackingLink
+                  ? "Your Good Gut Hut order is on the way. You can track its progress below."
+                  : "Your Good Gut Hut order is on the way and should arrive soon.",
               contentHtml: `
                 <p>${escapeHtml(greeting)}</p>
                 <p>${escapeHtml(shippedLine)}</p>
-                ${itemSummaryHtml ? `<h2 class="section-title">Items shipped</h2><ul class="item-list">${itemSummaryHtml}</ul>` : ""}
+                ${itemSummaryHtml ? `<h2 class="section-title">${isPickup ? "Items ready" : "Items shipped"}</h2><ul class="item-list">${itemSummaryHtml}</ul>` : ""}
                 ${
-                  trackingLink
-                    ? `<p><a href="${escapeHtml(trackingLink)}">Track your order here</a></p>`
-                    : estimatedArrivalAt
-                      ? `<p><strong>Estimated arrival:</strong> ${escapeHtml(formatDateTime(estimatedArrivalAt))}</p>`
-                      : ""
+                  isPickup
+                    ? `<p><strong>Pickup address:</strong> ${escapeHtml(preorder?.pickupAddressSnapshot || "-")}</p>
+                       <p>Please let us know when you are coming to pick up the order.</p>`
+                    : trackingLink
+                      ? `<p><a href="${escapeHtml(trackingLink)}">Track your order here</a></p>`
+                      : estimatedArrivalAt
+                        ? `<p><strong>Estimated arrival:</strong> ${escapeHtml(formatDateTime(estimatedArrivalAt))}</p>`
+                        : ""
                 }
               `,
               footer: `Need help? Call or WhatsApp ${SUPPORT_PHONE}.`,
@@ -238,10 +273,26 @@ export const buildPreorderShippedNotifications = ({ preorder }) => {
         ? { status: "already_sent" }
         : {
             status: "pending",
-            text: [shippedLine, itemSummaryInline ? `Items: ${itemSummaryInline}` : "", trackingLine]
-              .filter(Boolean)
-              .join("\n"),
-            template: process.env.WHATSAPP_PREORDER_SHIPPED_TEMPLATE_NAME
+            text: isPickup
+              ? [
+                  preorder?.pickupAddressSnapshot
+                    ? interpolateTemplate(pickupReadyWhatsappConfig.withAddress, {
+                        pickupAddress: preorder.pickupAddressSnapshot,
+                      })
+                    : pickupReadyWhatsappConfig.withoutAddress,
+                ]
+                  .filter(Boolean)
+                  .join("\n")
+              : [
+                  shippedLine,
+                  itemSummaryInline
+                    ? `${shippedWhatsappConfig.itemsLabel || "Items"}: ${itemSummaryInline}`
+                    : "",
+                  trackingLine,
+                ]
+                  .filter(Boolean)
+                  .join("\n"),
+            template: !isPickup && process.env.WHATSAPP_PREORDER_SHIPPED_TEMPLATE_NAME
               ? {
                   name: process.env.WHATSAPP_PREORDER_SHIPPED_TEMPLATE_NAME,
                   components: [

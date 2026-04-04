@@ -175,7 +175,22 @@ const preorderSchema = mongoose.Schema(
     address: {
       type: String,
       trim: true,
-      required: true,
+      default: "",
+    },
+    fulfillmentMethod: {
+      type: String,
+      enum: ["delivery", "pickup"],
+      default: "delivery",
+    },
+    pickupAddressSnapshot: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    pickupDoorNumber: {
+      type: String,
+      trim: true,
+      default: "",
     },
     customerNotes: {
       type: String,

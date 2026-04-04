@@ -68,6 +68,15 @@ export const sanitizeDeliveryBands = (bands = []) =>
     .filter((band) => band.maxDistanceKm > band.minDistanceKm)
     .sort((a, b) => a.minDistanceKm - b.minDistanceKm);
 
+export const formatPickupAddress = ({
+  pickupDoorNumber = "",
+  pickupAddress = "",
+} = {}) =>
+  [pickupDoorNumber, pickupAddress]
+    .map((part) => String(part || "").trim())
+    .filter(Boolean)
+    .join(", ");
+
 const normalizeDate = (value) => {
   if (!value) {
     return null;
@@ -99,6 +108,8 @@ export const normalizePreorderWindowPayload = ({
       currency: (body.currency || "INR").trim().toUpperCase() || "INR",
       minimumOrderQuantity: Math.max(1, Number(body.minimumOrderQuantity || 1)),
       pickupAddress: (body.pickupAddress || "").trim(),
+      pickupDoorNumber: (body.pickupDoorNumber || "").trim(),
+      allowFreePickup: body.allowFreePickup === true,
       deliveryBands,
       allowCustomerNotes: body.allowCustomerNotes !== false,
       allowedItems,

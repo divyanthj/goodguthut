@@ -88,6 +88,8 @@ const createWindowConfig = (windowData) => ({
   currency: windowData.currency || "INR",
   minimumOrderQuantity: Number(windowData.minimumOrderQuantity || 1),
   pickupAddress: windowData.pickupAddress || "",
+  pickupDoorNumber: windowData.pickupDoorNumber || "",
+  allowFreePickup: windowData.allowFreePickup === true,
   deliveryBands: windowData.deliveryBands?.length ? windowData.deliveryBands : [createEmptyDeliveryBand()],
   allowedItems: normalizeAllowedItems(windowData.allowedItems),
   allowCustomerNotes: windowData.allowCustomerNotes !== false,
@@ -798,7 +800,30 @@ export default function AdminPreorderConsole({
                 </label>
                 <div className="form-control w-full md:col-span-2">
                   <div className="label"><span className="label-text">Pickup address</span></div>
-                  <input className="input input-bordered w-full" value={windowConfig.pickupAddress || ""} onChange={(event) => handlePickupInputChange(event.target.value)} autoComplete="off" />
+                  <div className="grid gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
+                    <input
+                      className="input input-bordered w-full"
+                      value={windowConfig.pickupDoorNumber || ""}
+                      onChange={(event) => setField("pickupDoorNumber", event.target.value)}
+                      placeholder="Door / unit number"
+                    />
+                    <input
+                      className="input input-bordered w-full"
+                      value={windowConfig.pickupAddress || ""}
+                      onChange={(event) => handlePickupInputChange(event.target.value)}
+                      autoComplete="off"
+                      placeholder="Pickup street address"
+                    />
+                  </div>
+                  <label className="label cursor-pointer justify-start gap-3">
+                    <input
+                      type="checkbox"
+                      className="checkbox checkbox-sm"
+                      checked={windowConfig.allowFreePickup === true}
+                      onChange={(event) => setField("allowFreePickup", event.target.checked)}
+                    />
+                    <span className="label-text">Enable free pickups for this batch</span>
+                  </label>
                   {pickupSuggestions.length > 0 && (
                     <div className="mt-2 rounded-2xl border border-base-300 bg-base-100 shadow-lg">
                       <ul className="max-h-72 overflow-y-auto py-2">
@@ -819,7 +844,12 @@ export default function AdminPreorderConsole({
                   {selectedPickupPlace?.formattedAddress && (
                     <div className="mt-3 rounded-2xl border border-base-300 bg-base-200 p-4 text-sm">
                       <div className="font-medium">Verified pickup address</div>
-                      <div className="mt-1 opacity-80">{selectedPickupPlace.formattedAddress}</div>
+                      <div className="mt-1 opacity-80">
+                        {[windowConfig.pickupDoorNumber, selectedPickupPlace.formattedAddress]
+                          .map((part) => String(part || "").trim())
+                          .filter(Boolean)
+                          .join(", ")}
+                      </div>
                     </div>
                   )}
                   {pickupLookupError && <div className="mt-2 text-sm text-error">{pickupLookupError}</div>}

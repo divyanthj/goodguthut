@@ -14,6 +14,9 @@ const buildFallbackWindow = () => ({
   currency: "INR",
   minimumOrderQuantity: DEFAULT_MIN_PREORDER_QUANTITY,
   pickupAddress: "",
+  pickupDoorNumber: "",
+  pickupAddressDisplay: "",
+  allowFreePickup: false,
   deliveryBands: [],
   allowedItems: [],
 });
@@ -333,6 +336,11 @@ export default function Page() {
             <p className="mt-2 text-sm text-[#5f7068]">
               Delivery is calculated from the pickup address using Google Maps driving distance.
             </p>
+            {preorderWindow.allowFreePickup && preorderWindow.pickupAddressDisplay && (
+              <p className="mt-2 text-sm text-[#5f7068]">
+                Free pickup is also available from {preorderWindow.pickupAddressDisplay}.
+              </p>
+            )}
             <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
               {preorderWindow.deliveryBands.map((band, index) => (
                 <div key={`band-${index}`} className="rounded-md bg-[#efe6d8] px-4 py-3 text-sm text-[#3f5348]">
@@ -355,6 +363,8 @@ export default function Page() {
             currency={preorderWindow.currency || "INR"}
             deliveryBands={preorderWindow.deliveryBands || []}
             pickupAddress={preorderWindow.pickupAddress || ""}
+            pickupAddressDisplay={preorderWindow.pickupAddressDisplay || ""}
+            allowFreePickup={preorderWindow.allowFreePickup === true}
             onOrderPlaced={resetCart}
             updateQty={updateQty}
             minTotalQuantity={minTotalQuantity}

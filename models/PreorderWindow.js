@@ -81,6 +81,15 @@ const preorderWindowSchema = mongoose.Schema(
       trim: true,
       default: "",
     },
+    pickupDoorNumber: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    allowFreePickup: {
+      type: Boolean,
+      default: false,
+    },
     deliveryBands: {
       type: [deliveryBandSchema],
       default: [],

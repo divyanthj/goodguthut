@@ -46,24 +46,26 @@ const toDateTimeLocal = (value) => {
 };
 
 const getConfirmationLabel = (preorder) => {
+  const isPickup = preorder.fulfillmentMethod === "pickup";
+
   if (preorder.payment?.provider === "razorpay") {
     if (preorder.status === "fulfilled") {
-      return "Paid and delivered";
+      return isPickup ? "Paid and picked up" : "Paid and delivered";
     }
 
     if (preorder.status === "shipped") {
-      return "Paid and shipped";
+      return isPickup ? "Paid and ready for pickup" : "Paid and shipped";
     }
 
     return "Paid and confirmed";
   }
 
   if (preorder.status === "fulfilled") {
-    return "Delivered";
+    return isPickup ? "Picked up" : "Delivered";
   }
 
   if (preorder.status === "shipped") {
-    return "Shipped";
+    return isPickup ? "Ready for pickup" : "Shipped";
   }
 
   return preorder.status === "confirmed" ? "Confirmed" : "Awaiting contact";
@@ -323,17 +325,21 @@ export default function AdminPreordersList({ initialPreorders }) {
         }
       }
 
-      const shipmentSummary = trackingLink?.trim()
-        ? "Order marked as shipped and tracking link saved."
-        : "Order marked as shipped and ETA set for 1 hour from shipment.";
+      const updatedPreorder = data.preorder || {};
+      const isPickup = updatedPreorder.fulfillmentMethod === "pickup";
+      const shipmentSummary = isPickup
+        ? "Order marked ready for pickup."
+        : trackingLink?.trim()
+          ? "Order marked as shipped and tracking link saved."
+          : "Order marked as shipped and ETA set for 1 hour from shipment.";
       const whatsappSummary = whatsappUrl
         ? clipboardCopied
           ? isMobileDevice()
-            ? " Shipped WhatsApp message copied to clipboard and opened in the WhatsApp app."
-            : " Shipped WhatsApp message copied to clipboard."
+            ? " WhatsApp message copied to clipboard and opened in the WhatsApp app."
+            : " WhatsApp message copied to clipboard."
           : isMobileDevice()
-            ? " WhatsApp app opened with the shipped message prefilled."
-            : " Shipped WhatsApp message is ready to paste."
+            ? " WhatsApp app opened with the message prefilled."
+            : " WhatsApp message is ready to paste."
         : " No WhatsApp action was opened because this preorder has no phone number.";
       setMessage(
         `${shipmentSummary}${whatsappSummary}`
@@ -436,6 +442,9 @@ export default function AdminPreordersList({ initialPreorders }) {
               <div className="badge badge-outline">{preorder.status}</div>
               <div className="badge badge-outline">{getPaymentBadgeLabel(preorder)}</div>
               <div className="badge badge-outline">qty {preorder.totalQuantity}</div>
+              <div className="badge badge-outline">
+                {preorder.fulfillmentMethod === "pickup" ? "pickup" : "delivery"}
+              </div>
               {preorder.status === "pending" && preorder.payment?.provider !== "razorpay" && (
                 <button
                   type="button"
@@ -512,8 +521,14 @@ export default function AdminPreordersList({ initialPreorders }) {
                     <div className="mt-1">{getConfirmationLabel(preorder)}</div>
                   </div>
                   <div>
-                    <div className="text-xs uppercase tracking-[0.16em] opacity-60">Distance</div>
-                    <div className="mt-1">{Number(preorder.deliveryDistanceKm || 0).toFixed(1)} km</div>
+                    <div className="text-xs uppercase tracking-[0.16em] opacity-60">
+                      {preorder.fulfillmentMethod === "pickup" ? "Pickup" : "Distance"}
+                    </div>
+                    <div className="mt-1">
+                      {preorder.fulfillmentMethod === "pickup"
+                        ? "Free pickup"
+                        : `${Number(preorder.deliveryDistanceKm || 0).toFixed(1)} km`}
+                    </div>
                   </div>
                   <div>
                     <div className="text-xs uppercase tracking-[0.16em] opacity-60">Subtotal</div>
@@ -558,8 +573,14 @@ export default function AdminPreordersList({ initialPreorders }) {
               </div>
 
               <div className="rounded-xl bg-base-200 p-4 text-sm">
-                <div className="text-xs uppercase tracking-[0.16em] opacity-60">Delivery address</div>
-                <div className="mt-1">{preorder.normalizedDeliveryAddress || preorder.address}</div>
+                <div className="text-xs uppercase tracking-[0.16em] opacity-60">
+                  {preorder.fulfillmentMethod === "pickup" ? "Pickup address" : "Delivery address"}
+                </div>
+                <div className="mt-1">
+                  {preorder.fulfillmentMethod === "pickup"
+                    ? preorder.pickupAddressSnapshot || "-"
+                    : preorder.normalizedDeliveryAddress || preorder.address}
+                </div>
                 <div className="mt-3 grid gap-2 sm:grid-cols-2">
                   <div>
                     <div className="text-xs uppercase tracking-[0.16em] opacity-60">Phone</div>
@@ -576,18 +597,25 @@ export default function AdminPreordersList({ initialPreorders }) {
 
           <div className="mt-4 rounded-xl bg-base-200 p-4">
             <div className="flex flex-wrap items-end gap-3">
-              <label className="form-control min-w-[280px] flex-1">
-                <div className="label py-0">
-                  <span className="label-text">Tracking link (optional)</span>
+              {preorder.fulfillmentMethod !== "pickup" ? (
+                <label className="form-control min-w-[280px] flex-1">
+                  <div className="label py-0">
+                    <span className="label-text">Tracking link (optional)</span>
+                  </div>
+                  <input
+                    type="url"
+                    className="input input-bordered"
+                    defaultValue={preorder.shipment?.trackingLink || ""}
+                    id={`tracking-link-${preorder.id}`}
+                    placeholder="https://..."
+                  />
+                </label>
+              ) : (
+                <div className="min-w-[280px] flex-1 rounded-xl border border-base-300 bg-base-100 px-4 py-3 text-sm">
+                  <div className="text-xs uppercase tracking-[0.16em] opacity-60">Pickup address</div>
+                  <div className="mt-1">{preorder.pickupAddressSnapshot || "-"}</div>
                 </div>
-                <input
-                  type="url"
-                  className="input input-bordered"
-                  defaultValue={preorder.shipment?.trackingLink || ""}
-                  id={`tracking-link-${preorder.id}`}
-                  placeholder="https://..."
-                />
-              </label>
+              )}
               <button
                 type="button"
                 className="btn btn-secondary btn-sm"
@@ -601,7 +629,11 @@ export default function AdminPreordersList({ initialPreorders }) {
                   markShipped(preorder.id, element?.value || "");
                 }}
               >
-                {savingId === preorder.id ? "Saving..." : "Mark as shipped"}
+                {savingId === preorder.id
+                  ? "Saving..."
+                  : preorder.fulfillmentMethod === "pickup"
+                    ? "Mark ready for pickup"
+                    : "Mark as shipped"}
               </button>
               <label className="form-control">
                 <div className="label py-0">

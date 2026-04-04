@@ -101,6 +101,11 @@ export const hydrateWindowWithCatalog = (preorderWindow, skuMap) => {
 
   return {
     ...serialized,
+    pickupAddressDisplay:
+      [serialized.pickupDoorNumber, serialized.pickupAddress]
+        .map((part) => String(part || "").trim())
+        .filter(Boolean)
+        .join(", "),
     allowedItems: hydrateAllowedItems(serialized.allowedItems || [], skuMap),
   };
 };

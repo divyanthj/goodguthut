@@ -32,9 +32,10 @@ export async function PATCH(req, { params }) {
 
       const trackingLink = (body.trackingLink || "").trim();
       const shippedAt = new Date();
-      const estimatedArrivalAt = trackingLink
-        ? null
-        : new Date(shippedAt.getTime() + 60 * 60 * 1000);
+      const estimatedArrivalAt =
+        preorder.fulfillmentMethod === "pickup" || trackingLink
+          ? null
+          : new Date(shippedAt.getTime() + 60 * 60 * 1000);
 
       preorder.set("shipment", {
         ...(preorder.shipment?.toObject?.() || preorder.shipment || {}),

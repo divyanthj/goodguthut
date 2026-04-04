@@ -3,7 +3,11 @@ import PreorderWindow from "@/models/PreorderWindow";
 import { calculateDeliveryQuote } from "@/libs/delivery";
 import { resolveDiscountCode, normalizeDiscountCode } from "@/libs/discount-codes";
 import { getPlaceDetails } from "@/libs/places";
-import { isWindowAcceptingOrders, MAX_PER_ORDER_LIMIT } from "@/libs/preorder-windows";
+import {
+  formatPickupAddress,
+  isWindowAcceptingOrders,
+  MAX_PER_ORDER_LIMIT,
+} from "@/libs/preorder-windows";
 import { getSkuMap, listSkuCatalog, normalizeAllowedItemRefs } from "@/libs/sku-catalog";
 import {
   isValidAddress,
@@ -38,13 +42,18 @@ export const buildPreorderRequest = async (body = {}) => {
   const address = normalizeAddress(body.address || "");
   const placeId = body.deliveryPlaceId?.trim() || "";
   const sessionToken = normalizeSessionToken(body.addressSessionToken || "");
+  const isPickup = body.isPickup === true;
   const customerNotes = (body.customerNotes || "").trim().slice(0, 500);
   const preorderWindowId = body.preorderWindowId?.trim() || "";
   const discountCodeInput = normalizeDiscountCode(body.discountCode || "");
   const requestItems = sanitizePreorderItems(body.items);
 
-  if (!customerName || !phone || !address) {
-    throw new Error("Name, phone number, and address are required");
+  if (!customerName || !phone || (!isPickup && !address)) {
+    throw new Error(
+      isPickup
+        ? "Name and phone number are required for pickup."
+        : "Name, phone number, and address are required"
+    );
   }
 
   if (!isValidName(customerName)) {
@@ -59,11 +68,11 @@ export const buildPreorderRequest = async (body = {}) => {
     throw new Error("Enter a valid phone number.");
   }
 
-  if (!isValidAddress(address)) {
+  if (!isPickup && !isValidAddress(address)) {
     throw new Error("Enter a valid delivery address.");
   }
 
-  if (placeId && !isValidPlaceId(placeId)) {
+  if (!isPickup && placeId && !isValidPlaceId(placeId)) {
     throw new Error("Invalid delivery placeId.");
   }
 
@@ -96,6 +105,10 @@ export const buildPreorderRequest = async (body = {}) => {
 
     if (!isWindowAcceptingOrders(preorderWindow)) {
       throw new Error("Preorders are closed for the selected delivery window");
+    }
+
+    if (isPickup && !preorderWindow.allowFreePickup) {
+      throw new Error("Pickup is not enabled for this preorder batch.");
     }
   }
 
@@ -148,15 +161,21 @@ export const buildPreorderRequest = async (body = {}) => {
   let deliveryFee = 0;
   let deliveryDistanceKm = 0;
   let normalizedDeliveryAddress = address;
+  const pickupAddressSnapshot = formatPickupAddress({
+    pickupDoorNumber: preorderWindow?.pickupDoorNumber,
+    pickupAddress: preorderWindow?.pickupAddress,
+  });
 
-  if (preorderWindow?.pickupAddress && preorderWindow?.deliveryBands?.length) {
+  if (isPickup) {
+    normalizedDeliveryAddress = "";
+  } else if (preorderWindow?.pickupAddress && preorderWindow?.deliveryBands?.length) {
     if (!placeId) {
       throw new Error("Please select a delivery address from the suggestions.");
     }
 
     const placeDetails = await getPlaceDetails({ placeId, sessionToken });
     const deliveryQuote = await calculateDeliveryQuote({
-      pickupAddress: preorderWindow.pickupAddress,
+      pickupAddress: pickupAddressSnapshot || preorderWindow.pickupAddress,
       deliveryBands: preorderWindow.deliveryBands,
       address,
       placeDetails,
@@ -179,6 +198,9 @@ export const buildPreorderRequest = async (body = {}) => {
     phone,
     address,
     normalizedDeliveryAddress,
+    fulfillmentMethod: isPickup ? "pickup" : "delivery",
+    pickupAddressSnapshot,
+    pickupDoorNumber: preorderWindow?.pickupDoorNumber || "",
     customerNotes,
     preorderWindowId,
     preorderWindow: preorderWindow
@@ -187,6 +209,9 @@ export const buildPreorderRequest = async (body = {}) => {
           title: preorderWindow.title || "",
           deliveryDate: preorderWindow.deliveryDate || null,
           currency: preorderWindow.currency || "INR",
+          allowFreePickup: preorderWindow.allowFreePickup === true,
+          pickupAddress: preorderWindow.pickupAddress || "",
+          pickupDoorNumber: preorderWindow.pickupDoorNumber || "",
         }
       : null,
     items,

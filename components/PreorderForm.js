@@ -113,6 +113,8 @@ export default function PreorderForm({
   currency = "INR",
   deliveryBands = [],
   pickupAddress = "",
+  pickupAddressDisplay = "",
+  allowFreePickup = false,
   onOrderPlaced,
   updateQty,
   minTotalQuantity,
@@ -133,6 +135,7 @@ export default function PreorderForm({
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
   const [selectedPlace, setSelectedPlace] = useState(null);
   const [addressSessionToken, setAddressSessionToken] = useState(() => createSessionToken());
+  const [isPickup, setIsPickup] = useState(false);
   const isCompletingPaymentRef = useRef(false);
   const loadRazorpay = useRazorpayCheckout();
 
@@ -151,19 +154,20 @@ export default function PreorderForm({
   );
 
   const deliveryConfigured = Boolean(pickupAddress && deliveryBands.length > 0);
-  const requiresSelectedAddress = deliveryConfigured;
+  const requiresSelectedAddress = deliveryConfigured && !isPickup;
   const fullAddress = buildFullAddress(customer.addressLine2, customer.address);
   const appliedDiscountCode = appliedDiscount?.code || "";
   const discountAmount = Number(appliedDiscount?.discountAmount || 0);
   const discountedSubtotal = Math.max(0, subtotal - discountAmount);
-  const total = discountedSubtotal + Number(deliveryQuote?.deliveryFee || 0);
+  const total = discountedSubtotal + Number(isPickup ? 0 : deliveryQuote?.deliveryFee || 0);
   const hasMandatoryFields =
-    customer.customerName.trim() && customer.phone.trim() && customer.address.trim();
+    customer.customerName.trim() && customer.phone.trim() && (isPickup || customer.address.trim());
   const meetsMinQty = totalQuantity >= minTotalQuantity;
   const needsAddressSelection =
     requiresSelectedAddress && customer.address.trim() && !selectedPlace;
   const isBlockedByDelivery =
     deliveryConfigured &&
+    !isPickup &&
     customer.address.trim() &&
     (isQuotingDelivery || deliveryQuote?.isDeliverable === false || Boolean(deliveryError) || needsAddressSelection);
   const canSubmit = Boolean(
@@ -180,6 +184,12 @@ export default function PreorderForm({
       isCompletingPaymentRef.current = false;
     }
   }, [successState]);
+
+  useEffect(() => {
+    if (!allowFreePickup && isPickup) {
+      setIsPickup(false);
+    }
+  }, [allowFreePickup, isPickup]);
 
   const applyDiscountCode = useCallback(
     async (codeValue = discountCodeInput, { silent = false } = {}) => {
@@ -237,6 +247,13 @@ export default function PreorderForm({
   );
 
   useEffect(() => {
+    if (isPickup) {
+      setAddressSuggestions([]);
+      setIsLoadingSuggestions(false);
+      setAddressLookupError("");
+      return undefined;
+    }
+
     const input = customer.address.trim();
 
     if (input.length < 3) {
@@ -287,7 +304,7 @@ export default function PreorderForm({
     }, 250);
 
     return () => clearTimeout(timeoutId);
-  }, [customer.address, addressSessionToken, selectedPlace]);
+  }, [customer.address, addressSessionToken, isPickup, selectedPlace]);
 
   useEffect(() => {
     if (!appliedDiscountCode || selectedItems.length === 0) {
@@ -307,7 +324,7 @@ export default function PreorderForm({
   useEffect(() => {
     setDeliveryError("");
 
-    if (!deliveryConfigured || !selectedPlace) {
+    if (!deliveryConfigured || isPickup || !selectedPlace) {
       setDeliveryQuote(null);
       setIsQuotingDelivery(false);
       return undefined;
@@ -351,7 +368,7 @@ export default function PreorderForm({
     }, 200);
 
     return () => clearTimeout(timeoutId);
-  }, [selectedPlace, preorderWindowId, deliveryConfigured, addressSessionToken, fullAddress]);
+  }, [selectedPlace, preorderWindowId, deliveryConfigured, addressSessionToken, fullAddress, isPickup]);
 
   const handleAddressInputChange = (value) => {
     setCustomer((prev) => ({ ...prev, address: value }));
@@ -409,7 +426,7 @@ export default function PreorderForm({
     }
 
     if (!hasMandatoryFields) {
-      setError("Please fill in name, phone number, and address.");
+      setError(isPickup ? "Please fill in name and phone number." : "Please fill in name, phone number, and address.");
       return;
     }
 
@@ -436,7 +453,8 @@ export default function PreorderForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...customer,
-          address: fullAddress,
+          address: isPickup ? "" : fullAddress,
+          isPickup,
           preorderWindowId,
           discountCode: discountCodeInput,
           deliveryPlaceId: selectedPlace?.placeId || "",
@@ -501,6 +519,7 @@ export default function PreorderForm({
               setAddressSessionToken(createSessionToken());
               setDeliveryQuote(null);
               setDeliveryError("");
+              setIsPickup(false);
               setDiscountCodeInput("");
               setAppliedDiscount(null);
               setDiscountError("");
@@ -543,6 +562,7 @@ export default function PreorderForm({
       setAddressSessionToken(createSessionToken());
       setDeliveryQuote(null);
       setDeliveryError("");
+      setIsPickup(false);
       setDiscountCodeInput("");
       setAppliedDiscount(null);
       setDiscountError("");
@@ -579,7 +599,7 @@ export default function PreorderForm({
             <p className="mt-3 text-sm leading-7">
               {successState.isPaid
                 ? "Your payment has been received and your preorder has been locked in."
-                : "Your preorder is received and we&apos;ll contact you shortly to confirm payment and delivery."}
+                : "Your preorder is received and we&apos;ll contact you shortly to confirm the next steps."}
             </p>
             {successState.deliveryDate && (
               <p className="mt-3 text-sm leading-7">
@@ -601,7 +621,7 @@ export default function PreorderForm({
                     : "Your order is confirmed. If you want a receipt by email next time, add your email address during checkout."}
             </p>
             <p className="mt-3 text-sm leading-7">
-              Need anything before delivery? Call or WhatsApp <span className="font-semibold">{SUPPORT_PHONE}</span>.
+              Need anything before your order is ready? Call or WhatsApp <span className="font-semibold">{SUPPORT_PHONE}</span>.
             </p>
           </div>
         </div>
@@ -613,6 +633,34 @@ export default function PreorderForm({
     <form onSubmit={onSubmit} className="card mt-6 bg-base-100 shadow-xl">
       <div className="card-body gap-6">
         <div className="grid gap-4 md:grid-cols-2">
+          {allowFreePickup && pickupAddressDisplay && (
+            <div className="md:col-span-2 rounded-2xl border border-base-300 bg-base-200 p-4">
+              <label className="label cursor-pointer justify-start gap-3">
+                <input
+                  type="checkbox"
+                  className="checkbox"
+                  checked={isPickup}
+                  onChange={(event) => {
+                    const nextIsPickup = event.target.checked;
+                    setIsPickup(nextIsPickup);
+                    setError("");
+                    setDeliveryError("");
+                    setAddressLookupError("");
+                    setAddressSuggestions([]);
+                    setSelectedPlace(null);
+                    setDeliveryQuote(null);
+                  }}
+                />
+                <span className="label-text font-medium">Pick up this order for free</span>
+              </label>
+              {isPickup && (
+                <div className="mt-3 rounded-xl border border-base-300 bg-base-100 p-4 text-sm">
+                  <div className="font-medium">Pickup address</div>
+                  <div className="mt-1 opacity-80">{pickupAddressDisplay}</div>
+                </div>
+              )}
+            </div>
+          )}
           <label className="form-control w-full">
             <div className="label">
               <span className="label-text">Name *</span>
@@ -646,7 +694,8 @@ export default function PreorderForm({
               onChange={(e) => setCustomer((prev) => ({ ...prev, phone: e.target.value }))}
             />
           </label>
-          <label className="form-control w-full">
+          {!isPickup && (
+            <label className="form-control w-full">
             <div className="label">
               <span className="label-text">Flat / Door No.</span>
             </div>
@@ -658,8 +707,10 @@ export default function PreorderForm({
               }
               placeholder="F202, A-304, Villa 4"
             />
-          </label>
-          <div className="form-control w-full md:col-span-2">
+            </label>
+          )}
+          {!isPickup && (
+            <div className="form-control w-full md:col-span-2">
             <div className="label">
               <span className="label-text">Building / Street Address *</span>
             </div>
@@ -702,8 +753,9 @@ export default function PreorderForm({
             {addressLookupError && (
               <div className="mt-2 text-sm text-error">{addressLookupError}</div>
             )}
-          </div>
-          {selectedPlace?.formattedAddress && (
+            </div>
+          )}
+          {!isPickup && selectedPlace?.formattedAddress && (
             <div className="md:col-span-2 rounded-2xl border border-base-300 bg-base-200 p-4 text-sm">
               <div className="font-medium">Verified on Google Maps</div>
               <div className="mt-1 opacity-80">{fullAddress}</div>
@@ -817,18 +869,20 @@ export default function PreorderForm({
               </div>
             )}
             <div className="text-sm font-medium opacity-90">
-              Delivery: {deliveryQuote ? `${currency} ${Number(deliveryQuote.deliveryFee).toFixed(2)}` : isQuotingDelivery ? "Calculating..." : `${currency} 0.00`}
+              {isPickup
+                ? `Pickup: ${currency} 0.00`
+                : `Delivery: ${deliveryQuote ? `${currency} ${Number(deliveryQuote.deliveryFee).toFixed(2)}` : isQuotingDelivery ? "Calculating..." : `${currency} 0.00`}`}
             </div>
-            {deliveryQuote?.distanceKm > 0 && (
+            {!isPickup && deliveryQuote?.distanceKm > 0 && (
               <div className="text-sm opacity-80">
                 Distance: {Number(deliveryQuote.distanceKm).toFixed(1)} km
               </div>
             )}
-            {deliveryError && <div className="text-sm text-error">{deliveryError}</div>}
-            {!deliveryError && needsAddressSelection && (
+            {!isPickup && deliveryError && <div className="text-sm text-error">{deliveryError}</div>}
+            {!isPickup && !deliveryError && needsAddressSelection && (
               <div className="text-sm opacity-70">Pick one of the suggested addresses to continue.</div>
             )}
-            {!deliveryError && deliveryConfigured && !customer.address.trim() && (
+            {!isPickup && !deliveryError && deliveryConfigured && !customer.address.trim() && (
               <div className="text-sm opacity-70">Enter your address to calculate delivery.</div>
             )}
             <div className="text-sm font-semibold">Total: {currency} {total.toFixed(2)}</div>

@@ -39,6 +39,20 @@ const config = {
     loginUrl: "/api/auth/signin",
     callbackUrl: "/dashboard",
   },
+  preorderNotifications: {
+    shippedWhatsapp: {
+      intro: "Your Good Gut Hut order has been shipped.",
+      itemsLabel: "Items",
+      trackingPrefix: "Track your order here:",
+      etaPrefix: "Estimated arrival: around",
+    },
+    pickupReadyWhatsapp: {
+      withAddress:
+        "Your Good Gut Hut order is ready for pickup from this address: {pickupAddress}. Please let us know when you are coming to pick up the order.",
+      withoutAddress:
+        "Your Good Gut Hut order is ready for pickup. Please let us know when you are coming to pick up the order.",
+    },
+  },
 };
 
 export default config;

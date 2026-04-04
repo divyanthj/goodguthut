@@ -29,6 +29,9 @@ const createPreorderDocument = async (orderRequest, payment = {}) => {
     phone: orderRequest.phone,
     address: orderRequest.address,
     normalizedDeliveryAddress: orderRequest.normalizedDeliveryAddress,
+    fulfillmentMethod: orderRequest.fulfillmentMethod,
+    pickupAddressSnapshot: orderRequest.pickupAddressSnapshot,
+    pickupDoorNumber: orderRequest.pickupDoorNumber,
     customerNotes: orderRequest.customerNotes,
     preorderWindow: orderRequest.preorderWindow?.id || null,
     preorderWindowLabel: orderRequest.preorderWindow?.title || "",
@@ -143,10 +146,12 @@ export async function POST(req) {
       e.message === "Selected preorder window was not found" ||
       e.message === "Preorders are closed for the selected delivery window" ||
       e.message === "Name, phone number, and address are required" ||
+      e.message === "Name and phone number are required for pickup." ||
       e.message === "Enter a valid name." ||
       e.message === "Enter a valid email address." ||
       e.message === "Enter a valid phone number." ||
       e.message === "Enter a valid delivery address." ||
+      e.message === "Pickup is not enabled for this preorder batch." ||
       e.message === "Invalid delivery placeId." ||
       e.message === "Invalid delivery lookup session." ||
       e.message === "Add at least one product quantity (SKU + quantity) before placing preorder" ||

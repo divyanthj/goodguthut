@@ -24,6 +24,8 @@ export const createDefaultPreorderWindow = () => {
     currency: "INR",
     minimumOrderQuantity: 4,
     pickupAddress: "",
+    pickupDoorNumber: "",
+    allowFreePickup: false,
     deliveryBands: createDefaultDeliveryBands(),
     allowedItems: [],
     allowCustomerNotes: true,
