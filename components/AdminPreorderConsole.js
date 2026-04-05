@@ -91,6 +91,12 @@ const createWindowConfig = (windowData) => ({
   pickupDoorNumber: windowData.pickupDoorNumber || "",
   allowFreePickup: windowData.allowFreePickup === true,
   deliveryBands: windowData.deliveryBands?.length ? windowData.deliveryBands : [createEmptyDeliveryBand()],
+  freeDeliveryThreshold:
+    windowData.freeDeliveryThreshold === null ||
+    windowData.freeDeliveryThreshold === undefined ||
+    windowData.freeDeliveryThreshold === ""
+      ? ""
+      : Number(windowData.freeDeliveryThreshold || 0),
   allowedItems: normalizeAllowedItems(windowData.allowedItems),
   allowCustomerNotes: windowData.allowCustomerNotes !== false,
   openImmediately:
@@ -860,7 +866,7 @@ export default function AdminPreorderConsole({
                 <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <h3 className="text-xl font-semibold">Delivery charges</h3>
-                    <p className="text-sm opacity-70">Set fee slabs for this batch.</p>
+                    <p className="text-sm opacity-70">Set distance-based delivery charges, or offer free delivery above a preorder amount.</p>
                   </div>
                   <button
                     type="button"
@@ -875,6 +881,23 @@ export default function AdminPreorderConsole({
                     Add distance slab
                   </button>
                 </div>
+                <label className="form-control w-full">
+                  <div className="label">
+                    <span className="label-text">Free delivery above (optional)</span>
+                  </div>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    className="input input-bordered"
+                    value={windowConfig.freeDeliveryThreshold}
+                    onChange={(event) => setField("freeDeliveryThreshold", event.target.value)}
+                    placeholder="Leave blank to use only distance-based charges"
+                  />
+                  <div className="mt-2 text-sm opacity-70">
+                    If you set an amount here, customers whose preorder subtotal reaches it before discounts will get free delivery.
+                  </div>
+                </label>
                 <div className="space-y-3">
                   {windowConfig.deliveryBands.map((band, index) => (
                     <div key={`delivery-band-${index}`} className="grid gap-3 rounded-xl bg-base-100 p-4 md:grid-cols-4">

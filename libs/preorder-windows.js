@@ -86,6 +86,20 @@ const normalizeDate = (value) => {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
 
+const normalizeOptionalCurrencyAmount = (value) => {
+  if (value === "" || value === null || value === undefined) {
+    return null;
+  }
+
+  const parsed = Number(value);
+
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return null;
+  }
+
+  return parsed;
+};
+
 export const normalizePreorderWindowPayload = ({
   body = {},
   fallbackTitle = "Preorder batch",
@@ -111,6 +125,7 @@ export const normalizePreorderWindowPayload = ({
       pickupDoorNumber: (body.pickupDoorNumber || "").trim(),
       allowFreePickup: body.allowFreePickup === true,
       deliveryBands,
+      freeDeliveryThreshold: normalizeOptionalCurrencyAmount(body.freeDeliveryThreshold),
       allowCustomerNotes: body.allowCustomerNotes !== false,
       allowedItems,
     },

@@ -120,6 +120,8 @@ export const calculateDeliveryQuote = async ({
   address,
   placeDetails,
   maxDistanceKm = 50,
+  orderSubtotal = null,
+  freeDeliveryThreshold = null,
 }) => {
   if (!pickupAddress?.trim() || !deliveryBands.length) {
     return {
@@ -131,6 +133,8 @@ export const calculateDeliveryQuote = async ({
       matchedBand: null,
       reason: "Delivery is not configured yet.",
       location: null,
+      isFreeDelivery: false,
+      freeDeliveryThreshold: null,
     };
   }
 
@@ -146,6 +150,8 @@ export const calculateDeliveryQuote = async ({
       matchedBand: null,
       reason: "We do not deliver there yet.",
       location: destination.location,
+      isFreeDelivery: false,
+      freeDeliveryThreshold: null,
     };
   }
 
@@ -164,6 +170,8 @@ export const calculateDeliveryQuote = async ({
       matchedBand: null,
       reason: "We do not deliver there yet.",
       location: destination.location,
+      isFreeDelivery: false,
+      freeDeliveryThreshold: null,
     };
   }
 
@@ -179,6 +187,31 @@ export const calculateDeliveryQuote = async ({
       matchedBand: null,
       reason: "We do not deliver there yet.",
       location: destination.location,
+      isFreeDelivery: false,
+      freeDeliveryThreshold: null,
+    };
+  }
+
+  const numericFreeDeliveryThreshold = Number(freeDeliveryThreshold);
+  const numericOrderSubtotal = Number(orderSubtotal);
+  const qualifiesForFreeDelivery =
+    Number.isFinite(numericFreeDeliveryThreshold) &&
+    numericFreeDeliveryThreshold > 0 &&
+    Number.isFinite(numericOrderSubtotal) &&
+    numericOrderSubtotal >= numericFreeDeliveryThreshold;
+
+  if (qualifiesForFreeDelivery) {
+    return {
+      isConfigured: true,
+      isDeliverable: true,
+      distanceKm,
+      deliveryFee: 0,
+      normalizedAddress: destination.formattedAddress,
+      matchedBand,
+      reason: "",
+      location: destination.location,
+      isFreeDelivery: true,
+      freeDeliveryThreshold: numericFreeDeliveryThreshold,
     };
   }
 
@@ -191,5 +224,10 @@ export const calculateDeliveryQuote = async ({
     matchedBand,
     reason: "",
     location: destination.location,
+    isFreeDelivery: false,
+    freeDeliveryThreshold:
+      Number.isFinite(numericFreeDeliveryThreshold) && numericFreeDeliveryThreshold > 0
+        ? numericFreeDeliveryThreshold
+        : null,
   };
 };

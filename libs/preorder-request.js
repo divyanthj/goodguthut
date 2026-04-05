@@ -179,6 +179,8 @@ export const buildPreorderRequest = async (body = {}) => {
       deliveryBands: preorderWindow.deliveryBands,
       address,
       placeDetails,
+      orderSubtotal: subtotal,
+      freeDeliveryThreshold: preorderWindow.freeDeliveryThreshold,
     });
 
     if (!deliveryQuote.isDeliverable) {
@@ -212,6 +214,7 @@ export const buildPreorderRequest = async (body = {}) => {
           allowFreePickup: preorderWindow.allowFreePickup === true,
           pickupAddress: preorderWindow.pickupAddress || "",
           pickupDoorNumber: preorderWindow.pickupDoorNumber || "",
+          freeDeliveryThreshold: preorderWindow.freeDeliveryThreshold ?? null,
         }
       : null,
     items,

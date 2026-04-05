@@ -42,6 +42,10 @@ export async function POST(req) {
     const placeId = body.placeId?.trim() || "";
     const sessionToken = normalizeSessionToken(body.sessionToken || "");
     const preorderWindowId = body.preorderWindowId?.trim() || "";
+    const orderSubtotal =
+      body.orderSubtotal === "" || body.orderSubtotal === null || body.orderSubtotal === undefined
+        ? null
+        : Number(body.orderSubtotal);
 
     if (!address && !placeId) {
       logAbuseEvent("delivery-quote-missing-address", req);
@@ -96,6 +100,8 @@ export async function POST(req) {
       deliveryBands: preorderWindow.deliveryBands,
       address,
       placeDetails,
+      orderSubtotal,
+      freeDeliveryThreshold: preorderWindow.freeDeliveryThreshold,
     });
 
     return NextResponse.json({
@@ -106,6 +112,8 @@ export async function POST(req) {
       currency: preorderWindow.currency || "INR",
       isDeliverable: quote.isDeliverable,
       isConfigured: quote.isConfigured,
+      isFreeDelivery: quote.isFreeDelivery,
+      freeDeliveryThreshold: quote.freeDeliveryThreshold,
       reason: quote.reason,
       location: quote.location,
       placeId: placeDetails?.placeId || placeId,

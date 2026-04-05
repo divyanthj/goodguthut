@@ -94,6 +94,11 @@ const preorderWindowSchema = mongoose.Schema(
       type: [deliveryBandSchema],
       default: [],
     },
+    freeDeliveryThreshold: {
+      type: Number,
+      min: 0,
+      default: null,
+    },
     allowedItems: {
       type: [windowItemSchema],
       default: [],

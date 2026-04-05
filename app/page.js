@@ -18,6 +18,7 @@ const buildFallbackWindow = () => ({
   pickupAddressDisplay: "",
   allowFreePickup: false,
   deliveryBands: [],
+  freeDeliveryThreshold: null,
   allowedItems: [],
 });
 
@@ -250,7 +251,7 @@ export default function Page() {
         )}
         {!isLoadingWindow && isPreorderOpen && lineup.length === 0 && (
           <div className="mt-4 rounded-lg bg-[#f7f1e6]/92 p-4 text-sm text-[#3f5348] shadow-md">
-            This batch is open, but no sellable catalog SKUs are included yet.
+            This batch is open, and the menu is being refreshed. Please check back in a little while.
           </div>
         )}
         {isLoadingWindow ? (
@@ -281,7 +282,7 @@ export default function Page() {
                     <div className="text-sm font-medium text-[#5f7068]">
                       {drink.unitPrice > 0
                         ? `${preorderWindow.currency || "INR"} ${drink.unitPrice.toFixed(2)}`
-                        : "Price available after admin setup"}
+                        : "Price will be shared soon"}
                     </div>
                     <div className="card-actions justify-end">
                       {isPreorderOpen ? (
@@ -334,11 +335,12 @@ export default function Page() {
           <div className="rounded-lg border border-[#d8cdbb] bg-[#fbf7f0]/94 p-6 text-[#2f4a3e] shadow-md">
             <h2 className="text-xl font-bold">Delivery charges</h2>
             <p className="mt-2 text-sm text-[#5f7068]">
-              Delivery is calculated from the pickup address using Google Maps driving distance.
+              Delivery charges depend on how far your address is from our pickup point.
             </p>
-            {preorderWindow.allowFreePickup && preorderWindow.pickupAddressDisplay && (
+            {Number(preorderWindow.freeDeliveryThreshold || 0) > 0 && (
               <p className="mt-2 text-sm text-[#5f7068]">
-                Free pickup is also available from {preorderWindow.pickupAddressDisplay}.
+                Delivery is free when your preorder total reaches {preorderWindow.currency || "INR"}{" "}
+                {Number(preorderWindow.freeDeliveryThreshold).toFixed(2)} before discounts.
               </p>
             )}
             <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
@@ -365,6 +367,7 @@ export default function Page() {
             pickupAddress={preorderWindow.pickupAddress || ""}
             pickupAddressDisplay={preorderWindow.pickupAddressDisplay || ""}
             allowFreePickup={preorderWindow.allowFreePickup === true}
+            freeDeliveryThreshold={preorderWindow.freeDeliveryThreshold}
             onOrderPlaced={resetCart}
             updateQty={updateQty}
             minTotalQuantity={minTotalQuantity}

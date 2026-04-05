@@ -115,6 +115,7 @@ export default function PreorderForm({
   pickupAddress = "",
   pickupAddressDisplay = "",
   allowFreePickup = false,
+  freeDeliveryThreshold = null,
   onOrderPlaced,
   updateQty,
   minTotalQuantity,
@@ -159,6 +160,10 @@ export default function PreorderForm({
   const appliedDiscountCode = appliedDiscount?.code || "";
   const discountAmount = Number(appliedDiscount?.discountAmount || 0);
   const discountedSubtotal = Math.max(0, subtotal - discountAmount);
+  const numericFreeDeliveryThreshold = Number(freeDeliveryThreshold);
+  const hasFreeDeliveryThreshold =
+    Number.isFinite(numericFreeDeliveryThreshold) && numericFreeDeliveryThreshold > 0;
+  const qualifiesForFreeDelivery = hasFreeDeliveryThreshold && subtotal >= numericFreeDeliveryThreshold;
   const total = discountedSubtotal + Number(isPickup ? 0 : deliveryQuote?.deliveryFee || 0);
   const hasMandatoryFields =
     customer.customerName.trim() && customer.phone.trim() && (isPickup || customer.address.trim());
@@ -344,6 +349,7 @@ export default function PreorderForm({
             address: fullAddress,
             placeId: selectedPlace.placeId,
             sessionToken: addressSessionToken,
+            orderSubtotal: subtotal,
           }),
         });
 
@@ -368,7 +374,7 @@ export default function PreorderForm({
     }, 200);
 
     return () => clearTimeout(timeoutId);
-  }, [selectedPlace, preorderWindowId, deliveryConfigured, addressSessionToken, fullAddress, isPickup]);
+  }, [selectedPlace, preorderWindowId, deliveryConfigured, addressSessionToken, fullAddress, isPickup, subtotal]);
 
   const handleAddressInputChange = (value) => {
     setCustomer((prev) => ({ ...prev, address: value }));
@@ -724,7 +730,7 @@ export default function PreorderForm({
             />
             {deliveryConfigured && (
               <div className="mt-2 text-xs opacity-70">
-                Choose a suggestion so we can verify the address on Google Maps before quoting delivery.
+                Choose a suggested address so we can confirm delivery and show the final delivery charge.
               </div>
             )}
             {addressSuggestions.length > 0 && (
@@ -871,8 +877,25 @@ export default function PreorderForm({
             <div className="text-sm font-medium opacity-90">
               {isPickup
                 ? `Pickup: ${currency} 0.00`
-                : `Delivery: ${deliveryQuote ? `${currency} ${Number(deliveryQuote.deliveryFee).toFixed(2)}` : isQuotingDelivery ? "Calculating..." : `${currency} 0.00`}`}
+                : `Delivery: ${
+                    deliveryQuote?.isFreeDelivery
+                      ? "Free"
+                      : qualifiesForFreeDelivery
+                      ? "Free"
+                      : deliveryQuote
+                        ? `${currency} ${Number(deliveryQuote.deliveryFee).toFixed(2)}`
+                        : isQuotingDelivery
+                          ? "Calculating..."
+                          : `${currency} 0.00`
+                  }`}
             </div>
+            {!isPickup && hasFreeDeliveryThreshold && (
+              <div className="text-sm opacity-80">
+                {qualifiesForFreeDelivery
+                  ? `Your preorder qualifies for free delivery because your subtotal is above ${currency} ${numericFreeDeliveryThreshold.toFixed(2)} before discounts. We’ll confirm delivery availability once you choose your address.`
+                  : `Delivery is free for preorders above ${currency} ${numericFreeDeliveryThreshold.toFixed(2)} before discounts.`}
+              </div>
+            )}
             {!isPickup && deliveryQuote?.distanceKm > 0 && (
               <div className="text-sm opacity-80">
                 Distance: {Number(deliveryQuote.distanceKm).toFixed(1)} km
