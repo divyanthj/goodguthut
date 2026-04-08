@@ -145,9 +145,7 @@ export default function AdminPreordersList({ initialPreorders }) {
     preorders
       .filter(
         (preorder) =>
-          preorder.status === "confirmed" ||
-          preorder.status === "shipped" ||
-          preorder.status === "fulfilled"
+          preorder.status === "confirmed" || preorder.status === "shipped"
       )
       .forEach((preorder) => {
         const batchKey = preorder.preorderWindow || preorder.preorderWindowLabel || "unassigned";
@@ -378,9 +376,9 @@ export default function AdminPreordersList({ initialPreorders }) {
         <section className="rounded-2xl bg-base-100 p-5 shadow-md">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="text-lg font-semibold">Confirmed production summary</h2>
+              <h2 className="text-lg font-semibold">Orders to fulfill next</h2>
               <p className="text-sm opacity-70">
-                Bottle counts are based on confirmed, shipped, and fulfilled preorders. Each quantity equals one 200 ml bottle.
+                Bottle counts are based on confirmed and shipped preorders only. Fulfilled orders are excluded so this stays focused on what still needs action.
               </p>
             </div>
             <div className="badge badge-outline">
@@ -653,8 +651,7 @@ export default function AdminPreordersList({ initialPreorders }) {
                   savingId === preorder.id ||
                   deletingId === preorder.id ||
                   (preorder.status !== "confirmed" &&
-                    preorder.status !== "shipped" &&
-                    preorder.status !== "fulfilled")
+                    preorder.status !== "shipped")
                 }
                 onClick={() => {
                   const element = document.getElementById(`delivered-at-${preorder.id}`);
