@@ -15,6 +15,11 @@ import {
   getRazorpayPublicConfig,
   isRazorpayConfigured,
 } from "@/libs/razorpay";
+import {
+  formatSubscriptionDate,
+  getNextSubscriptionDeliveryDate,
+  parseDateKeyToIstDate,
+} from "@/libs/subscription-schedule";
 import { getSubscriptionDurationConfig } from "@/libs/subscriptions";
 import Subscription from "@/models/Subscription";
 
@@ -24,7 +29,6 @@ const buildLineupSummary = (items = []) =>
 const buildSubscriptionCheckoutPayload = ({
   subscription,
   razorpaySubscription,
-  cadenceConfig,
 }) => {
   const checkoutToken = createSignedCheckoutToken({
     kind: "subscription_setup",
@@ -45,7 +49,7 @@ const buildSubscriptionCheckoutPayload = ({
       amount: Math.round(Number(subscription.total || 0) * 100),
       currency: subscription.currency || "INR",
       name: "Good Gut Hut",
-      description: `Set up recurring auto-pay for your ${cadenceConfig.label.toLowerCase()} plan`,
+      description: `Set up recurring auto-pay starting ${formatSubscriptionDate(subscription.firstDeliveryDate)}`,
       prefill: {
         name: subscription.name,
         email: subscription.email,
@@ -92,6 +96,11 @@ export async function POST(req) {
       selectionMode: subscriptionRequest.selectionMode,
       comboId: subscriptionRequest.comboId,
       comboName: subscriptionRequest.comboName,
+      deliveryDaysOfWeek: subscriptionRequest.deliveryDaysOfWeek,
+      minimumLeadDays: subscriptionRequest.minimumLeadDays,
+      startDate: subscriptionRequest.startDate,
+      firstDeliveryDate: subscriptionRequest.firstDeliveryDate,
+      nextDeliveryDate: subscriptionRequest.nextDeliveryDate,
       currency: subscriptionRequest.currency,
       items: subscriptionRequest.items,
       totalQuantity: subscriptionRequest.totalQuantity,
@@ -131,6 +140,10 @@ export async function POST(req) {
         planId: plan.id,
         totalCount: cadenceConfig.totalCount,
         expireBy: Math.floor(Date.now() / 1000) + 24 * 60 * 60,
+        startAt: Math.floor(
+          parseDateKeyToIstDate(subscription.firstDeliveryDate || subscription.startDate).getTime() /
+            1000
+        ),
         notes: {
           subscriptionId: subscription.id,
           cadence: subscription.cadence,
@@ -162,12 +175,17 @@ export async function POST(req) {
           : null,
         mandateEndsAt: null,
       };
+      subscription.nextDeliveryDate = getNextSubscriptionDeliveryDate({
+        startDate: subscription.firstDeliveryDate || subscription.startDate,
+        cadence: subscription.cadence,
+        paidCount: razorpaySubscription.paid_count || 0,
+        totalCount: razorpaySubscription.total_count || cadenceConfig.totalCount,
+      });
       await subscription.save();
 
       checkoutPayload = buildSubscriptionCheckoutPayload({
         subscription,
         razorpaySubscription,
-        cadenceConfig,
       });
     }
 
@@ -207,7 +225,10 @@ export async function POST(req) {
       error.message === "Add at least one product quantity (SKU + quantity) before starting a subscription." ||
       error.message === "Too many distinct products in one subscription." ||
       error.message === "Subscriptions must include at least 4 bottles." ||
-      error.message === "Subscriptions cannot include more than 10 bottles."
+      error.message === "Subscriptions cannot include more than 10 bottles." ||
+      error.message === "Subscriptions are not available until delivery days are configured." ||
+      error.message === "There are no delivery dates available in the next 30 days." ||
+      error.message === "Choose a valid first delivery date within the next 30 days."
     ) {
       logAbuseEvent("subscription-invalid-request", req, { message: error.message });
       return jsonError(error.message, 400);

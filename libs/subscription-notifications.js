@@ -9,6 +9,11 @@ import {
   formatSubscriptionCadence,
   formatSubscriptionDuration,
 } from "@/libs/subscriptions";
+import { formatDeliveryDaysOfWeek } from "@/libs/subscription-delivery-days";
+import {
+  formatMinimumLeadDays,
+  formatSubscriptionDate,
+} from "@/libs/subscription-schedule";
 
 const escapeHtml = (value = "") =>
   String(value)
@@ -46,6 +51,11 @@ export const sendSubscriptionEditLinkEmail = async ({
   const editUrl = buildSubscriptionEditUrl(token);
   const cadenceLabel = formatSubscriptionCadence(subscription.cadence);
   const durationLabel = formatSubscriptionDuration(subscription.durationWeeks);
+  const deliveryDaysLabel = formatDeliveryDaysOfWeek(subscription.deliveryDaysOfWeek || []);
+  const firstDeliveryLabel = formatSubscriptionDate(
+    subscription.firstDeliveryDate || subscription.startDate
+  );
+  const nextDeliveryLabel = formatSubscriptionDate(subscription.nextDeliveryDate);
   const itemSummaryText = buildItemSummaryText(subscription.items || []);
   const itemSummaryHtml = buildItemSummaryHtml(subscription.items || []);
 
@@ -59,6 +69,10 @@ export const sendSubscriptionEditLinkEmail = async ({
     `How often: ${cadenceLabel}`,
     `How long: ${durationLabel}`,
     subscription.comboName ? `Your box: ${subscription.comboName}` : "Your box: Build your own",
+    `Delivery days: ${deliveryDaysLabel}`,
+    firstDeliveryLabel ? `First delivery: ${firstDeliveryLabel}` : "",
+    nextDeliveryLabel ? `Next delivery: ${nextDeliveryLabel}` : "",
+    `Minimum notice: ${formatMinimumLeadDays(subscription.minimumLeadDays || 0)}`,
     `Delivery address: ${subscription.normalizedDeliveryAddress || subscription.address}`,
     itemSummaryText ? `Lineup: ${itemSummaryText}` : "",
     `Recurring total: ${subscription.currency || "INR"} ${Number(subscription.total || 0).toFixed(2)}`,
@@ -93,6 +107,22 @@ export const sendSubscriptionEditLinkEmail = async ({
           <tr>
             <td>Your box</td>
             <td>${escapeHtml(subscription.comboName || "Build your own")}</td>
+          </tr>
+          <tr>
+            <td>Delivery days</td>
+            <td>${escapeHtml(deliveryDaysLabel)}</td>
+          </tr>
+          <tr>
+            <td>First delivery</td>
+            <td>${escapeHtml(firstDeliveryLabel || "-")}</td>
+          </tr>
+          <tr>
+            <td>Next delivery</td>
+            <td>${escapeHtml(nextDeliveryLabel || "-")}</td>
+          </tr>
+          <tr>
+            <td>Minimum notice</td>
+            <td>${escapeHtml(formatMinimumLeadDays(subscription.minimumLeadDays || 0))}</td>
           </tr>
           <tr>
             <td>Delivery address</td>

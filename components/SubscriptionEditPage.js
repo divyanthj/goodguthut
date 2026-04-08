@@ -88,6 +88,10 @@ export default function SubscriptionEditPage({
   deliveryWindowId = "",
   pickupAddress = "",
   deliveryBands = [],
+  deliveryDaysOfWeek = [],
+  minimumLeadDays = 3,
+  availableStartDates = [],
+  defaultStartDate = "",
   currency = "INR",
 }) {
   const [subscription, setSubscription] = useState(null);
@@ -180,6 +184,10 @@ export default function SubscriptionEditPage({
         deliveryWindowId={deliveryWindowId}
         pickupAddress={pickupAddress}
         deliveryBands={deliveryBands}
+        deliveryDaysOfWeek={deliveryDaysOfWeek}
+        minimumLeadDays={minimumLeadDays}
+        availableStartDates={availableStartDates}
+        defaultStartDate={defaultStartDate}
         currency={currency}
         initialValues={subscription}
       />

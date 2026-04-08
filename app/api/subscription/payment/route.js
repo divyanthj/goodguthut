@@ -10,6 +10,10 @@ import {
   verifyRazorpaySubscriptionSignature,
   verifySignedCheckoutToken,
 } from "@/libs/razorpay";
+import {
+  formatSubscriptionDate,
+  getNextSubscriptionDeliveryDate,
+} from "@/libs/subscription-schedule";
 
 const sanitizeSubscription = (subscription) => ({
   id: subscription.id,
@@ -24,6 +28,11 @@ const sanitizeSubscription = (subscription) => ({
   selectionMode: subscription.selectionMode || "custom",
   comboId: subscription.comboId || "",
   comboName: subscription.comboName || "",
+  deliveryDaysOfWeek: subscription.deliveryDaysOfWeek || [],
+  minimumLeadDays: Number(subscription.minimumLeadDays || 0),
+  startDate: subscription.startDate || "",
+  firstDeliveryDate: subscription.firstDeliveryDate || "",
+  nextDeliveryDate: subscription.nextDeliveryDate || "",
   currency: subscription.currency,
   items: subscription.items || [],
   totalQuantity: subscription.totalQuantity,
@@ -106,6 +115,12 @@ const syncSubscriptionBilling = async ({
         ? subscription.billing?.expiredAt || new Date()
         : subscription.billing?.expiredAt || null,
   };
+  subscription.nextDeliveryDate = getNextSubscriptionDeliveryDate({
+    startDate: subscription.firstDeliveryDate || subscription.startDate,
+    cadence: subscription.cadence,
+    paidCount: subscription.billing?.paidCount || 0,
+    totalCount: subscription.billing?.totalCount || 0,
+  });
 
   if (["authenticated", "active"].includes(effectiveStatus)) {
     subscription.status = subscription.status === "cancelled" ? "cancelled" : "active";
@@ -211,9 +226,9 @@ export async function PATCH(req) {
       subscription: sanitizeSubscription(subscription),
       confirmationMessage:
         subscription.billing?.status === "active"
-          ? "Recurring payment is active and your subscription is confirmed."
+          ? `Recurring payment is active and your subscription is confirmed. Your first delivery is on ${formatSubscriptionDate(subscription.firstDeliveryDate || subscription.startDate)}.`
           : subscription.billing?.status === "authenticated"
-            ? "Auto-pay is confirmed and your subscription is ready."
+            ? `Auto-pay is confirmed and your first delivery is set for ${formatSubscriptionDate(subscription.firstDeliveryDate || subscription.startDate)}.`
             : "Payment setup was received and your subscription is being synced.",
     });
   } catch (error) {

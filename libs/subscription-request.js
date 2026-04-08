@@ -4,6 +4,11 @@ import { getPlaceDetails } from "@/libs/places";
 import { getActiveWindowFilter, MAX_PER_ORDER_LIMIT } from "@/libs/preorder-windows";
 import { getSkuMap, listSkuCatalog } from "@/libs/sku-catalog";
 import { hydrateSubscriptionCombo, listSubscriptionCombos } from "@/libs/subscription-combos";
+import {
+  getSubscriptionSettings,
+  sanitizeDeliveryDaysOfWeek,
+  sanitizeMinimumLeadDays,
+} from "@/libs/subscription-settings";
 import PreorderWindow from "@/models/PreorderWindow";
 import {
   isValidAddress,
@@ -19,6 +24,12 @@ import {
   normalizeSessionToken,
 } from "@/libs/request-protection";
 import { getSubscriptionDurationConfig } from "@/libs/subscriptions";
+import {
+  getDefaultSubscriptionStartDate,
+  getNextSubscriptionDeliveryDate,
+  isValidSubscriptionStartDate,
+  listAvailableSubscriptionStartDates,
+} from "@/libs/subscription-schedule";
 
 export const sanitizeSubscriptionItems = (items = []) =>
   items
@@ -32,9 +43,10 @@ export const sanitizeSubscriptionItems = (items = []) =>
 
 export const getSubscriptionSetupContext = async () => {
   await connectMongo();
-  const [skuCatalog, comboDocs] = await Promise.all([
+  const [skuCatalog, comboDocs, subscriptionSettings] = await Promise.all([
     listSkuCatalog(),
     listSubscriptionCombos({ includeArchived: false }),
+    getSubscriptionSettings(),
   ]);
   const skuMap = getSkuMap(skuCatalog);
   const activeWindow = await PreorderWindow.findOne(getActiveWindowFilter()).sort({
@@ -68,6 +80,16 @@ export const getSubscriptionSetupContext = async () => {
     deliveryWindowId: serializedDeliveryWindow?.id || "",
     pickupAddress: serializedDeliveryWindow?.pickupAddress || "",
     deliveryBands: serializedDeliveryWindow?.deliveryBands || [],
+    deliveryDaysOfWeek: sanitizeDeliveryDaysOfWeek(subscriptionSettings?.deliveryDaysOfWeek),
+    minimumLeadDays: sanitizeMinimumLeadDays(subscriptionSettings?.minimumLeadDays),
+    availableStartDates: listAvailableSubscriptionStartDates({
+      deliveryDaysOfWeek: sanitizeDeliveryDaysOfWeek(subscriptionSettings?.deliveryDaysOfWeek),
+      minimumLeadDays: sanitizeMinimumLeadDays(subscriptionSettings?.minimumLeadDays),
+    }),
+    defaultStartDate: getDefaultSubscriptionStartDate({
+      deliveryDaysOfWeek: sanitizeDeliveryDaysOfWeek(subscriptionSettings?.deliveryDaysOfWeek),
+      minimumLeadDays: sanitizeMinimumLeadDays(subscriptionSettings?.minimumLeadDays),
+    }),
     currency: serializedDeliveryWindow?.currency || "INR",
   };
 };
@@ -81,6 +103,7 @@ export const buildSubscriptionRequest = async (body = {}) => {
   const sessionToken = normalizeSessionToken(body.addressSessionToken || "");
   const cadence = String(body.cadence || "").trim().toLowerCase();
   const durationWeeks = Number(body.durationWeeks || 0);
+  const requestedStartDate = String(body.startDate || "").trim();
   const selectionMode = body.selectionMode === "combo" ? "combo" : "custom";
   const comboId = String(body.comboId || "").trim();
   const requestItems = sanitizeSubscriptionItems(body.items);
@@ -132,6 +155,8 @@ export const buildSubscriptionRequest = async (body = {}) => {
     comboCatalog,
     pickupAddress,
     deliveryBands,
+    deliveryDaysOfWeek,
+    minimumLeadDays,
     currency,
   } = await getSubscriptionSetupContext();
   const skuMap = getSkuMap(skuCatalog);
@@ -185,6 +210,31 @@ export const buildSubscriptionRequest = async (body = {}) => {
     throw new Error("Subscriptions cannot include more than 10 bottles.");
   }
 
+  if (deliveryDaysOfWeek.length === 0) {
+    throw new Error("Subscriptions are not available until delivery days are configured.");
+  }
+
+  const startDate =
+    requestedStartDate ||
+    getDefaultSubscriptionStartDate({
+      deliveryDaysOfWeek,
+      minimumLeadDays,
+    });
+
+  if (!startDate) {
+    throw new Error("There are no delivery dates available in the next 30 days.");
+  }
+
+  if (
+    !isValidSubscriptionStartDate({
+      startDate,
+      deliveryDaysOfWeek,
+      minimumLeadDays,
+    })
+  ) {
+    throw new Error("Choose a valid first delivery date within the next 30 days.");
+  }
+
   let deliveryFee = 0;
   let deliveryDistanceKm = 0;
   let normalizedDeliveryAddress = address;
@@ -224,6 +274,16 @@ export const buildSubscriptionRequest = async (body = {}) => {
     selectionMode,
     comboId: selectedCombo?.id || "",
     comboName: selectedCombo?.name || "",
+    deliveryDaysOfWeek,
+    minimumLeadDays,
+    startDate,
+    firstDeliveryDate: startDate,
+    nextDeliveryDate: getNextSubscriptionDeliveryDate({
+      startDate,
+      cadence,
+      paidCount: 0,
+      totalCount: durationConfig.totalCount,
+    }),
     totalQuantity,
     subtotal,
     deliveryFee,

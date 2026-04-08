@@ -1,12 +1,14 @@
 import AdminLoginButton from "@/components/AdminLoginButton";
 import AdminNav from "@/components/AdminNav";
 import AdminSubscriptionCombosManager from "@/components/AdminSubscriptionCombosManager";
+import AdminSubscriptionScheduleManager from "@/components/AdminSubscriptionScheduleManager";
 import AdminSubscriptionsList from "@/components/AdminSubscriptionsList";
 import { getAdminSessionState } from "@/libs/admin-auth";
 import connectMongo from "@/libs/mongoose";
 import { listSkuCatalog } from "@/libs/sku-catalog";
 import { getSkuMap } from "@/libs/sku-catalog";
 import { hydrateSubscriptionCombo, listSubscriptionCombos } from "@/libs/subscription-combos";
+import { getSubscriptionSettings } from "@/libs/subscription-settings";
 import Subscription from "@/models/Subscription";
 
 export default async function AdminSubscriptionsPage() {
@@ -46,10 +48,11 @@ export default async function AdminSubscriptionsPage() {
   }
 
   await connectMongo();
-  const [subscriptionDocs, skuCatalogDocs, comboDocs] = await Promise.all([
+  const [subscriptionDocs, skuCatalogDocs, comboDocs, subscriptionSettings] = await Promise.all([
     Subscription.find({}).sort({ createdAt: -1 }).limit(200),
     listSkuCatalog(),
     listSubscriptionCombos(),
+    getSubscriptionSettings(),
   ]);
   const skuCatalog = JSON.parse(JSON.stringify(skuCatalogDocs));
   const skuMap = getSkuMap(skuCatalogDocs);
@@ -69,6 +72,10 @@ export default async function AdminSubscriptionsPage() {
           <AdminNav active="subscriptions" />
         </div>
 
+        <AdminSubscriptionScheduleManager
+          initialDeliveryDaysOfWeek={subscriptionSettings?.deliveryDaysOfWeek || []}
+          initialMinimumLeadDays={Number(subscriptionSettings?.minimumLeadDays || 3)}
+        />
         <AdminSubscriptionCombosManager
           initialCombos={combos}
           initialSkuCatalog={skuCatalog}

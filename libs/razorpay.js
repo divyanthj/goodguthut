@@ -277,6 +277,7 @@ export const createRazorpaySubscription = async ({
   quantity = 1,
   customerNotify = true,
   expireBy,
+  startAt,
   notes = {},
 }) =>
   razorpayApiRequest("/v1/subscriptions", {
@@ -287,6 +288,7 @@ export const createRazorpaySubscription = async ({
       quantity,
       customer_notify: customerNotify ? 1 : 0,
       ...(expireBy ? { expire_by: expireBy } : {}),
+      ...(startAt ? { start_at: startAt } : {}),
       notes,
     },
   });

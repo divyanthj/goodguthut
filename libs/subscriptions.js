@@ -85,7 +85,7 @@ export const getSubscriptionCadenceConfig = (cadence = "") => {
 export const getSubscriptionDurationOptions = (cadence = "") => {
   switch (cadence) {
     case "weekly":
-      return [2, 3, 4, 5, 6, 7, 8];
+      return [2, 3, 4, 6, 8];
     case "fortnightly":
       return [2, 4, 6, 8];
     case "monthly":
@@ -122,3 +122,24 @@ export const getSubscriptionDurationConfig = (
 
 export const isMutableBillingStatus = (status = "") =>
   !status || ["created", "cancelled", "completed", "expired"].includes(status);
+
+export const canEditSubscriptionBilling = (billing = {}, now = new Date()) => {
+  const status = billing?.status || "";
+
+  if (isMutableBillingStatus(status)) {
+    return true;
+  }
+
+  const paidCount = Number(billing?.paidCount || 0);
+  const startAt = billing?.startAt ? new Date(billing.startAt) : null;
+
+  if (!startAt || Number.isNaN(startAt.getTime())) {
+    return false;
+  }
+
+  return (
+    paidCount === 0 &&
+    startAt.getTime() > new Date(now).getTime() &&
+    ["authenticated", "active", "pending"].includes(status)
+  );
+};

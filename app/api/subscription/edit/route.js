@@ -18,9 +18,14 @@ import {
   isRazorpayConfigured,
 } from "@/libs/razorpay";
 import {
+  canEditSubscriptionBilling,
   getSubscriptionDurationConfig,
-  isMutableBillingStatus,
 } from "@/libs/subscriptions";
+import {
+  formatSubscriptionDate,
+  getNextSubscriptionDeliveryDate,
+  parseDateKeyToIstDate,
+} from "@/libs/subscription-schedule";
 import Subscription from "@/models/Subscription";
 
 const sanitizeSubscription = (subscription) => ({
@@ -36,6 +41,11 @@ const sanitizeSubscription = (subscription) => ({
   selectionMode: subscription.selectionMode || "custom",
   comboId: subscription.comboId || "",
   comboName: subscription.comboName || "",
+  deliveryDaysOfWeek: subscription.deliveryDaysOfWeek || [],
+  minimumLeadDays: Number(subscription.minimumLeadDays || 0),
+  startDate: subscription.startDate || "",
+  firstDeliveryDate: subscription.firstDeliveryDate || "",
+  nextDeliveryDate: subscription.nextDeliveryDate || "",
   currency: subscription.currency,
   items: subscription.items || [],
   totalQuantity: subscription.totalQuantity,
@@ -75,7 +85,6 @@ const buildLineupSummary = (items = []) =>
 const buildSubscriptionCheckoutPayload = ({
   subscription,
   razorpaySubscription,
-  cadenceConfig,
 }) => {
   const checkoutToken = createSignedCheckoutToken({
     kind: "subscription_setup",
@@ -96,7 +105,7 @@ const buildSubscriptionCheckoutPayload = ({
       amount: Math.round(Number(subscription.total || 0) * 100),
       currency: subscription.currency || "INR",
       name: "Good Gut Hut",
-      description: `Set up recurring auto-pay for your ${cadenceConfig.label.toLowerCase()} plan`,
+      description: `Set up recurring auto-pay starting ${formatSubscriptionDate(subscription.firstDeliveryDate)}`,
       prefill: {
         name: subscription.name,
         email: subscription.email,
@@ -125,10 +134,7 @@ const syncBillingForSubscription = async (subscription) => {
     return null;
   }
 
-  if (
-    subscription.billing?.subscriptionId &&
-    subscription.billing?.status === "created"
-  ) {
+  if (subscription.billing?.subscriptionId && canEditSubscriptionBilling(subscription.billing)) {
     try {
       await cancelRazorpaySubscription({
         subscriptionId: subscription.billing.subscriptionId,
@@ -163,6 +169,9 @@ const syncBillingForSubscription = async (subscription) => {
     planId: plan.id,
     totalCount: cadenceConfig.totalCount,
     expireBy: Math.floor(Date.now() / 1000) + 24 * 60 * 60,
+    startAt: Math.floor(
+      parseDateKeyToIstDate(subscription.firstDeliveryDate || subscription.startDate).getTime() / 1000
+    ),
     notes: {
       subscriptionId: subscription.id,
       cadence: subscription.cadence,
@@ -195,11 +204,16 @@ const syncBillingForSubscription = async (subscription) => {
       : null,
     mandateEndsAt: null,
   };
+  subscription.nextDeliveryDate = getNextSubscriptionDeliveryDate({
+    startDate: subscription.firstDeliveryDate || subscription.startDate,
+    cadence: subscription.cadence,
+    paidCount: razorpaySubscription.paid_count || 0,
+    totalCount: razorpaySubscription.total_count || cadenceConfig.totalCount,
+  });
 
   return buildSubscriptionCheckoutPayload({
     subscription,
     razorpaySubscription,
-    cadenceConfig,
   });
 };
 
@@ -265,7 +279,7 @@ export async function PATCH(req) {
 
     if (
       subscription.billing?.subscriptionId &&
-      !isMutableBillingStatus(subscription.billing?.status)
+      !canEditSubscriptionBilling(subscription.billing)
     ) {
       return jsonError(
         "This subscription already has an active Razorpay mandate. Please email support to make billing changes.",
@@ -287,6 +301,11 @@ export async function PATCH(req) {
     subscription.selectionMode = nextRequest.selectionMode;
     subscription.comboId = nextRequest.comboId;
     subscription.comboName = nextRequest.comboName;
+    subscription.deliveryDaysOfWeek = nextRequest.deliveryDaysOfWeek;
+    subscription.minimumLeadDays = nextRequest.minimumLeadDays;
+    subscription.startDate = nextRequest.startDate;
+    subscription.firstDeliveryDate = nextRequest.firstDeliveryDate;
+    subscription.nextDeliveryDate = nextRequest.nextDeliveryDate;
     subscription.currency = nextRequest.currency;
     subscription.items = nextRequest.items;
     subscription.totalQuantity = nextRequest.totalQuantity;
@@ -350,7 +369,10 @@ export async function PATCH(req) {
       error.message === "Add at least one product quantity (SKU + quantity) before starting a subscription." ||
       error.message === "Too many distinct products in one subscription." ||
       error.message === "Subscriptions must include at least 4 bottles." ||
-      error.message === "Subscriptions cannot include more than 10 bottles."
+      error.message === "Subscriptions cannot include more than 10 bottles." ||
+      error.message === "Subscriptions are not available until delivery days are configured." ||
+      error.message === "There are no delivery dates available in the next 30 days." ||
+      error.message === "Choose a valid first delivery date within the next 30 days."
     ) {
       return jsonError(error.message, 400);
     }

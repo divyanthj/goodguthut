@@ -1,4 +1,6 @@
 import SubscriptionEditPage from "@/components/SubscriptionEditPage";
+import { formatDeliveryDaysOfWeek } from "@/libs/subscription-delivery-days";
+import { formatMinimumLeadDays } from "@/libs/subscription-settings";
 import { getSubscriptionSetupContext } from "@/libs/subscription-request";
 
 export default async function SubscriptionEditRoute({ searchParams }) {
@@ -8,6 +10,10 @@ export default async function SubscriptionEditRoute({ searchParams }) {
     deliveryWindowId,
     pickupAddress,
     deliveryBands,
+    deliveryDaysOfWeek,
+    minimumLeadDays,
+    availableStartDates,
+    defaultStartDate,
     currency,
   } =
     await getSubscriptionSetupContext().catch((error) => {
@@ -18,6 +24,10 @@ export default async function SubscriptionEditRoute({ searchParams }) {
         deliveryWindowId: "",
         pickupAddress: "",
         deliveryBands: [],
+        deliveryDaysOfWeek: [],
+        minimumLeadDays: 3,
+        availableStartDates: [],
+        defaultStartDate: "",
         currency: "INR",
       };
     });
@@ -40,6 +50,9 @@ export default async function SubscriptionEditRoute({ searchParams }) {
           <p className="mt-3 max-w-2xl text-sm leading-7 text-[#53675d] md:text-base">
             Use this secure link to make changes to your plan without creating an account.
           </p>
+          <p className="mt-3 text-sm text-[#53675d]">
+            Subscription deliveries currently go out on {formatDeliveryDaysOfWeek(deliveryDaysOfWeek)}, and new starts need at least {formatMinimumLeadDays(minimumLeadDays)} notice.
+          </p>
         </div>
 
         <SubscriptionEditPage
@@ -49,6 +62,10 @@ export default async function SubscriptionEditRoute({ searchParams }) {
           deliveryWindowId={deliveryWindowId}
           pickupAddress={pickupAddress}
           deliveryBands={deliveryBands}
+          deliveryDaysOfWeek={deliveryDaysOfWeek}
+          minimumLeadDays={minimumLeadDays}
+          availableStartDates={availableStartDates}
+          defaultStartDate={defaultStartDate}
           currency={currency}
         />
       </section>

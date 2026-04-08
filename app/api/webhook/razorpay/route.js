@@ -5,6 +5,7 @@ import connectMongo from "@/libs/mongoose";
 import Preorder from "@/models/Preorder";
 import Subscription from "@/models/Subscription";
 import { verifyRazorpayWebhookSignature } from "@/libs/razorpay";
+import { getNextSubscriptionDeliveryDate } from "@/libs/subscription-schedule";
 
 const getRazorpayOrderIdFromEvent = (event) => {
   return event?.payload?.payment?.entity?.order_id || event?.payload?.order?.entity?.id || "";
@@ -85,6 +86,12 @@ export async function POST(req) {
           expiredAt:
             event.event === "subscription.expired" ? new Date() : subscription.billing?.expiredAt || null,
         };
+        subscription.nextDeliveryDate = getNextSubscriptionDeliveryDate({
+          startDate: subscription.firstDeliveryDate || subscription.startDate,
+          cadence: subscription.cadence,
+          paidCount: subscription.billing?.paidCount || 0,
+          totalCount: subscription.billing?.totalCount || 0,
+        });
 
         if (event.event === "subscription.cancelled") {
           subscription.billing.shortUrl = "";

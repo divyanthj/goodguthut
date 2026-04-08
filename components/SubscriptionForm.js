@@ -2,11 +2,20 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  canEditSubscriptionBilling,
   formatSubscriptionDuration,
   SUBSCRIPTION_CADENCES,
   getSubscriptionDurationOptions,
 } from "@/libs/subscriptions";
 import { useRazorpayCheckout } from "@/components/RazorpayCheckout";
+import { formatDeliveryDaysOfWeek } from "@/libs/subscription-delivery-days";
+import {
+  formatMinimumLeadDays,
+  formatSubscriptionDate,
+  getDefaultSubscriptionStartDate,
+  getNextSubscriptionDeliveryDate,
+  listAvailableSubscriptionStartDates,
+} from "@/libs/subscription-schedule";
 
 const MAX_QTY = 10;
 const MIN_TOTAL_QTY = 4;
@@ -127,6 +136,10 @@ export default function SubscriptionForm({
   deliveryWindowId = "",
   pickupAddress = "",
   deliveryBands = [],
+  deliveryDaysOfWeek = [],
+  minimumLeadDays = 3,
+  availableStartDates = [],
+  defaultStartDate = "",
   currency = "INR",
   initialValues,
   initialSelectionMode = "combo",
@@ -148,6 +161,7 @@ export default function SubscriptionForm({
   const [durationWeeks, setDurationWeeks] = useState(
     Number(initialValues?.durationWeeks || 4)
   );
+  const [showStartDateOptions, setShowStartDateOptions] = useState(false);
   const [selectionMode, setSelectionMode] = useState(() =>
     getInitialSelectionMode({
       initialValues,
@@ -158,6 +172,7 @@ export default function SubscriptionForm({
   const [selectedComboId, setSelectedComboId] = useState(
     initialValues?.comboId || getDefaultComboId(comboOptions)
   );
+  const [pendingCheckout, setPendingCheckout] = useState(null);
   const [cart, setCart] = useState(() =>
     buildCartFromCatalog(catalogItems, initialValues?.items || [])
   );
@@ -188,11 +203,7 @@ export default function SubscriptionForm({
     Boolean(initialValues?.deliveryPlaceId || initialValues?.normalizedDeliveryAddress)
   );
   const [billingLocked, setBillingLocked] = useState(
-    Boolean(
-      mode === "edit" &&
-        initialValues?.billing?.subscriptionId &&
-        !["created", "cancelled", "completed", "expired"].includes(initialValues?.billing?.status || "")
-    )
+    Boolean(mode === "edit" && !canEditSubscriptionBilling(initialValues?.billing || {}))
   );
   const [isCancelled, setIsCancelled] = useState(
     Boolean(
@@ -203,6 +214,26 @@ export default function SubscriptionForm({
   const initialEmailRef = useRef(initialValues?.email || "");
   const isCompletingPaymentRef = useRef(false);
   const loadRazorpay = useRazorpayCheckout();
+  const effectiveStartDateOptions = useMemo(() => {
+    if (Array.isArray(availableStartDates) && availableStartDates.length > 0) {
+      return availableStartDates;
+    }
+
+    return listAvailableSubscriptionStartDates({
+      deliveryDaysOfWeek,
+      minimumLeadDays,
+    });
+  }, [availableStartDates, deliveryDaysOfWeek, minimumLeadDays]);
+  const fallbackStartDate = useMemo(
+    () =>
+      defaultStartDate ||
+      getDefaultSubscriptionStartDate({
+        deliveryDaysOfWeek,
+        minimumLeadDays,
+      }),
+    [defaultStartDate, deliveryDaysOfWeek, minimumLeadDays]
+  );
+  const [startDate, setStartDate] = useState(initialValues?.startDate || fallbackStartDate);
 
   useEffect(() => {
     if (!initialValues) {
@@ -238,11 +269,7 @@ export default function SubscriptionForm({
       Boolean(initialValues.deliveryPlaceId || initialValues.normalizedDeliveryAddress)
     );
     setBillingLocked(
-      Boolean(
-        mode === "edit" &&
-          initialValues?.billing?.subscriptionId &&
-          !["created", "cancelled", "completed", "expired"].includes(initialValues?.billing?.status || "")
-      )
+      Boolean(mode === "edit" && !canEditSubscriptionBilling(initialValues?.billing || {}))
     );
     setIsCancelled(
       Boolean(
@@ -251,7 +278,8 @@ export default function SubscriptionForm({
       )
     );
     initialEmailRef.current = initialValues.email || "";
-  }, [catalogItems, comboOptions, initialSelectionMode, initialValues, mode]);
+    setStartDate(initialValues.startDate || fallbackStartDate);
+  }, [catalogItems, comboOptions, fallbackStartDate, initialSelectionMode, initialValues, mode]);
 
   const lineup = useMemo(
     () =>
@@ -323,6 +351,18 @@ export default function SubscriptionForm({
     deliveryConfigured && customer.address.trim() && !selectedPlace && !hasVerifiedAddress;
   const durationOptions = getSubscriptionDurationOptions(cadence);
   const durationIsValid = durationOptions.includes(Number(durationWeeks || 0));
+  const effectiveStartDate = startDate || fallbackStartDate;
+  const selectedStartDateOption = effectiveStartDateOptions.find(
+    (option) => option.value === effectiveStartDate
+  );
+  const nextDeliveryDate = useMemo(
+    () =>
+      getNextSubscriptionDeliveryDate({
+        startDate: effectiveStartDate,
+        cadence,
+      }),
+    [cadence, effectiveStartDate]
+  );
   const canSubmit = Boolean(
     !billingLocked &&
       !isCancelled &&
@@ -336,6 +376,7 @@ export default function SubscriptionForm({
       selectedItems.length > 0 &&
       totalQuantity >= MIN_TOTAL_QTY &&
       totalQuantity <= MAX_TOTAL_QTY &&
+      effectiveStartDate &&
       !isQuotingDelivery &&
       !deliveryError &&
       !needsAddressSelection
@@ -346,6 +387,17 @@ export default function SubscriptionForm({
       setDurationWeeks(durationOptions[0] || 4);
     }
   }, [cadence, durationOptions, durationWeeks]);
+
+  useEffect(() => {
+    if (!effectiveStartDateOptions.length) {
+      setStartDate("");
+      return;
+    }
+
+    if (!effectiveStartDateOptions.some((option) => option.value === startDate)) {
+      setStartDate(effectiveStartDateOptions[0].value);
+    }
+  }, [effectiveStartDateOptions, startDate]);
 
   useEffect(() => {
     const input = customer.address.trim();
@@ -515,6 +567,8 @@ export default function SubscriptionForm({
     setDeliveryQuote(null);
     setDeliveryError("");
     setAddressLookupError("");
+    setStartDate(fallbackStartDate);
+    setShowStartDateOptions(false);
   };
 
   const applySubscriptionState = (nextSubscription) => {
@@ -546,12 +600,7 @@ export default function SubscriptionForm({
         nextSubscription.normalizedDeliveryAddress || nextSubscription.address || "",
     });
     setBillingLocked(
-      Boolean(
-        nextSubscription.billing?.subscriptionId &&
-          !["created", "cancelled", "completed", "expired"].includes(
-            nextSubscription.billing?.status || ""
-          )
-      )
+      Boolean(!canEditSubscriptionBilling(nextSubscription.billing || {}))
     );
     setIsCancelled(
       Boolean(
@@ -559,6 +608,8 @@ export default function SubscriptionForm({
           nextSubscription.billing?.status === "cancelled"
       )
     );
+    setStartDate(nextSubscription.startDate || fallbackStartDate);
+    setShowStartDateOptions(false);
   };
 
   const onSubmit = async (event) => {
@@ -583,6 +634,11 @@ export default function SubscriptionForm({
 
     if (!durationIsValid) {
       setError("Please choose how long you&apos;d like this plan to run.");
+      return;
+    }
+
+    if (!effectiveStartDate) {
+      setError("We don't have a delivery date available in the next 30 days yet.");
       return;
     }
 
@@ -615,6 +671,7 @@ export default function SubscriptionForm({
             addressSessionToken,
             cadence,
             durationWeeks,
+            startDate: effectiveStartDate,
             selectionMode: effectiveSelectionMode,
             comboId: effectiveSelectionMode === "combo" ? selectedCombo?.id || "" : "",
             items: selectedItems,
@@ -637,73 +694,10 @@ export default function SubscriptionForm({
       const data = await response.json();
 
       if (data.razorpay?.isConfigured && data.checkoutToken) {
-        const Razorpay = await loadRazorpay();
-
-        if (!Razorpay) {
-          throw new Error("Razorpay checkout is unavailable right now.");
-        }
-
-        const checkout = new Razorpay({
-          ...data.razorpay,
-          handler: async (paymentResult) => {
-            isCompletingPaymentRef.current = true;
-
-            try {
-              const serializedPaymentResult =
-                serializeRazorpaySubscriptionResult(paymentResult);
-              const verifyResponse = await fetch("/api/subscription/payment", {
-                method: "PATCH",
-                headers: {
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                  ...serializedPaymentResult,
-                  checkoutToken: data.checkoutToken,
-                }),
-              });
-              const verifyData = await verifyResponse.json();
-
-              if (!verifyResponse.ok) {
-                throw new Error(
-                  verifyData?.error || "Payment verification failed."
-                );
-              }
-
-              setError("");
-              setSuccessMessage(
-                verifyData.confirmationMessage ||
-                  "Auto-pay is confirmed and your subscription is ready."
-              );
-              applySubscriptionState(verifyData.subscription);
-
-              if (mode === "create") {
-                resetForCreate();
-              }
-            } catch (verificationError) {
-              setError(
-                verificationError.message ||
-                  "Payment setup was completed, but confirmation has not synced yet."
-              );
-            } finally {
-              isCompletingPaymentRef.current = false;
-              setIsSubmitting(false);
-            }
-          },
-          modal: {
-            ondismiss: () => {
-              if (isCompletingPaymentRef.current) {
-                return;
-              }
-
-              setError(
-                "Payment setup was not completed, so the subscription is still waiting for confirmation."
-              );
-              setIsSubmitting(false);
-            },
-          },
+        setPendingCheckout({
+          checkoutToken: data.checkoutToken,
+          razorpay: data.razorpay,
         });
-
-        checkout.open();
         return;
       }
 
@@ -723,6 +717,83 @@ export default function SubscriptionForm({
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const openRazorpayCheckout = async () => {
+    if (!pendingCheckout?.checkoutToken || !pendingCheckout?.razorpay) {
+      return;
+    }
+
+    const Razorpay = await loadRazorpay();
+
+    if (!Razorpay) {
+      setPendingCheckout(null);
+      throw new Error("Razorpay checkout is unavailable right now.");
+    }
+
+    const checkout = new Razorpay({
+      ...pendingCheckout.razorpay,
+      handler: async (paymentResult) => {
+        isCompletingPaymentRef.current = true;
+
+        try {
+          const serializedPaymentResult =
+            serializeRazorpaySubscriptionResult(paymentResult);
+          const verifyResponse = await fetch("/api/subscription/payment", {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              ...serializedPaymentResult,
+              checkoutToken: pendingCheckout.checkoutToken,
+            }),
+          });
+          const verifyData = await verifyResponse.json();
+
+          if (!verifyResponse.ok) {
+            throw new Error(
+              verifyData?.error || "Payment verification failed."
+            );
+          }
+
+          setPendingCheckout(null);
+          setError("");
+          setSuccessMessage(
+            verifyData.confirmationMessage ||
+              "Auto-pay is confirmed and your subscription is ready."
+          );
+          applySubscriptionState(verifyData.subscription);
+
+          if (mode === "create") {
+            resetForCreate();
+          }
+        } catch (verificationError) {
+          setError(
+            verificationError.message ||
+              "Payment setup was completed, but confirmation has not synced yet."
+          );
+        } finally {
+          isCompletingPaymentRef.current = false;
+          setIsSubmitting(false);
+        }
+      },
+      modal: {
+        ondismiss: () => {
+          if (isCompletingPaymentRef.current) {
+            return;
+          }
+
+          setPendingCheckout(null);
+          setError(
+            "Payment setup was not completed, so the subscription is still waiting for confirmation."
+          );
+          setIsSubmitting(false);
+        },
+      },
+    });
+
+    checkout.open();
   };
 
   const cancelSubscription = async () => {
@@ -762,6 +833,105 @@ export default function SubscriptionForm({
 
   return (
     <div className="space-y-6">
+      {pendingCheckout && (
+        <dialog className="modal modal-open">
+          <div className="modal-box max-w-2xl rounded-[28px] border border-[#d6c6ae] bg-[#fbf7f0] p-0 shadow-2xl">
+            <div className="border-b border-[#e1d6c7] bg-gradient-to-br from-[#f7f1e6] via-[#f3edde] to-[#eaf1ea] px-6 py-6 md:px-8">
+              <div className="text-xs font-semibold uppercase tracking-[0.24em] text-[#6b7d74]">
+                Before You Continue
+              </div>
+              <h3 className="mt-3 text-2xl font-semibold text-[#2f4a3e]">
+                This sets up your UPI AutoPay mandate
+              </h3>
+              <p className="mt-3 max-w-xl text-sm leading-7 text-[#53675d]">
+                Razorpay may show a small one-time verification amount, often `1` or `5`, to register your mandate. That is not your weekly delivery charge.
+              </p>
+            </div>
+
+            <div className="grid gap-4 px-6 py-6 md:grid-cols-3 md:px-8">
+              <div className="rounded-2xl border border-[#ddcfb6] bg-[#fffdf8] p-4">
+                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[#6b7d74]">
+                  Regular charge
+                </div>
+                <div className="mt-2 text-2xl font-semibold text-[#2f4a3e]">
+                  {currency} {total.toFixed(2)}
+                </div>
+                <div className="mt-2 text-sm text-[#53675d]">
+                  This is what each scheduled delivery will be charged at.
+                </div>
+              </div>
+              <div className="rounded-2xl border border-[#ddcfb6] bg-[#fffdf8] p-4">
+                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[#6b7d74]">
+                  First charge date
+                </div>
+                <div className="mt-2 text-lg font-semibold text-[#2f4a3e]">
+                  {formatSubscriptionDate(effectiveStartDate)}
+                </div>
+                <div className="mt-2 text-sm text-[#53675d]">
+                  You will not be charged immediately unless you approve the mandate and that date arrives.
+                </div>
+              </div>
+              <div className="rounded-2xl border border-[#ddcfb6] bg-[#fffdf8] p-4">
+                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[#6b7d74]">
+                  What Razorpay may show now
+                </div>
+                <div className="mt-2 text-lg font-semibold text-[#2f4a3e]">
+                  Small verification amount
+                </div>
+                <div className="mt-2 text-sm text-[#53675d]">
+                  This temporary amount is only for mandate setup. Your actual subscription amount remains {currency} {total.toFixed(2)}.
+                </div>
+              </div>
+            </div>
+
+            <div className="px-6 pb-2 md:px-8">
+              <div className="rounded-2xl border border-[#d8cdbb] bg-[#fff8ec] p-4 text-sm leading-7 text-[#53675d]">
+                Closing the Razorpay window without approving means the mandate is not completed. Your plan will stay pending until you finish the setup.
+              </div>
+            </div>
+
+            <div className="modal-action mt-0 flex-row justify-between gap-3 border-t border-[#e1d6c7] px-6 py-5 md:px-8">
+              <button
+                type="button"
+                className="btn btn-ghost text-[#52655b]"
+                onClick={() => {
+                  setPendingCheckout(null);
+                  setIsSubmitting(false);
+                }}
+              >
+                Not now
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary min-w-[220px]"
+                onClick={async () => {
+                  setError("");
+                  try {
+                    await openRazorpayCheckout();
+                  } catch (checkoutError) {
+                    setError(checkoutError.message || "Could not open Razorpay checkout.");
+                    setIsSubmitting(false);
+                  }
+                }}
+              >
+                Continue to Razorpay
+              </button>
+            </div>
+          </div>
+          <form method="dialog" className="modal-backdrop">
+            <button
+              type="button"
+              onClick={() => {
+                setPendingCheckout(null);
+                setIsSubmitting(false);
+              }}
+            >
+              close
+            </button>
+          </form>
+        </dialog>
+      )}
+
       <section className="rounded-[28px] border border-[#d6c6ae] bg-[#fbf7f0]/96 p-6 shadow-xl md:p-8">
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -1003,6 +1173,56 @@ export default function SubscriptionForm({
               <div className="mt-2 text-xs text-[#6b7d74]">
                 Your recurring payment will automatically end when this plan is complete.
               </div>
+              <div className="mt-2 text-xs text-[#6b7d74]">
+                Deliveries go out on {formatDeliveryDaysOfWeek(deliveryDaysOfWeek)}.
+              </div>
+            </div>
+            <div className="md:col-span-2 rounded-2xl border border-[#ddcfb6] bg-[#fffdf8] p-4 text-sm text-[#365244]">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="font-medium text-[#2f4a3e]">
+                    {selectedStartDateOption
+                      ? `Your first delivery is set for ${selectedStartDateOption.label}.`
+                      : "We don't have a delivery date available in the next 30 days yet."}
+                  </div>
+                  <div className="mt-1 text-xs text-[#6b7d74]">
+                    Recurring payment will begin on that date. We currently need at least {formatMinimumLeadDays(minimumLeadDays)} notice, and deliveries go out on {formatDeliveryDaysOfWeek(deliveryDaysOfWeek)}.
+                  </div>
+                  {nextDeliveryDate && nextDeliveryDate !== effectiveStartDate && (
+                    <div className="mt-2 text-xs text-[#6b7d74]">
+                      After that, your next delivery will be {formatSubscriptionDate(nextDeliveryDate)}.
+                    </div>
+                  )}
+                </div>
+                {!billingLocked && effectiveStartDateOptions.length > 1 && (
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm text-[#2f5d49]"
+                    onClick={() => setShowStartDateOptions((current) => !current)}
+                  >
+                    {showStartDateOptions ? "Keep this date" : "Need to start later?"}
+                  </button>
+                )}
+              </div>
+
+              {showStartDateOptions && !billingLocked && effectiveStartDateOptions.length > 0 && (
+                <label className="form-control mt-4 max-w-md">
+                  <div className="label">
+                    <span className="label-text text-[#365244]">Choose a later first delivery</span>
+                  </div>
+                  <select
+                    className="select select-bordered bg-[#fffdf8]"
+                    value={effectiveStartDate}
+                    onChange={(event) => setStartDate(event.target.value)}
+                  >
+                    {effectiveStartDateOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
             </div>
             <label className="form-control">
               <div className="label">
@@ -1127,8 +1347,8 @@ export default function SubscriptionForm({
                 </div>
                 <p className="mt-2 text-sm leading-7 text-[#53675d]">
                   {effectiveSelectionMode === "combo"
-                    ? `You&apos;ve chosen ${selectedCombo?.name || "one of our ready-to-go boxes"}.`
-                    : "You&apos;re creating your own box from the current menu."}
+                    ? `You have chosen ${selectedCombo?.name || "one of our ready-to-go boxes"}.`
+                    : "You are creating your own box from the current menu."}
                 </p>
               </div>
               <div className="badge border-[#d1c4b0] bg-[#f7f1e6] text-[#2f5d49]">
@@ -1174,6 +1394,24 @@ export default function SubscriptionForm({
                 <span>How long</span>
                 <span>{formatSubscriptionDuration(durationWeeks)}</span>
               </div>
+              {effectiveStartDate && (
+                <div className="flex justify-between gap-4">
+                  <span>First delivery</span>
+                  <span className="text-right">{formatSubscriptionDate(effectiveStartDate)}</span>
+                </div>
+              )}
+              {effectiveStartDate && (
+                <div className="flex justify-between gap-4">
+                  <span>First recurring charge</span>
+                  <span className="text-right">{formatSubscriptionDate(effectiveStartDate)}</span>
+                </div>
+              )}
+              {nextDeliveryDate && nextDeliveryDate !== effectiveStartDate && (
+                <div className="flex justify-between gap-4">
+                  <span>Next delivery after that</span>
+                  <span className="text-right">{formatSubscriptionDate(nextDeliveryDate)}</span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span>Subtotal</span>
                 <span>{currency} {subtotal.toFixed(2)}</span>
@@ -1207,6 +1445,9 @@ export default function SubscriptionForm({
               <div className="flex justify-between text-base font-semibold">
                 <span>Total per delivery</span>
                 <span>{currency} {total.toFixed(2)}</span>
+              </div>
+              <div className="text-xs text-[#6b7d74]">
+                Your UPI AutoPay setup will be authorized at checkout, and the first charge will happen on your first delivery date.
               </div>
             </div>
           </div>

@@ -8,6 +8,11 @@ import {
   getSubscriptionSummaryCounts,
   SUBSCRIPTION_STATUSES,
 } from "@/libs/subscriptions";
+import { formatDeliveryDaysOfWeek } from "@/libs/subscription-delivery-days";
+import {
+  formatMinimumLeadDays,
+  formatSubscriptionDate,
+} from "@/libs/subscription-schedule";
 
 const formatDate = (value) => {
   if (!value) {
@@ -408,6 +413,22 @@ export default function AdminSubscriptionsList({ initialSubscriptions }) {
                     <div className="mt-1">
                       {subscription.comboName || formatSubscriptionSelectionMode(subscription.selectionMode)}
                     </div>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase tracking-[0.16em] opacity-60">Delivery days</div>
+                    <div className="mt-1">{formatDeliveryDaysOfWeek(subscription.deliveryDaysOfWeek || [])}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase tracking-[0.16em] opacity-60">Lead time</div>
+                    <div className="mt-1">{formatMinimumLeadDays(subscription.minimumLeadDays || 0)}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase tracking-[0.16em] opacity-60">First delivery</div>
+                    <div className="mt-1">{formatSubscriptionDate(subscription.firstDeliveryDate || subscription.startDate) || "-"}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase tracking-[0.16em] opacity-60">Next delivery</div>
+                    <div className="mt-1">{formatSubscriptionDate(subscription.nextDeliveryDate) || "-"}</div>
                   </div>
                   <div>
                     <div className="text-xs uppercase tracking-[0.16em] opacity-60">Subtotal</div>

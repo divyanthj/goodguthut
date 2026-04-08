@@ -209,6 +209,31 @@ const subscriptionSchema = mongoose.Schema(
       trim: true,
       default: "",
     },
+    deliveryDaysOfWeek: {
+      type: [String],
+      default: [],
+    },
+    minimumLeadDays: {
+      type: Number,
+      min: 0,
+      max: 30,
+      default: 3,
+    },
+    startDate: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    firstDeliveryDate: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    nextDeliveryDate: {
+      type: String,
+      trim: true,
+      default: "",
+    },
     currency: {
       type: String,
       trim: true,
