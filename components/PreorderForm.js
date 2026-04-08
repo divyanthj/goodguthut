@@ -119,6 +119,7 @@ export default function PreorderForm({
   onOrderPlaced,
   updateQty,
   minTotalQuantity,
+  allowTestPreorder = false,
 }) {
   const [customer, setCustomer] = useState(initialCustomer);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -422,7 +423,21 @@ export default function PreorderForm({
     }
   };
 
-  const onSubmit = async (e) => {
+  const resetAfterSuccess = () => {
+    setCustomer(initialCustomer);
+    setSelectedPlace(null);
+    setAddressSuggestions([]);
+    setAddressSessionToken(createSessionToken());
+    setDeliveryQuote(null);
+    setDeliveryError("");
+    setIsPickup(false);
+    setDiscountCodeInput("");
+    setAppliedDiscount(null);
+    setDiscountError("");
+    onOrderPlaced?.();
+  };
+
+  const submitPreorder = async (e, { testBypassPayment = false } = {}) => {
     e.preventDefault();
     setError("");
 
@@ -466,6 +481,7 @@ export default function PreorderForm({
           deliveryPlaceId: selectedPlace?.placeId || "",
           addressSessionToken,
           items: selectedItems,
+          testBypassPayment,
         }),
       });
 
@@ -477,7 +493,7 @@ export default function PreorderForm({
         );
       }
 
-      if (data.razorpay?.isConfigured && Number(data.total || 0) > 0) {
+      if (data.checkoutToken && data.razorpay?.isConfigured && Number(data.total || 0) > 0) {
         const Razorpay = await loadRazorpay();
 
         if (!Razorpay) {
@@ -515,21 +531,11 @@ export default function PreorderForm({
               setSuccessState({
                 customerName: customer.customerName,
                 email: customer.email,
-        deliveryDate: verifyData?.preorder?.deliveryDate || "",
-        isPaid: true,
-        emailDeliveryStatus: verifyData?.emailDelivery?.status || "unknown",
-      });
-              setCustomer(initialCustomer);
-              setSelectedPlace(null);
-              setAddressSuggestions([]);
-              setAddressSessionToken(createSessionToken());
-              setDeliveryQuote(null);
-              setDeliveryError("");
-              setIsPickup(false);
-              setDiscountCodeInput("");
-              setAppliedDiscount(null);
-              setDiscountError("");
-              onOrderPlaced?.();
+                deliveryDate: verifyData?.preorder?.deliveryDate || "",
+                isPaid: true,
+                emailDeliveryStatus: verifyData?.emailDelivery?.status || "unknown",
+              });
+              resetAfterSuccess();
             } catch (verificationError) {
               isCompletingPaymentRef.current = false;
               setIsSubmitting(false);
@@ -559,25 +565,21 @@ export default function PreorderForm({
         customerName: customer.customerName,
         email: customer.email,
         deliveryDate: data?.preorder?.deliveryDate || "",
-        isPaid: false,
-        emailDeliveryStatus: "not_applicable",
+        isPaid: Boolean(testBypassPayment || data.paymentStatus === "paid"),
+        emailDeliveryStatus:
+          data?.emailDelivery?.status ||
+          (testBypassPayment ? "unknown" : "not_applicable"),
       });
-      setCustomer(initialCustomer);
-      setSelectedPlace(null);
-      setAddressSuggestions([]);
-      setAddressSessionToken(createSessionToken());
-      setDeliveryQuote(null);
-      setDeliveryError("");
-      setIsPickup(false);
-      setDiscountCodeInput("");
-      setAppliedDiscount(null);
-      setDiscountError("");
-      onOrderPlaced?.();
+      resetAfterSuccess();
     } catch (err) {
       setError(err.message || "Something went wrong.");
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const onSubmit = async (e) => {
+    await submitPreorder(e, { testBypassPayment: false });
   };
 
   if (successState) {
@@ -913,9 +915,21 @@ export default function PreorderForm({
         </div>
 
         <div className="card-actions items-center justify-between">
-          <button type="submit" disabled={!canSubmit} className="btn btn-primary">
-            {isSubmitting ? "Processing..." : "Place preorder"}
-          </button>
+          <div className="flex flex-wrap items-center gap-3">
+            <button type="submit" disabled={!canSubmit} className="btn btn-primary">
+              {isSubmitting ? "Processing..." : "Place preorder"}
+            </button>
+            {allowTestPreorder && (
+              <button
+                type="button"
+                disabled={!canSubmit || isSubmitting}
+                className="btn btn-outline"
+                onClick={(event) => submitPreorder(event, { testBypassPayment: true })}
+              >
+                {isSubmitting ? "Processing..." : "Test place preorder"}
+              </button>
+            )}
+          </div>
           {selectedItems.length > 0 && <div className="badge badge-outline">{selectedItems.length} item(s) selected</div>}
         </div>
         {error && (

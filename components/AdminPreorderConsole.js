@@ -97,6 +97,7 @@ const createWindowConfig = (windowData) => ({
     windowData.freeDeliveryThreshold === ""
       ? ""
       : Number(windowData.freeDeliveryThreshold || 0),
+  driverPayoutPerKm: Number(windowData.driverPayoutPerKm || 0),
   allowedItems: normalizeAllowedItems(windowData.allowedItems),
   allowCustomerNotes: windowData.allowCustomerNotes !== false,
   openImmediately:
@@ -950,6 +951,25 @@ export default function AdminPreorderConsole({
                   />
                   <div className="mt-2 text-sm opacity-70">
                     If you set an amount here, customers whose preorder subtotal reaches it before discounts will get free delivery.
+                  </div>
+                </label>
+                <label className="form-control w-full">
+                  <div className="label">
+                    <span className="label-text">Driver payout per km</span>
+                  </div>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    className="input input-bordered"
+                    value={windowConfig.driverPayoutPerKm}
+                    onChange={(event) =>
+                      setField("driverPayoutPerKm", Number(event.target.value || 0))
+                    }
+                    placeholder="0"
+                  />
+                  <div className="mt-2 text-sm opacity-70">
+                    Used by the delivery route planner to estimate what you should pay your own driver for this batch.
                   </div>
                 </label>
                 <div className="space-y-3">

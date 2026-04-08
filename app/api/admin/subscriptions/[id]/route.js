@@ -3,6 +3,7 @@ import connectMongo from "@/libs/mongoose";
 import { getAdminSessionState } from "@/libs/admin-auth";
 import Subscription from "@/models/Subscription";
 import { assertValidSubscriptionStatus } from "@/libs/subscriptions";
+import { recalculateSubscriptionRouteSnapshots } from "@/libs/subscription-route-planner";
 import {
   cancelRazorpaySubscription,
   pauseRazorpaySubscription,
@@ -85,6 +86,7 @@ export async function PATCH(req, { params }) {
     }
 
     await subscription.save();
+    await recalculateSubscriptionRouteSnapshots();
 
     return NextResponse.json({ subscription: sanitizeSubscription(subscription) });
   } catch (error) {
@@ -125,6 +127,7 @@ export async function DELETE(_req, { params }) {
     }
 
     await Subscription.findByIdAndDelete(params.id);
+    await recalculateSubscriptionRouteSnapshots();
 
     return NextResponse.json({ success: true });
   } catch (error) {

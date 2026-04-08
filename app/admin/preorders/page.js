@@ -1,9 +1,11 @@
 import AdminLoginButton from "@/components/AdminLoginButton";
+import AdminDeliveryRoutePlanner from "@/components/AdminDeliveryRoutePlanner";
 import AdminNav from "@/components/AdminNav";
 import AdminPreorderConsole from "@/components/AdminPreorderConsole";
 import AdminPreordersList from "@/components/AdminPreordersList";
 import { getAdminSessionState } from "@/libs/admin-auth";
 import { createDefaultPreorderWindow } from "@/libs/preorder-catalog";
+import { recalculatePreorderWindowRouteSnapshot } from "@/libs/preorder-route-planner";
 import connectMongo from "@/libs/mongoose";
 import Preorder from "@/models/Preorder";
 import PreorderWindow from "@/models/PreorderWindow";
@@ -58,9 +60,27 @@ export default async function AdminPreordersPage() {
     listSkuCatalog(),
   ]);
   const preorders = JSON.parse(JSON.stringify(preorderDocs));
-  const initialWindows = sortPreorderWindows(JSON.parse(JSON.stringify(preorderWindowDocs)));
   const initialSkuCatalog = JSON.parse(JSON.stringify(skuCatalogDocs));
   const defaultWindow = createDefaultPreorderWindow();
+  const windowsWithRoutes = [];
+
+  for (const windowDoc of preorderWindowDocs) {
+    const hasDeliveryOrders = preorderDocs.some(
+      (preorder) =>
+        String(preorder.preorderWindow || "") === String(windowDoc._id) &&
+        preorder.fulfillmentMethod === "delivery" &&
+        ["confirmed", "shipped"].includes(preorder.status)
+    );
+
+    if (hasDeliveryOrders) {
+      await recalculatePreorderWindowRouteSnapshot({ preorderWindow: windowDoc });
+    }
+
+    windowsWithRoutes.push(windowDoc);
+  }
+  const initialWindowsWithRoutes = sortPreorderWindows(
+    JSON.parse(JSON.stringify(windowsWithRoutes))
+  );
 
   return (
     <main className="min-h-screen bg-base-200 px-4 py-10 md:px-6">
@@ -74,11 +94,16 @@ export default async function AdminPreordersPage() {
         </div>
 
         <AdminPreorderConsole
-          initialWindows={initialWindows}
+          initialWindows={initialWindowsWithRoutes}
           initialSkuCatalog={initialSkuCatalog}
           defaultWindow={defaultWindow}
           adminEmail={session.user.email}
           view="preorders"
+        />
+
+        <AdminDeliveryRoutePlanner
+          initialWindows={initialWindowsWithRoutes}
+          initialPreorders={preorders}
         />
 
         <AdminPreordersList initialPreorders={preorders} />

@@ -366,6 +366,7 @@ export default function Page() {
             onOrderPlaced={resetCart}
             updateQty={updateQty}
             minTotalQuantity={minTotalQuantity}
+            allowTestPreorder={process.env.NODE_ENV !== "production"}
           />
         </section>
       )}

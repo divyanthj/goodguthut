@@ -5,6 +5,7 @@ import { isAdminEmail } from "@/libs/admin";
 import connectMongo from "@/libs/mongoose";
 import PreorderWindow from "@/models/PreorderWindow";
 import { createDefaultPreorderWindow } from "@/libs/preorder-catalog";
+import { recalculatePreorderWindowRouteSnapshot } from "@/libs/preorder-route-planner";
 import {
   getLiveOpenWindowMessage,
   isWindowAcceptingOrders,
@@ -115,6 +116,12 @@ export async function POST(req) {
     }
 
     const preorderWindow = await PreorderWindow.create(payload);
+
+    try {
+      await recalculatePreorderWindowRouteSnapshot({ preorderWindow });
+    } catch (routeError) {
+      console.error("Failed to refresh preorder delivery route snapshot", routeError);
+    }
 
     return NextResponse.json({ preorderWindow }, { status: 201 });
   } catch (e) {

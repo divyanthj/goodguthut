@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { sendPreorderConfirmationNotifications } from "@/libs/emailSender";
 import connectMongo from "@/libs/mongoose";
 import Preorder from "@/models/Preorder";
+import { recalculatePreorderWindowRouteSnapshot } from "@/libs/preorder-route-planner";
 import {
   extractRazorpayPaymentResult,
   getRazorpayPaymentVerificationError,
@@ -128,6 +129,16 @@ export async function PATCH(req) {
         email: { status: "failed" },
         whatsapp: { status: "failed" },
       };
+    }
+
+    if (preorder.preorderWindow && preorder.fulfillmentMethod === "delivery") {
+      try {
+        await recalculatePreorderWindowRouteSnapshot({
+          preorderWindowId: preorder.preorderWindow,
+        });
+      } catch (routeError) {
+        console.error("Failed to refresh preorder delivery route snapshot", routeError);
+      }
     }
 
     return NextResponse.json({

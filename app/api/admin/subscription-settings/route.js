@@ -8,6 +8,7 @@ import {
   sanitizeDeliveryDaysOfWeek,
   sanitizeMinimumLeadDays,
 } from "@/libs/subscription-settings";
+import { recalculateSubscriptionRouteSnapshots } from "@/libs/subscription-route-planner";
 
 const getAdminSession = async () => {
   const session = await getServerSession(authOptions);
@@ -51,8 +52,10 @@ export async function PUT(req) {
     settings.deliveryDaysOfWeek = sanitizeDeliveryDaysOfWeek(body.deliveryDaysOfWeek);
     settings.minimumLeadDays = sanitizeMinimumLeadDays(body.minimumLeadDays);
     await settings.save();
+    await recalculateSubscriptionRouteSnapshots();
+    const refreshedSettings = await getSubscriptionSettings();
 
-    return NextResponse.json({ settings });
+    return NextResponse.json({ settings: refreshedSettings });
   } catch (error) {
     console.error(error);
     return NextResponse.json({ error: error.message }, { status: 500 });

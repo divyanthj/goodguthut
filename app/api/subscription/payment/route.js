@@ -10,6 +10,7 @@ import {
   verifyRazorpaySubscriptionSignature,
   verifySignedCheckoutToken,
 } from "@/libs/razorpay";
+import { recalculateSubscriptionRouteSnapshots } from "@/libs/subscription-route-planner";
 import {
   formatSubscriptionDate,
   getNextSubscriptionDeliveryDate,
@@ -221,6 +222,12 @@ export async function PATCH(req) {
       paymentId,
     });
     await subscription.save();
+
+    try {
+      await recalculateSubscriptionRouteSnapshots();
+    } catch (routeError) {
+      console.error("Failed to refresh subscription delivery route snapshots", routeError);
+    }
 
     return NextResponse.json({
       subscription: sanitizeSubscription(subscription),

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import connectMongo from "@/libs/mongoose";
 import { getAdminSessionState } from "@/libs/admin-auth";
+import { recalculatePreorderWindowRouteSnapshot } from "@/libs/preorder-route-planner";
 import Preorder from "@/models/Preorder";
 import {
   preparePreorderShippedNotifications,
@@ -50,6 +51,16 @@ export async function PATCH(req, { params }) {
 
       await preorder.save();
 
+      if (preorder.preorderWindow) {
+        try {
+          await recalculatePreorderWindowRouteSnapshot({
+            preorderWindowId: preorder.preorderWindow,
+          });
+        } catch (routeError) {
+          console.error("Failed to refresh preorder delivery route snapshot", routeError);
+        }
+      }
+
       const notificationScaffold = await preparePreorderShippedNotifications({ preorder });
 
       return NextResponse.json({
@@ -79,6 +90,16 @@ export async function PATCH(req, { params }) {
 
       await preorder.save();
 
+      if (preorder.preorderWindow) {
+        try {
+          await recalculatePreorderWindowRouteSnapshot({
+            preorderWindowId: preorder.preorderWindow,
+          });
+        } catch (routeError) {
+          console.error("Failed to refresh preorder delivery route snapshot", routeError);
+        }
+      }
+
       return NextResponse.json({ preorder });
     }
 
@@ -97,6 +118,16 @@ export async function PATCH(req, { params }) {
     preorder.deliveredAt = deliveredAt;
     preorder.status = "fulfilled";
     await preorder.save();
+
+    if (preorder.preorderWindow) {
+      try {
+        await recalculatePreorderWindowRouteSnapshot({
+          preorderWindowId: preorder.preorderWindow,
+        });
+      } catch (routeError) {
+        console.error("Failed to refresh preorder delivery route snapshot", routeError);
+      }
+    }
 
     return NextResponse.json({ preorder });
   } catch (e) {
@@ -123,6 +154,16 @@ export async function DELETE(_req, { params }) {
 
     if (!preorder) {
       return NextResponse.json({ error: "Preorder not found." }, { status: 404 });
+    }
+
+    if (preorder.preorderWindow) {
+      try {
+        await recalculatePreorderWindowRouteSnapshot({
+          preorderWindowId: preorder.preorderWindow,
+        });
+      } catch (routeError) {
+        console.error("Failed to refresh preorder delivery route snapshot", routeError);
+      }
     }
 
     return NextResponse.json({ success: true });

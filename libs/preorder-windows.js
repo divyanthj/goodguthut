@@ -126,6 +126,7 @@ export const normalizePreorderWindowPayload = ({
       allowFreePickup: body.allowFreePickup === true,
       deliveryBands,
       freeDeliveryThreshold: normalizeOptionalCurrencyAmount(body.freeDeliveryThreshold),
+      driverPayoutPerKm: Math.max(0, Number(body.driverPayoutPerKm || 0)),
       allowCustomerNotes: body.allowCustomerNotes !== false,
       allowedItems,
     },

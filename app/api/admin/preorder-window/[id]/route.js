@@ -4,6 +4,7 @@ import { authOptions } from "@/libs/next-auth";
 import { isAdminEmail } from "@/libs/admin";
 import connectMongo from "@/libs/mongoose";
 import PreorderWindow from "@/models/PreorderWindow";
+import { recalculatePreorderWindowRouteSnapshot } from "@/libs/preorder-route-planner";
 import {
   getLiveOpenWindowMessage,
   isWindowAcceptingOrders,
@@ -126,6 +127,12 @@ export async function PUT(req, { params }) {
       runValidators: true,
     });
 
+    try {
+      await recalculatePreorderWindowRouteSnapshot({ preorderWindow });
+    } catch (routeError) {
+      console.error("Failed to refresh preorder delivery route snapshot", routeError);
+    }
+
     return NextResponse.json({ preorderWindow });
   } catch (e) {
     console.error(e);
@@ -188,6 +195,12 @@ export async function PATCH(req, { params }) {
     }
 
     await preorderWindow.save();
+
+    try {
+      await recalculatePreorderWindowRouteSnapshot({ preorderWindow });
+    } catch (routeError) {
+      console.error("Failed to refresh preorder delivery route snapshot", routeError);
+    }
 
     return NextResponse.json({ preorderWindow });
   } catch (e) {

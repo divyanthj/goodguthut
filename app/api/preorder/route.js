@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import Preorder from "@/models/Preorder";
 import { buildPreorderRequest } from "@/libs/preorder-request";
+import { sendPreorderConfirmationNotifications } from "@/libs/emailSender";
+import { recalculatePreorderWindowRouteSnapshot } from "@/libs/preorder-route-planner";
 import {
   createRazorpayOrder,
   createSignedCheckoutToken,
@@ -23,6 +25,8 @@ const isDatabaseUnavailable = (message = "") => {
 };
 
 const createPreorderDocument = async (orderRequest, payment = {}) => {
+  const isPaidOrder = payment.status === "paid";
+
   return Preorder.create({
     customerName: orderRequest.customerName,
     email: orderRequest.email,
@@ -45,7 +49,7 @@ const createPreorderDocument = async (orderRequest, payment = {}) => {
     deliveryDistanceKm: orderRequest.deliveryDistanceKm,
     total: orderRequest.total,
     source: "landing",
-    status: payment.provider === "razorpay" ? "confirmed" : "pending",
+    status: isPaidOrder ? "confirmed" : "pending",
     payment,
   });
 };
@@ -60,8 +64,10 @@ export async function POST(req) {
 
     const body = await readJsonBody(req, { maxBytes: 24 * 1024 });
     const orderRequest = await buildPreorderRequest(body);
+    const allowTestBypass =
+      process.env.NODE_ENV !== "production" && body.testBypassPayment === true;
 
-    if (isRazorpayConfigured() && Number(orderRequest.total || 0) > 0) {
+    if (!allowTestBypass && isRazorpayConfigured() && Number(orderRequest.total || 0) > 0) {
       const razorpayOrder = await createRazorpayOrder({
         amount: Math.round(Number(orderRequest.total) * 100),
         currency: orderRequest.currency || "INR",
@@ -105,15 +111,56 @@ export async function POST(req) {
       });
     }
 
-    const preorder = await createPreorderDocument(orderRequest, {
-      provider: "",
-      status: "not_required",
-      amount: orderRequest.total,
-      currency: orderRequest.currency,
-    });
+    const preorder = await createPreorderDocument(
+      orderRequest,
+      allowTestBypass
+        ? {
+            provider: "test",
+            status: "paid",
+            amount: orderRequest.total,
+            currency: orderRequest.currency,
+            paymentId: `test_${Date.now()}`,
+            orderId: `test_order_${Date.now()}`,
+            paidAt: new Date(),
+          }
+        : {
+            provider: "",
+            status: "not_required",
+            amount: orderRequest.total,
+            currency: orderRequest.currency,
+          }
+    );
+
+    let notificationDelivery = {
+      email: { status: "skipped" },
+      whatsapp: { status: "skipped" },
+    };
+
+    if (allowTestBypass) {
+      try {
+        notificationDelivery = await sendPreorderConfirmationNotifications({ preorder });
+      } catch (notificationError) {
+        console.error("Failed to send test preorder confirmation notifications", notificationError);
+        notificationDelivery = {
+          email: { status: "failed" },
+          whatsapp: { status: "failed" },
+        };
+      }
+    }
+
+    if (preorder.preorderWindow && preorder.fulfillmentMethod === "delivery" && preorder.status === "confirmed") {
+      try {
+        await recalculatePreorderWindowRouteSnapshot({
+          preorderWindowId: preorder.preorderWindow,
+        });
+      } catch (routeError) {
+        console.error("Failed to refresh preorder delivery route snapshot", routeError);
+      }
+    }
 
     return NextResponse.json({
       id: preorder.id,
+      preorder,
       status: preorder.status,
       totalQuantity: preorder.totalQuantity,
       subtotal: preorder.subtotal,
@@ -123,9 +170,13 @@ export async function POST(req) {
       total: preorder.total,
       currency: preorder.currency,
       paymentStatus: preorder.payment?.status,
+      emailDelivery: notificationDelivery.email,
+      whatsappDelivery: notificationDelivery.whatsapp,
       razorpay: getRazorpayPublicConfig(),
       confirmationMessage:
-        "Preorder received. We will contact you on WhatsApp or by text to confirm your order before payment.",
+        allowTestBypass
+          ? "Test preorder created as a paid confirmed order without Razorpay."
+          : "Preorder received. We will contact you on WhatsApp or by text to confirm your order before payment.",
     });
   } catch (e) {
     console.error(e);

@@ -19,6 +19,7 @@ export const getSubscriptionSettings = async () => {
     settings = await SubscriptionSettings.create({
       deliveryDaysOfWeek: [],
       minimumLeadDays: DEFAULT_SUBSCRIPTION_MINIMUM_LEAD_DAYS,
+      deliveryRouteSnapshots: [],
     });
   }
 

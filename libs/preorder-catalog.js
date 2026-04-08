@@ -28,6 +28,7 @@ export const createDefaultPreorderWindow = () => {
     allowFreePickup: false,
     deliveryBands: createDefaultDeliveryBands(),
     freeDeliveryThreshold: null,
+    driverPayoutPerKm: 0,
     allowedItems: [],
     allowCustomerNotes: true,
   };

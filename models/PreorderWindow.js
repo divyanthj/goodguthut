@@ -99,6 +99,11 @@ const preorderWindowSchema = mongoose.Schema(
       min: 0,
       default: null,
     },
+    driverPayoutPerKm: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
     allowedItems: {
       type: [windowItemSchema],
       default: [],
@@ -106,6 +111,82 @@ const preorderWindowSchema = mongoose.Schema(
     allowCustomerNotes: {
       type: Boolean,
       default: true,
+    },
+    deliveryRouteSnapshot: {
+      type: {
+        status: {
+          type: String,
+          enum: ["idle", "ready", "error"],
+          default: "idle",
+        },
+        generatedAt: {
+          type: Date,
+          default: null,
+        },
+        originAddress: {
+          type: String,
+          trim: true,
+          default: "",
+        },
+        totalStops: {
+          type: Number,
+          min: 0,
+          default: 0,
+        },
+        totalDistanceKm: {
+          type: Number,
+          min: 0,
+          default: 0,
+        },
+        driverPayout: {
+          type: Number,
+          min: 0,
+          default: 0,
+        },
+        payoutPerKm: {
+          type: Number,
+          min: 0,
+          default: 0,
+        },
+        error: {
+          type: String,
+          trim: true,
+          default: "",
+        },
+        stops: {
+          type: [
+            {
+              _id: false,
+              stopNumber: Number,
+              preorderId: String,
+              customerName: String,
+              phone: String,
+              email: String,
+              address: String,
+              totalQuantity: Number,
+              total: Number,
+              status: String,
+              deliveredAt: Date,
+              legDistanceKm: Number,
+              cumulativeDistanceKm: Number,
+              mapsUrl: String,
+              items: {
+                type: [
+                  {
+                    _id: false,
+                    sku: String,
+                    productName: String,
+                    quantity: Number,
+                  },
+                ],
+                default: [],
+              },
+            },
+          ],
+          default: [],
+        },
+      },
+      default: () => ({}),
     },
   },
   {

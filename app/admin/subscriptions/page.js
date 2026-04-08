@@ -1,6 +1,7 @@
 import AdminLoginButton from "@/components/AdminLoginButton";
 import AdminNav from "@/components/AdminNav";
 import AdminSubscriptionCombosManager from "@/components/AdminSubscriptionCombosManager";
+import AdminSubscriptionRoutePlanner from "@/components/AdminSubscriptionRoutePlanner";
 import AdminSubscriptionScheduleManager from "@/components/AdminSubscriptionScheduleManager";
 import AdminSubscriptionsList from "@/components/AdminSubscriptionsList";
 import { getAdminSessionState } from "@/libs/admin-auth";
@@ -8,6 +9,7 @@ import connectMongo from "@/libs/mongoose";
 import { listSkuCatalog } from "@/libs/sku-catalog";
 import { getSkuMap } from "@/libs/sku-catalog";
 import { hydrateSubscriptionCombo, listSubscriptionCombos } from "@/libs/subscription-combos";
+import { recalculateSubscriptionRouteSnapshots } from "@/libs/subscription-route-planner";
 import { getSubscriptionSettings } from "@/libs/subscription-settings";
 import Subscription from "@/models/Subscription";
 
@@ -54,6 +56,8 @@ export default async function AdminSubscriptionsPage() {
     listSubscriptionCombos(),
     getSubscriptionSettings(),
   ]);
+  await recalculateSubscriptionRouteSnapshots();
+  const refreshedSubscriptionSettings = await getSubscriptionSettings();
   const skuCatalog = JSON.parse(JSON.stringify(skuCatalogDocs));
   const skuMap = getSkuMap(skuCatalogDocs);
   const combos = comboDocs.map((combo) => hydrateSubscriptionCombo(combo, skuMap));
@@ -73,8 +77,16 @@ export default async function AdminSubscriptionsPage() {
         </div>
 
         <AdminSubscriptionScheduleManager
-          initialDeliveryDaysOfWeek={subscriptionSettings?.deliveryDaysOfWeek || []}
-          initialMinimumLeadDays={Number(subscriptionSettings?.minimumLeadDays || 3)}
+          initialDeliveryDaysOfWeek={refreshedSubscriptionSettings?.deliveryDaysOfWeek || subscriptionSettings?.deliveryDaysOfWeek || []}
+          initialMinimumLeadDays={Number(refreshedSubscriptionSettings?.minimumLeadDays || subscriptionSettings?.minimumLeadDays || 3)}
+        />
+        <AdminSubscriptionRoutePlanner
+          initialRouteSnapshots={
+            JSON.parse(
+              JSON.stringify(refreshedSubscriptionSettings?.deliveryRouteSnapshots || [])
+            )
+          }
+          currency="INR"
         />
         <AdminSubscriptionCombosManager
           initialCombos={combos}

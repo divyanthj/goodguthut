@@ -27,6 +27,7 @@ import {
   parseDateKeyToIstDate,
 } from "@/libs/subscription-schedule";
 import Subscription from "@/models/Subscription";
+import { recalculateSubscriptionRouteSnapshots } from "@/libs/subscription-route-planner";
 
 const sanitizeSubscription = (subscription) => ({
   id: subscription.id,
@@ -338,6 +339,12 @@ export async function PATCH(req) {
       }
     }
 
+    try {
+      await recalculateSubscriptionRouteSnapshots();
+    } catch (routeError) {
+      console.error("Failed to refresh subscription delivery route snapshots", routeError);
+    }
+
     return NextResponse.json({
       subscription: sanitizeSubscription(subscription),
       emailChanged,
@@ -435,6 +442,12 @@ export async function DELETE(req) {
 
     subscription.status = "cancelled";
     await subscription.save();
+
+    try {
+      await recalculateSubscriptionRouteSnapshots();
+    } catch (routeError) {
+      console.error("Failed to refresh subscription delivery route snapshots", routeError);
+    }
 
     return NextResponse.json({
       subscription: sanitizeSubscription(subscription),

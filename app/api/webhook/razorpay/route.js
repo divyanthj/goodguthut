@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { sendPreorderConfirmationNotifications } from "@/libs/emailSender";
+import { recalculatePreorderWindowRouteSnapshot } from "@/libs/preorder-route-planner";
+import { recalculateSubscriptionRouteSnapshots } from "@/libs/subscription-route-planner";
 import connectMongo from "@/libs/mongoose";
 import Preorder from "@/models/Preorder";
 import Subscription from "@/models/Subscription";
@@ -108,6 +110,12 @@ export async function POST(req) {
         }
 
         await subscription.save();
+
+        try {
+          await recalculateSubscriptionRouteSnapshots();
+        } catch (routeError) {
+          console.error("Failed to refresh subscription delivery route snapshots", routeError);
+        }
       }
     }
 
@@ -151,6 +159,16 @@ export async function POST(req) {
         };
         await preorder.save();
 
+        if (preorder.preorderWindow) {
+          try {
+            await recalculatePreorderWindowRouteSnapshot({
+              preorderWindowId: preorder.preorderWindow,
+            });
+          } catch (routeError) {
+            console.error("Failed to refresh preorder delivery route snapshot", routeError);
+          }
+        }
+
         if (shouldSendConfirmationNotifications) {
           try {
             await sendPreorderConfirmationNotifications({ preorder });
@@ -170,6 +188,16 @@ export async function POST(req) {
           webhookEvent: event.event,
         };
         await preorder.save();
+
+        if (preorder.preorderWindow) {
+          try {
+            await recalculatePreorderWindowRouteSnapshot({
+              preorderWindowId: preorder.preorderWindow,
+            });
+          } catch (routeError) {
+            console.error("Failed to refresh preorder delivery route snapshot", routeError);
+          }
+        }
         break;
       }
       default:

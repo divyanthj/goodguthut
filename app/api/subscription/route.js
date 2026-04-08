@@ -15,6 +15,7 @@ import {
   getRazorpayPublicConfig,
   isRazorpayConfigured,
 } from "@/libs/razorpay";
+import { recalculateSubscriptionRouteSnapshots } from "@/libs/subscription-route-planner";
 import {
   formatSubscriptionDate,
   getNextSubscriptionDeliveryDate,
@@ -195,6 +196,12 @@ export async function POST(req) {
       await subscription.save();
     } catch (emailError) {
       console.error(emailError);
+    }
+
+    try {
+      await recalculateSubscriptionRouteSnapshots();
+    } catch (routeError) {
+      console.error("Failed to refresh subscription delivery route snapshots", routeError);
     }
 
     return NextResponse.json({
