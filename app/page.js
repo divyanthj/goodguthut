@@ -195,12 +195,6 @@ export default function Page() {
                 <a className="btn btn-primary" href={isPreorderOpen ? "#preorder" : "#lineup"}>
                   {isPreorderOpen ? "Place a preorder" : "See current products"}
                 </a>
-                <a
-                  className="btn border-[#365244] bg-[#f7f1e6]/80 text-[#365244] hover:border-[#2f5d49] hover:bg-[#ece2cf]"
-                  href="/subscriptions?mode=combo#subscription-flow"
-                >
-                  Subscribe to our products
-                </a>
               </div>
             </div>
           </div>
