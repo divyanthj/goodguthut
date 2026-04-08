@@ -1,9 +1,14 @@
 import AdminLoginButton from "@/components/AdminLoginButton";
 import AdminNav from "@/components/AdminNav";
+import AdminPreorderConsole from "@/components/AdminPreorderConsole";
 import AdminPreordersList from "@/components/AdminPreordersList";
 import { getAdminSessionState } from "@/libs/admin-auth";
+import { createDefaultPreorderWindow } from "@/libs/preorder-catalog";
 import connectMongo from "@/libs/mongoose";
 import Preorder from "@/models/Preorder";
+import PreorderWindow from "@/models/PreorderWindow";
+import { sortPreorderWindows } from "@/libs/preorder-windows";
+import { listSkuCatalog } from "@/libs/sku-catalog";
 
 export default async function AdminPreordersPage() {
   const { session, isAdmin } = await getAdminSessionState();
@@ -42,10 +47,20 @@ export default async function AdminPreordersPage() {
   }
 
   await connectMongo();
-  const preorderDocs = await Preorder.find({})
-    .sort({ createdAt: -1 })
-    .limit(100);
+  const [preorderDocs, preorderWindowDocs, skuCatalogDocs] = await Promise.all([
+    Preorder.find({}).sort({ createdAt: -1 }).limit(100),
+    PreorderWindow.find({}).sort({
+      status: 1,
+      deliveryDate: -1,
+      updatedAt: -1,
+      createdAt: -1,
+    }),
+    listSkuCatalog(),
+  ]);
   const preorders = JSON.parse(JSON.stringify(preorderDocs));
+  const initialWindows = sortPreorderWindows(JSON.parse(JSON.stringify(preorderWindowDocs)));
+  const initialSkuCatalog = JSON.parse(JSON.stringify(skuCatalogDocs));
+  const defaultWindow = createDefaultPreorderWindow();
 
   return (
     <main className="min-h-screen bg-base-200 px-4 py-10 md:px-6">
@@ -53,10 +68,18 @@ export default async function AdminPreordersPage() {
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold">Preorders</h1>
-            <p className="mt-2 opacity-75">Review the latest customer orders, delivery charges, and payment state.</p>
+            <p className="mt-2 opacity-75">Create and edit preorder batches, then review the latest customer orders and payment state.</p>
           </div>
           <AdminNav active="preorders" />
         </div>
+
+        <AdminPreorderConsole
+          initialWindows={initialWindows}
+          initialSkuCatalog={initialSkuCatalog}
+          defaultWindow={defaultWindow}
+          adminEmail={session.user.email}
+          view="preorders"
+        />
 
         <AdminPreordersList initialPreorders={preorders} />
       </div>

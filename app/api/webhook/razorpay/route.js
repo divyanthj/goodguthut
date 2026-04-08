@@ -61,6 +61,9 @@ export async function POST(req) {
           endAt: subscriptionEntity.end_at
             ? new Date(Number(subscriptionEntity.end_at) * 1000)
             : subscription.billing?.endAt || null,
+          mandateEndsAt: subscriptionEntity.end_at
+            ? new Date(Number(subscriptionEntity.end_at) * 1000)
+            : subscription.billing?.mandateEndsAt || null,
           currentStart: subscriptionEntity.current_start
             ? new Date(Number(subscriptionEntity.current_start) * 1000)
             : subscription.billing?.currentStart || null,
@@ -85,6 +88,12 @@ export async function POST(req) {
 
         if (event.event === "subscription.cancelled") {
           subscription.billing.shortUrl = "";
+          subscription.status = "cancelled";
+        }
+
+        if (event.event === "subscription.completed" || event.event === "subscription.expired") {
+          subscription.billing.shortUrl = "";
+          subscription.status = "cancelled";
         }
 
         if (event.event === "subscription.activated" || event.event === "subscription.charged") {

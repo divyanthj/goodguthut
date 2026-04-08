@@ -1,10 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { SUBSCRIPTION_CADENCES } from "@/libs/subscriptions";
+import {
+  formatSubscriptionDuration,
+  SUBSCRIPTION_CADENCES,
+  getSubscriptionDurationOptions,
+} from "@/libs/subscriptions";
 import { useRazorpayCheckout } from "@/components/RazorpayCheckout";
 
 const MAX_QTY = 10;
+const MIN_TOTAL_QTY = 4;
+const MAX_TOTAL_QTY = 10;
 
 const initialCustomer = {
   name: "",
@@ -39,6 +45,25 @@ const buildCartFromCatalog = (catalogItems = [], initialItems = []) => {
   return Object.fromEntries(
     catalogItems.map((item) => [item.sku, Number(initialMap.get(item.sku) || 0)])
   );
+};
+
+const getDefaultComboId = (comboOptions = []) =>
+  comboOptions.find((combo) => combo.isFeatured)?.id || comboOptions[0]?.id || "";
+
+const getInitialSelectionMode = ({
+  initialValues,
+  initialSelectionMode,
+  comboOptions,
+}) => {
+  if (initialValues?.selectionMode === "combo" && comboOptions.length > 0) {
+    return "combo";
+  }
+
+  if (initialSelectionMode === "combo" && comboOptions.length > 0) {
+    return "combo";
+  }
+
+  return "custom";
 };
 
 const buildFullAddress = (addressLine2, address) => {
@@ -98,11 +123,13 @@ const serializeRazorpaySubscriptionResult = (paymentResult = {}) => {
 
 export default function SubscriptionForm({
   catalogItems = [],
+  comboOptions = [],
   deliveryWindowId = "",
   pickupAddress = "",
   deliveryBands = [],
   currency = "INR",
   initialValues,
+  initialSelectionMode = "combo",
   mode = "create",
   token = "",
 }) {
@@ -118,6 +145,19 @@ export default function SubscriptionForm({
       : {}),
   }));
   const [cadence, setCadence] = useState(initialValues?.cadence || "weekly");
+  const [durationWeeks, setDurationWeeks] = useState(
+    Number(initialValues?.durationWeeks || 4)
+  );
+  const [selectionMode, setSelectionMode] = useState(() =>
+    getInitialSelectionMode({
+      initialValues,
+      initialSelectionMode,
+      comboOptions,
+    })
+  );
+  const [selectedComboId, setSelectedComboId] = useState(
+    initialValues?.comboId || getDefaultComboId(comboOptions)
+  );
   const [cart, setCart] = useState(() =>
     buildCartFromCatalog(catalogItems, initialValues?.items || [])
   );
@@ -177,6 +217,15 @@ export default function SubscriptionForm({
       address: initialValues.address || "",
     });
     setCadence(initialValues.cadence || "weekly");
+    setDurationWeeks(Number(initialValues.durationWeeks || 4));
+    setSelectionMode(
+      getInitialSelectionMode({
+        initialValues,
+        initialSelectionMode,
+        comboOptions,
+      })
+    );
+    setSelectedComboId(initialValues.comboId || getDefaultComboId(comboOptions));
     setCart(buildCartFromCatalog(catalogItems, initialValues.items || []));
     setStoredPlaceId(initialValues.deliveryPlaceId || "");
     setDeliveryQuote({
@@ -202,7 +251,7 @@ export default function SubscriptionForm({
       )
     );
     initialEmailRef.current = initialValues.email || "";
-  }, [catalogItems, initialValues, mode]);
+  }, [catalogItems, comboOptions, initialSelectionMode, initialValues, mode]);
 
   const lineup = useMemo(
     () =>
@@ -217,7 +266,12 @@ export default function SubscriptionForm({
     [catalogItems]
   );
 
-  const selectedItems = useMemo(
+  const selectedCombo = useMemo(
+    () => comboOptions.find((combo) => combo.id === selectedComboId) || null,
+    [comboOptions, selectedComboId]
+  );
+
+  const customSelectedItems = useMemo(
     () =>
       lineup
         .filter((product) => Number(cart[product.sku] || 0) > 0)
@@ -226,9 +280,27 @@ export default function SubscriptionForm({
           productName: product.name,
           quantity: Number(cart[product.sku] || 0),
           unitPrice: product.unitPrice,
+          lineTotal: Number(cart[product.sku] || 0) * product.unitPrice,
         })),
     [cart, lineup]
   );
+
+  const comboSelectedItems = useMemo(
+    () =>
+      (selectedCombo?.items || []).map((item) => ({
+        sku: item.sku,
+        productName: item.productName,
+        quantity: Number(item.quantity || 0),
+        unitPrice: Number(item.unitPrice || 0),
+        lineTotal: Number(item.lineTotal || 0),
+      })),
+    [selectedCombo]
+  );
+
+  const effectiveSelectionMode =
+    selectionMode === "combo" && selectedCombo ? "combo" : "custom";
+  const selectedItems =
+    effectiveSelectionMode === "combo" ? comboSelectedItems : customSelectedItems;
 
   const totalQuantity = useMemo(
     () => selectedItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
@@ -249,6 +321,8 @@ export default function SubscriptionForm({
   const total = subtotal + Number(deliveryQuote?.deliveryFee || 0);
   const needsAddressSelection =
     deliveryConfigured && customer.address.trim() && !selectedPlace && !hasVerifiedAddress;
+  const durationOptions = getSubscriptionDurationOptions(cadence);
+  const durationIsValid = durationOptions.includes(Number(durationWeeks || 0));
   const canSubmit = Boolean(
     !billingLocked &&
       !isCancelled &&
@@ -258,12 +332,20 @@ export default function SubscriptionForm({
       customer.phone.trim() &&
       customer.address.trim() &&
       cadence &&
+      durationIsValid &&
       selectedItems.length > 0 &&
-      totalQuantity > 0 &&
+      totalQuantity >= MIN_TOTAL_QTY &&
+      totalQuantity <= MAX_TOTAL_QTY &&
       !isQuotingDelivery &&
       !deliveryError &&
       !needsAddressSelection
   );
+
+  useEffect(() => {
+    if (!durationOptions.includes(Number(durationWeeks || 0))) {
+      setDurationWeeks(durationOptions[0] || 4);
+    }
+  }, [cadence, durationOptions, durationWeeks]);
 
   useEffect(() => {
     const input = customer.address.trim();
@@ -421,6 +503,9 @@ export default function SubscriptionForm({
   const resetForCreate = () => {
     setCustomer(initialCustomer);
     setCadence("weekly");
+    setDurationWeeks(4);
+    setSelectionMode(comboOptions.length > 0 ? initialSelectionMode : "custom");
+    setSelectedComboId(getDefaultComboId(comboOptions));
     setCart(buildCartFromCatalog(catalogItems, []));
     setSelectedPlace(null);
     setStoredPlaceId("");
@@ -445,6 +530,9 @@ export default function SubscriptionForm({
       address: nextSubscription.address || "",
     });
     setCadence(nextSubscription.cadence || "weekly");
+    setDurationWeeks(Number(nextSubscription.durationWeeks || 4));
+    setSelectionMode(nextSubscription.selectionMode || "custom");
+    setSelectedComboId(nextSubscription.comboId || getDefaultComboId(comboOptions));
     setCart(buildCartFromCatalog(catalogItems, nextSubscription.items || []));
     setStoredPlaceId(nextSubscription.deliveryPlaceId || "");
     setHasVerifiedAddress(
@@ -478,8 +566,23 @@ export default function SubscriptionForm({
     setError("");
     setSuccessMessage("");
 
+    if (effectiveSelectionMode === "combo" && !selectedCombo) {
+      setError("Please choose a box before continuing.");
+      return;
+    }
+
     if (selectedItems.length === 0) {
-      setError("Add at least one product quantity before continuing.");
+      setError("Choose a box or add a few bottles before continuing.");
+      return;
+    }
+
+    if (totalQuantity < MIN_TOTAL_QTY || totalQuantity > MAX_TOTAL_QTY) {
+      setError("Please choose between 4 and 10 bottles.");
+      return;
+    }
+
+    if (!durationIsValid) {
+      setError("Please choose how long you&apos;d like this plan to run.");
       return;
     }
 
@@ -489,7 +592,7 @@ export default function SubscriptionForm({
     }
 
     if (deliveryConfigured && !storedPlaceId && !selectedPlace?.placeId) {
-      setError("Please select your delivery address from the suggestions.");
+      setError("Please choose your address from the suggestions so we can confirm delivery.");
       return;
     }
 
@@ -511,6 +614,9 @@ export default function SubscriptionForm({
             deliveryPlaceId: selectedPlace?.placeId || storedPlaceId,
             addressSessionToken,
             cadence,
+            durationWeeks,
+            selectionMode: effectiveSelectionMode,
+            comboId: effectiveSelectionMode === "combo" ? selectedCombo?.id || "" : "",
             items: selectedItems,
             token,
           }),
@@ -644,7 +750,7 @@ export default function SubscriptionForm({
       }
 
       const data = await response.json();
-      setSuccessMessage(data.message || "Subscription cancelled.");
+      setSuccessMessage(data.message || "Your plan has been cancelled.");
       setBillingLocked(true);
       setIsCancelled(true);
     } catch (cancelError) {
@@ -660,74 +766,182 @@ export default function SubscriptionForm({
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <div>
             <div className="text-xs font-semibold uppercase tracking-[0.24em] text-[#6b7d74]">
-              Build your box
+              Choose Your Box
             </div>
             <p className="mt-2 max-w-2xl text-sm leading-7 text-[#53675d]">
-              Pick the drinks you&apos;d like in your regular delivery, then choose how often you&apos;d like them.
+              Start with one of our ready-to-go boxes, or build your own with the drinks you love.
             </p>
           </div>
           <div className="badge border-[#d1c4b0] bg-[#f7f1e6] text-[#2f5d49]">
-            {currency} pricing
+            4 to 10 bottles
           </div>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {lineup.map((drink) => {
-            const qty = Number(cart[drink.sku] || 0);
+        <div className="grid gap-4 md:grid-cols-2">
+          <button
+            type="button"
+            className={`rounded-2xl border p-5 text-left transition ${
+              effectiveSelectionMode === "combo"
+                ? "border-[#2f5d49] bg-[#eef4ee]"
+                : "border-[#d8cdbb] bg-[#fffaf1]"
+            }`}
+            disabled={billingLocked || comboOptions.length === 0}
+            onClick={() => setSelectionMode("combo")}
+          >
+            <div className="text-lg font-semibold text-[#2f4a3e]">Ready-to-go boxes</div>
+            <p className="mt-2 text-sm leading-7 text-[#53675d]">
+              Easy picks put together by us if you want the quickest way to get started.
+            </p>
+          </button>
+          <button
+            type="button"
+            className={`rounded-2xl border p-5 text-left transition ${
+              effectiveSelectionMode === "custom"
+                ? "border-[#2f5d49] bg-[#eef4ee]"
+                : "border-[#d8cdbb] bg-[#fffaf1]"
+            }`}
+            disabled={billingLocked}
+            onClick={() => setSelectionMode("custom")}
+          >
+            <div className="text-lg font-semibold text-[#2f4a3e]">Build your own box</div>
+            <p className="mt-2 text-sm leading-7 text-[#53675d]">
+              Mix and match your favourites and choose exactly what goes into each delivery.
+            </p>
+          </button>
+        </div>
 
-            return (
-              <article
-                key={drink.sku}
-                className="rounded-2xl border border-[#d8cdbb] bg-[#fffaf1] p-5 shadow-sm"
-              >
-                <div className="flex h-full flex-col">
-                  <div className="flex-1">
-                    <h3 className="text-lg font-semibold text-[#2f4a3e]">{drink.name}</h3>
-                    <p className="mt-2 text-sm leading-7 text-[#53675d]">{drink.note}</p>
-                    <div className="mt-3 text-sm font-medium text-[#5f7068]">
-                      {currency} {drink.unitPrice.toFixed(2)}
+        {effectiveSelectionMode === "combo" && comboOptions.length > 0 && (
+          <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {comboOptions.map((combo) => {
+              const isActive = combo.id === selectedComboId;
+
+              return (
+                <button
+                  key={combo.id}
+                  type="button"
+                  className={`rounded-2xl border p-5 text-left transition ${
+                    isActive
+                      ? "border-[#2f5d49] bg-[#eef4ee] shadow-md"
+                      : "border-[#d8cdbb] bg-[#fffaf1]"
+                  }`}
+                  disabled={billingLocked}
+                  onClick={() => setSelectedComboId(combo.id)}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-lg font-semibold text-[#2f4a3e]">{combo.name}</h3>
+                      <p className="mt-2 text-sm leading-7 text-[#53675d]">
+                        {combo.description || "A handpicked selection from Good Gut Hut."}
+                      </p>
                     </div>
-                  </div>
-                  <div className="mt-5 flex justify-end">
-                    {qty === 0 ? (
-                      <button
-                        type="button"
-                        className="btn btn-primary btn-sm"
-                        disabled={billingLocked}
-                        onClick={() => updateQty(drink.sku, 1)}
-                      >
-                        Add
-                      </button>
-                    ) : (
-                      <div className="join">
-                        <button
-                          type="button"
-                          className="btn btn-sm join-item"
-                          disabled={billingLocked}
-                          onClick={() => updateQty(drink.sku, qty - 1)}
-                        >
-                          -
-                        </button>
-                        <button type="button" className="btn btn-sm join-item" disabled>
-                          {qty}
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-sm join-item"
-                          disabled={billingLocked || qty >= MAX_QTY}
-                          onClick={() => updateQty(drink.sku, qty + 1)}
-                        >
-                          +
-                        </button>
+                    {combo.isFeatured && (
+                      <div className="badge border-[#c3b190] bg-[#fff1ce] text-[#6a5422]">
+                        Featured
                       </div>
                     )}
                   </div>
-                </div>
-              </article>
-            );
-          })}
-        </div>
+                  <div className="mt-4 flex flex-wrap gap-2 text-xs text-[#5f7068]">
+                    <span className="rounded-full bg-[#f1e8d8] px-3 py-1">
+                      {combo.totalQuantity} bottles
+                    </span>
+                    <span className="rounded-full bg-[#f1e8d8] px-3 py-1">
+                      {currency} {Number(combo.subtotal || 0).toFixed(2)}
+                    </span>
+                  </div>
+                  <ul className="mt-4 space-y-2 text-sm text-[#456154]">
+                    {(combo.items || []).map((item) => (
+                      <li key={`${combo.id}-${item.sku}`}>
+                        {item.productName} x {item.quantity}
+                      </li>
+                    ))}
+                  </ul>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {selectionMode === "combo" && comboOptions.length === 0 && (
+          <div className="mt-6 rounded-2xl border border-[#d8cdbb] bg-[#fffaf1] p-4 text-sm text-[#53675d]">
+            We don&apos;t have any ready-to-go boxes live right now, so you can build your own below.
+          </div>
+        )}
       </section>
+
+      {effectiveSelectionMode === "custom" && (
+        <section className="rounded-[28px] border border-[#d6c6ae] bg-[#fbf7f0]/96 p-6 shadow-xl md:p-8">
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-[0.24em] text-[#6b7d74]">
+                Build Your Own Box
+              </div>
+              <p className="mt-2 max-w-2xl text-sm leading-7 text-[#53675d]">
+                Choose any mix of drinks you like, with at least 4 bottles and up to 10 bottles in each delivery.
+              </p>
+            </div>
+            <div className="badge border-[#d1c4b0] bg-[#f7f1e6] text-[#2f5d49]">
+              {currency} pricing
+            </div>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {lineup.map((drink) => {
+              const qty = Number(cart[drink.sku] || 0);
+
+              return (
+                <article
+                  key={drink.sku}
+                  className="rounded-2xl border border-[#d8cdbb] bg-[#fffaf1] p-5 shadow-sm"
+                >
+                  <div className="flex h-full flex-col">
+                    <div className="flex-1">
+                      <h3 className="text-lg font-semibold text-[#2f4a3e]">{drink.name}</h3>
+                      <p className="mt-2 text-sm leading-7 text-[#53675d]">{drink.note}</p>
+                      <div className="mt-3 text-sm font-medium text-[#5f7068]">
+                        {currency} {drink.unitPrice.toFixed(2)}
+                      </div>
+                    </div>
+                    <div className="mt-5 flex justify-end">
+                      {qty === 0 ? (
+                        <button
+                          type="button"
+                          className="btn btn-primary btn-sm"
+                          disabled={billingLocked}
+                          onClick={() => updateQty(drink.sku, 1)}
+                        >
+                          Add
+                        </button>
+                      ) : (
+                        <div className="join">
+                          <button
+                            type="button"
+                            className="btn btn-sm join-item"
+                            disabled={billingLocked}
+                            onClick={() => updateQty(drink.sku, qty - 1)}
+                          >
+                            -
+                          </button>
+                          <button type="button" className="btn btn-sm join-item" disabled>
+                            {qty}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-sm join-item"
+                            disabled={billingLocked || qty >= MAX_QTY}
+                            onClick={() => updateQty(drink.sku, qty + 1)}
+                          >
+                            +
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       <form
         onSubmit={onSubmit}
@@ -735,6 +949,61 @@ export default function SubscriptionForm({
       >
         <div className="grid gap-6">
           <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <div className="label">
+                <span className="label-text text-[#365244]">How Often</span>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                {SUBSCRIPTION_CADENCES.map((option) => {
+                  const isActive = cadence === option.value;
+
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      disabled={billingLocked}
+                      className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
+                        isActive
+                          ? "border-[#2f5d49] bg-[#355a45] text-[#f7f1e6] shadow-md"
+                          : "border-[#d1c4b0] bg-[#fffaf1] text-[#365244] hover:border-[#a98f6f]"
+                      }`}
+                      onClick={() => setCadence(option.value)}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div>
+              <div className="label">
+                <span className="label-text text-[#365244]">How Long</span>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                {durationOptions.map((option) => {
+                  const isActive = Number(durationWeeks) === option;
+
+                  return (
+                    <button
+                      key={`${cadence}-${option}`}
+                      type="button"
+                      disabled={billingLocked}
+                      className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
+                        isActive
+                          ? "border-[#2f5d49] bg-[#355a45] text-[#f7f1e6] shadow-md"
+                          : "border-[#d1c4b0] bg-[#fffaf1] text-[#365244] hover:border-[#a98f6f]"
+                      }`}
+                      onClick={() => setDurationWeeks(option)}
+                    >
+                      {formatSubscriptionDuration(option)}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="mt-2 text-xs text-[#6b7d74]">
+                Your recurring payment will automatically end when this plan is complete.
+              </div>
+            </div>
             <label className="form-control">
               <div className="label">
                 <span className="label-text text-[#365244]">Name *</span>
@@ -772,35 +1041,9 @@ export default function SubscriptionForm({
                 disabled={billingLocked}
               />
             </label>
-            <div>
-              <div className="label">
-                <span className="label-text text-[#365244]">Cadence</span>
-              </div>
-              <div className="flex flex-wrap gap-3">
-                {SUBSCRIPTION_CADENCES.map((option) => {
-                  const isActive = cadence === option.value;
-
-                  return (
-                    <button
-                      key={option.value}
-                      type="button"
-                      disabled={billingLocked}
-                      className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
-                        isActive
-                          ? "border-[#2f5d49] bg-[#355a45] text-[#f7f1e6] shadow-md"
-                          : "border-[#d1c4b0] bg-[#fffaf1] text-[#365244] hover:border-[#a98f6f]"
-                      }`}
-                      onClick={() => setCadence(option.value)}
-                    >
-                      {option.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
             <label className="form-control">
               <div className="label">
-                <span className="label-text text-[#365244]">Flat / Door No.</span>
+                <span className="label-text text-[#365244]">Apartment / Door No.</span>
               </div>
               <input
                 className="input input-bordered bg-[#fffdf8]"
@@ -814,7 +1057,7 @@ export default function SubscriptionForm({
             </label>
             <div className="form-control md:col-span-2">
               <div className="label">
-                <span className="label-text text-[#365244]">Building / Street Address *</span>
+                <span className="label-text text-[#365244]">Address *</span>
               </div>
               <input
                 className="input input-bordered bg-[#fffdf8]"
@@ -826,7 +1069,7 @@ export default function SubscriptionForm({
                 disabled={billingLocked}
               />
               <div className="mt-2 text-xs text-[#6b7d74]">
-                Choose a suggested address so we can confirm delivery availability and charges.
+                Choose the closest match so we can confirm delivery to your area and calculate charges.
               </div>
               {addressSuggestions.length > 0 && !billingLocked && (
                 <div className="mt-2 rounded-2xl border border-base-300 bg-base-100 shadow-lg">
@@ -857,7 +1100,7 @@ export default function SubscriptionForm({
             </div>
             {hasVerifiedAddress && fullAddress && (
               <div className="md:col-span-2 rounded-2xl border border-base-300 bg-base-200 p-4 text-sm">
-                <div className="font-medium">Verified delivery location</div>
+                <div className="font-medium">Delivery address confirmed</div>
                 <div className="mt-1 opacity-80">
                   {deliveryQuote?.normalizedAddress || fullAddress}
                 </div>
@@ -880,10 +1123,12 @@ export default function SubscriptionForm({
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <div className="text-sm font-semibold uppercase tracking-[0.2em] text-[#5f7068]">
-                  Order summary
+                  Your Plan
                 </div>
                 <p className="mt-2 text-sm leading-7 text-[#53675d]">
-                  Your recurring amount is based on the drinks you&apos;ve chosen and your delivery address.
+                  {effectiveSelectionMode === "combo"
+                    ? `You&apos;ve chosen ${selectedCombo?.name || "one of our ready-to-go boxes"}.`
+                    : "You&apos;re creating your own box from the current menu."}
                 </p>
               </div>
               <div className="badge border-[#d1c4b0] bg-[#f7f1e6] text-[#2f5d49]">
@@ -893,7 +1138,7 @@ export default function SubscriptionForm({
 
             {selectedItems.length === 0 ? (
               <p className="mt-4 text-sm opacity-70">
-                No drinks selected yet. Choose your quantities above to continue.
+                Nothing selected yet. Choose a box or add a few bottles to continue.
               </p>
             ) : (
               <div className="mt-4 overflow-x-auto">
@@ -922,6 +1167,14 @@ export default function SubscriptionForm({
 
             <div className="mt-4 grid gap-2 text-sm text-[#365244]">
               <div className="flex justify-between">
+                <span>How often</span>
+                <span>{SUBSCRIPTION_CADENCES.find((item) => item.value === cadence)?.label || cadence}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>How long</span>
+                <span>{formatSubscriptionDuration(durationWeeks)}</span>
+              </div>
+              <div className="flex justify-between">
                 <span>Subtotal</span>
                 <span>{currency} {subtotal.toFixed(2)}</span>
               </div>
@@ -943,8 +1196,16 @@ export default function SubscriptionForm({
               {!deliveryError && needsAddressSelection && (
                 <div className="text-[#6b7d74]">Please choose one of the suggested addresses to continue.</div>
               )}
+              {totalQuantity < MIN_TOTAL_QTY && (
+                <div className="text-[#8a5a20]">
+                  Add {MIN_TOTAL_QTY - totalQuantity} more bottle{MIN_TOTAL_QTY - totalQuantity === 1 ? "" : "s"} to reach the minimum box size.
+                </div>
+              )}
+              {totalQuantity > MAX_TOTAL_QTY && (
+                <div className="text-error">Please bring this down to 10 bottles or fewer.</div>
+              )}
               <div className="flex justify-between text-base font-semibold">
-                <span>Per delivery total</span>
+                <span>Total per delivery</span>
                 <span>{currency} {total.toFixed(2)}</span>
               </div>
             </div>
@@ -964,25 +1225,25 @@ export default function SubscriptionForm({
 
           {billingLocked && (
             <div className="rounded-2xl border border-[#ddcfb6] bg-[#f7f1e6] px-4 py-4 text-sm text-[#52655b]">
-              This subscription is already linked to an active payment mandate. If you&apos;d like to make billing changes, please get in touch with us by email.
+              This plan already has an active recurring payment attached. If you need help making billing changes, email us and we&apos;ll sort it out.
             </div>
           )}
 
           {isCancelled && (
             <div className="rounded-2xl border border-[#ddcfb6] bg-[#f7f1e6] px-4 py-4 text-sm text-[#52655b]">
-              This subscription has been cancelled.
+              This plan has been cancelled.
             </div>
           )}
 
           {didEmailChange && (
             <div className="rounded-2xl border border-[#ddcfb6] bg-[#f7f1e6] px-4 py-4 text-sm text-[#52655b]">
-              We&apos;ve sent a fresh edit link to your new email address.
+              We&apos;ve sent a fresh update link to your new email address.
             </div>
           )}
 
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="text-sm text-[#5f7068]">
-              No login required. We&apos;ll email you a secure link so you can update or cancel your subscription anytime.
+              No login needed. We&apos;ll email you a secure link so you can update or cancel your plan anytime.
             </div>
             <div className="flex flex-wrap gap-3">
               {mode === "edit" && !isCancelled && (
@@ -992,7 +1253,7 @@ export default function SubscriptionForm({
                   disabled={isCancelling || isSubmitting}
                   onClick={cancelSubscription}
                 >
-                  {isCancelling ? "Cancelling..." : "Cancel subscription"}
+                  {isCancelling ? "Cancelling..." : "Cancel plan"}
                 </button>
               )}
               <button type="submit" disabled={!canSubmit} className="btn btn-primary min-w-[220px]">
@@ -1001,9 +1262,9 @@ export default function SubscriptionForm({
                     ? "Saving..."
                     : "Taking you to payment..."
                   : isCancelled
-                    ? "Subscription cancelled"
+                    ? "Plan cancelled"
                   : mode === "edit"
-                    ? "Save changes"
+                    ? "Save updates"
                     : "Continue"}
               </button>
             </div>

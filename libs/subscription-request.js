@@ -3,6 +3,7 @@ import { calculateDeliveryQuote } from "@/libs/delivery";
 import { getPlaceDetails } from "@/libs/places";
 import { getActiveWindowFilter, MAX_PER_ORDER_LIMIT } from "@/libs/preorder-windows";
 import { getSkuMap, listSkuCatalog } from "@/libs/sku-catalog";
+import { hydrateSubscriptionCombo, listSubscriptionCombos } from "@/libs/subscription-combos";
 import PreorderWindow from "@/models/PreorderWindow";
 import {
   isValidAddress,
@@ -17,6 +18,7 @@ import {
   normalizePhone,
   normalizeSessionToken,
 } from "@/libs/request-protection";
+import { getSubscriptionDurationConfig } from "@/libs/subscriptions";
 
 export const sanitizeSubscriptionItems = (items = []) =>
   items
@@ -30,7 +32,11 @@ export const sanitizeSubscriptionItems = (items = []) =>
 
 export const getSubscriptionSetupContext = async () => {
   await connectMongo();
-  const skuCatalog = await listSkuCatalog();
+  const [skuCatalog, comboDocs] = await Promise.all([
+    listSkuCatalog(),
+    listSubscriptionCombos({ includeArchived: false }),
+  ]);
+  const skuMap = getSkuMap(skuCatalog);
   const activeWindow = await PreorderWindow.findOne(getActiveWindowFilter()).sort({
     opensAt: -1,
     updatedAt: -1,
@@ -51,9 +57,13 @@ export const getSubscriptionSetupContext = async () => {
   const serializedDeliveryWindow = deliveryWindow
     ? JSON.parse(JSON.stringify(deliveryWindow))
     : null;
+  const comboCatalog = comboDocs
+    .map((combo) => hydrateSubscriptionCombo(combo, skuMap))
+    .filter((combo) => combo?.status === "active");
 
   return {
     skuCatalog: serializedSkuCatalog,
+    comboCatalog,
     deliveryWindow: serializedDeliveryWindow,
     deliveryWindowId: serializedDeliveryWindow?.id || "",
     pickupAddress: serializedDeliveryWindow?.pickupAddress || "",
@@ -70,6 +80,9 @@ export const buildSubscriptionRequest = async (body = {}) => {
   const placeId = (body.deliveryPlaceId || "").trim();
   const sessionToken = normalizeSessionToken(body.addressSessionToken || "");
   const cadence = String(body.cadence || "").trim().toLowerCase();
+  const durationWeeks = Number(body.durationWeeks || 0);
+  const selectionMode = body.selectionMode === "combo" ? "combo" : "custom";
+  const comboId = String(body.comboId || "").trim();
   const requestItems = sanitizeSubscriptionItems(body.items);
 
   if (!name) {
@@ -96,6 +109,8 @@ export const buildSubscriptionRequest = async (body = {}) => {
     throw new Error("Select a valid subscription cadence.");
   }
 
+  const durationConfig = getSubscriptionDurationConfig(cadence, durationWeeks);
+
   if (placeId && !isValidPlaceId(placeId)) {
     throw new Error("Invalid delivery placeId.");
   }
@@ -104,7 +119,7 @@ export const buildSubscriptionRequest = async (body = {}) => {
     throw new Error("Invalid delivery lookup session.");
   }
 
-  if (requestItems.length === 0) {
+  if (selectionMode === "custom" && requestItems.length === 0) {
     throw new Error("Add at least one product quantity (SKU + quantity) before starting a subscription.");
   }
 
@@ -112,10 +127,32 @@ export const buildSubscriptionRequest = async (body = {}) => {
     throw new Error("Too many distinct products in one subscription.");
   }
 
-  const { skuCatalog, pickupAddress, deliveryBands, currency } = await getSubscriptionSetupContext();
+  const {
+    skuCatalog,
+    comboCatalog,
+    pickupAddress,
+    deliveryBands,
+    currency,
+  } = await getSubscriptionSetupContext();
   const skuMap = getSkuMap(skuCatalog);
+  const selectedCombo =
+    selectionMode === "combo" ? comboCatalog.find((combo) => combo.id === comboId) : null;
 
-  const items = requestItems.map((item) => {
+  if (selectionMode === "combo" && !selectedCombo) {
+    throw new Error("Select one of the available subscription combos.");
+  }
+
+  const sourceItems =
+    selectionMode === "combo"
+      ? (selectedCombo?.items || []).map((item) => ({
+          sku: item.sku,
+          productName: item.productName,
+          quantity: Number(item.quantity || 0),
+          unitPrice: Number(item.unitPrice || 0),
+        }))
+      : requestItems;
+
+  const items = sourceItems.map((item) => {
     const catalogItem = skuMap.get(item.sku);
 
     if (!catalogItem || catalogItem.status !== "active") {
@@ -139,6 +176,14 @@ export const buildSubscriptionRequest = async (body = {}) => {
 
   const subtotal = items.reduce((sum, item) => sum + item.lineTotal, 0);
   const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
+
+  if (totalQuantity < 4) {
+    throw new Error("Subscriptions must include at least 4 bottles.");
+  }
+
+  if (totalQuantity > 10) {
+    throw new Error("Subscriptions cannot include more than 10 bottles.");
+  }
 
   let deliveryFee = 0;
   let deliveryDistanceKm = 0;
@@ -173,8 +218,12 @@ export const buildSubscriptionRequest = async (body = {}) => {
     address,
     normalizedDeliveryAddress,
     cadence,
+    durationWeeks: durationConfig.durationWeeks,
     currency,
     items,
+    selectionMode,
+    comboId: selectedCombo?.id || "",
+    comboName: selectedCombo?.name || "",
     totalQuantity,
     subtotal,
     deliveryFee,

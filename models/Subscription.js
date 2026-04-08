@@ -104,6 +104,10 @@ const subscriptionBillingSchema = mongoose.Schema(
       type: Date,
       default: null,
     },
+    mandateEndsAt: {
+      type: Date,
+      default: null,
+    },
     currentStart: {
       type: Date,
       default: null,
@@ -183,6 +187,27 @@ const subscriptionSchema = mongoose.Schema(
       type: String,
       enum: ["weekly", "fortnightly", "monthly"],
       required: true,
+    },
+    durationWeeks: {
+      type: Number,
+      min: 2,
+      max: 8,
+      required: true,
+    },
+    selectionMode: {
+      type: String,
+      enum: ["combo", "custom"],
+      default: "custom",
+    },
+    comboId: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    comboName: {
+      type: String,
+      trim: true,
+      default: "",
     },
     currency: {
       type: String,

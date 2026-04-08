@@ -5,7 +5,10 @@ import {
   buildSubscriptionEditUrl,
   createSignedSubscriptionEditToken,
 } from "@/libs/subscription-edit-links";
-import { formatSubscriptionCadence } from "@/libs/subscriptions";
+import {
+  formatSubscriptionCadence,
+  formatSubscriptionDuration,
+} from "@/libs/subscriptions";
 
 const escapeHtml = (value = "") =>
   String(value)
@@ -34,7 +37,7 @@ const buildItemSummaryHtml = (items = []) =>
 
 export const sendSubscriptionEditLinkEmail = async ({
   subscription,
-  subject = "Edit your Good Gut Hut subscription",
+  subject = "Manage your Good Gut Hut plan",
 }) => {
   const token = createSignedSubscriptionEditToken({
     subscriptionId: subscription.id || subscription._id,
@@ -42,6 +45,7 @@ export const sendSubscriptionEditLinkEmail = async ({
   });
   const editUrl = buildSubscriptionEditUrl(token);
   const cadenceLabel = formatSubscriptionCadence(subscription.cadence);
+  const durationLabel = formatSubscriptionDuration(subscription.durationWeeks);
   const itemSummaryText = buildItemSummaryText(subscription.items || []);
   const itemSummaryHtml = buildItemSummaryHtml(subscription.items || []);
 
@@ -49,15 +53,17 @@ export const sendSubscriptionEditLinkEmail = async ({
     subscription.name ? `Hello ${subscription.name},` : "Hello,",
     "",
     "Thank you for subscribing with Good Gut Hut.",
-    "You can review or update your subscription preferences using the secure link below:",
+    "You can review or update your plan using the secure link below:",
     editUrl,
     "",
-    `Cadence: ${cadenceLabel}`,
+    `How often: ${cadenceLabel}`,
+    `How long: ${durationLabel}`,
+    subscription.comboName ? `Your box: ${subscription.comboName}` : "Your box: Build your own",
     `Delivery address: ${subscription.normalizedDeliveryAddress || subscription.address}`,
     itemSummaryText ? `Lineup: ${itemSummaryText}` : "",
     `Recurring total: ${subscription.currency || "INR"} ${Number(subscription.total || 0).toFixed(2)}`,
     "",
-    "This link expires in 7 days. If it expires, you can request a fresh link from the edit page.",
+    "This link expires in 7 days. If it expires, you can request a fresh one from the manage-plan page.",
   ]
     .filter(Boolean)
     .join("\n");
@@ -67,18 +73,26 @@ export const sendSubscriptionEditLinkEmail = async ({
     subject,
     text,
     html: emailTemplate({
-      eyebrow: "Subscription Access",
-      title: "Manage your subscription",
-      subtitle: "Use your secure email link to review or update your Good Gut Hut preferences.",
+      eyebrow: "Manage Your Plan",
+      title: "Update your Good Gut Hut plan",
+      subtitle: "Use your secure email link to review or update your delivery preferences.",
       contentHtml: `
         <p>${subscription.name ? `Hello ${escapeHtml(subscription.name)},` : "Hello,"}</p>
-        <p>Thank you for subscribing with Good Gut Hut. Your subscription request is in, and you can update your preferences anytime using the secure link below.</p>
-        <p><a href="${escapeHtml(editUrl)}">Open your subscription edit page</a></p>
-        <h2 class="section-title">Current preferences</h2>
+        <p>Thank you for choosing Good Gut Hut. You can update your plan anytime using the secure link below.</p>
+        <p><a href="${escapeHtml(editUrl)}">Open your plan page</a></p>
+        <h2 class="section-title">Your current plan</h2>
         <table role="presentation" class="summary-table">
           <tr>
-            <td>Cadence</td>
+            <td>How often</td>
             <td>${escapeHtml(cadenceLabel)}</td>
+          </tr>
+          <tr>
+            <td>How long</td>
+            <td>${escapeHtml(durationLabel)}</td>
+          </tr>
+          <tr>
+            <td>Your box</td>
+            <td>${escapeHtml(subscription.comboName || "Build your own")}</td>
           </tr>
           <tr>
             <td>Delivery address</td>
@@ -89,8 +103,8 @@ export const sendSubscriptionEditLinkEmail = async ({
             <td>${escapeHtml(`${subscription.currency || "INR"} ${Number(subscription.total || 0).toFixed(2)}`)}</td>
           </tr>
         </table>
-        ${itemSummaryHtml ? `<h2 class="section-title">Lineup</h2><ul class="item-list">${itemSummaryHtml}</ul>` : ""}
-        <p>This link expires in 7 days. If it expires, you can request a fresh edit link using your email address.</p>
+        ${itemSummaryHtml ? `<h2 class="section-title">What&apos;s in your box</h2><ul class="item-list">${itemSummaryHtml}</ul>` : ""}
+        <p>This link expires in 7 days. If it expires, you can request a fresh one using your email address.</p>
       `,
       footer: `Need help? Email ${config.mailgun.supportEmail}.`,
       logoUrl: `https://${config.domainName}/icon.png`,

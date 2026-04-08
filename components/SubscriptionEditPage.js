@@ -84,6 +84,7 @@ function ResendEditLinkForm() {
 export default function SubscriptionEditPage({
   token = "",
   catalogItems = [],
+  comboOptions = [],
   deliveryWindowId = "",
   pickupAddress = "",
   deliveryBands = [],
@@ -175,6 +176,7 @@ export default function SubscriptionEditPage({
         mode="edit"
         token={token}
         catalogItems={catalogItems}
+        comboOptions={comboOptions}
         deliveryWindowId={deliveryWindowId}
         pickupAddress={pickupAddress}
         deliveryBands={deliveryBands}

@@ -18,7 +18,7 @@ import {
   isRazorpayConfigured,
 } from "@/libs/razorpay";
 import {
-  getSubscriptionCadenceConfig,
+  getSubscriptionDurationConfig,
   isMutableBillingStatus,
 } from "@/libs/subscriptions";
 import Subscription from "@/models/Subscription";
@@ -32,6 +32,10 @@ const sanitizeSubscription = (subscription) => ({
   deliveryPlaceId: subscription.deliveryPlaceId || "",
   normalizedDeliveryAddress: subscription.normalizedDeliveryAddress,
   cadence: subscription.cadence,
+  durationWeeks: subscription.durationWeeks,
+  selectionMode: subscription.selectionMode || "custom",
+  comboId: subscription.comboId || "",
+  comboName: subscription.comboName || "",
   currency: subscription.currency,
   items: subscription.items || [],
   totalQuantity: subscription.totalQuantity,
@@ -87,11 +91,12 @@ const buildSubscriptionCheckoutPayload = ({
     checkoutToken,
     razorpay: {
       ...getRazorpayPublicConfig(),
+      subscription_id: razorpaySubscription.id,
       subscriptionId: razorpaySubscription.id,
       amount: Math.round(Number(subscription.total || 0) * 100),
       currency: subscription.currency || "INR",
       name: "Good Gut Hut",
-      description: `${cadenceConfig.label} subscription`,
+      description: `Set up recurring auto-pay for your ${cadenceConfig.label.toLowerCase()} plan`,
       prefill: {
         name: subscription.name,
         email: subscription.email,
@@ -112,6 +117,10 @@ const syncBillingForSubscription = async (subscription) => {
       shortUrl: "",
       amount: subscription.total,
       currency: subscription.currency,
+      totalCount: 0,
+      paidCount: 0,
+      remainingCount: 0,
+      mandateEndsAt: null,
     };
     return null;
   }
@@ -130,17 +139,23 @@ const syncBillingForSubscription = async (subscription) => {
     }
   }
 
-  const cadenceConfig = getSubscriptionCadenceConfig(subscription.cadence);
+  const cadenceConfig = getSubscriptionDurationConfig(
+    subscription.cadence,
+    subscription.durationWeeks
+  );
   const plan = await createRazorpayPlan({
     period: cadenceConfig.period,
     interval: cadenceConfig.interval,
     amount: Math.round(Number(subscription.total || 0) * 100),
     currency: subscription.currency || "INR",
     name: `Good Gut Hut ${cadenceConfig.label} Subscription`,
-    description: buildLineupSummary(subscription.items) || `${cadenceConfig.label} fermented drinks subscription`,
+    description:
+      buildLineupSummary(subscription.items) ||
+      `${cadenceConfig.label} fermented drinks subscription for ${cadenceConfig.durationLabel}`,
     notes: {
       subscriptionId: subscription.id,
       cadence: subscription.cadence,
+      durationWeeks: String(subscription.durationWeeks || ""),
       email: subscription.email,
     },
   });
@@ -151,6 +166,7 @@ const syncBillingForSubscription = async (subscription) => {
     notes: {
       subscriptionId: subscription.id,
       cadence: subscription.cadence,
+      durationWeeks: String(subscription.durationWeeks || ""),
       email: subscription.email,
     },
   });
@@ -177,6 +193,7 @@ const syncBillingForSubscription = async (subscription) => {
     endAt: razorpaySubscription.end_at
       ? new Date(Number(razorpaySubscription.end_at) * 1000)
       : null,
+    mandateEndsAt: null,
   };
 
   return buildSubscriptionCheckoutPayload({
@@ -266,6 +283,10 @@ export async function PATCH(req) {
     subscription.deliveryPlaceId = nextRequest.deliveryPlaceId;
     subscription.normalizedDeliveryAddress = nextRequest.normalizedDeliveryAddress;
     subscription.cadence = nextRequest.cadence;
+    subscription.durationWeeks = nextRequest.durationWeeks;
+    subscription.selectionMode = nextRequest.selectionMode;
+    subscription.comboId = nextRequest.comboId;
+    subscription.comboName = nextRequest.comboName;
     subscription.currency = nextRequest.currency;
     subscription.items = nextRequest.items;
     subscription.totalQuantity = nextRequest.totalQuantity;
@@ -320,12 +341,16 @@ export async function PATCH(req) {
       error.message === "Enter a valid email address." ||
       error.message === "Enter a valid delivery address." ||
       error.message === "Select a valid subscription cadence." ||
+      error.message === "Select a valid subscription duration." ||
+      error.message === "Select one of the available subscription combos." ||
       error.message === "Invalid delivery placeId." ||
       error.message === "Invalid delivery lookup session." ||
       error.message === "Please select a delivery address from the suggestions." ||
       error.message === "We do not deliver there yet." ||
       error.message === "Add at least one product quantity (SKU + quantity) before starting a subscription." ||
-      error.message === "Too many distinct products in one subscription."
+      error.message === "Too many distinct products in one subscription." ||
+      error.message === "Subscriptions must include at least 4 bottles." ||
+      error.message === "Subscriptions cannot include more than 10 bottles."
     ) {
       return jsonError(error.message, 400);
     }

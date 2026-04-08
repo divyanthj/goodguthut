@@ -20,6 +20,10 @@ const sanitizeSubscription = (subscription) => ({
   deliveryPlaceId: subscription.deliveryPlaceId || "",
   normalizedDeliveryAddress: subscription.normalizedDeliveryAddress || "",
   cadence: subscription.cadence,
+  durationWeeks: subscription.durationWeeks,
+  selectionMode: subscription.selectionMode || "custom",
+  comboId: subscription.comboId || "",
+  comboName: subscription.comboName || "",
   currency: subscription.currency,
   items: subscription.items || [],
   totalQuantity: subscription.totalQuantity,
@@ -70,6 +74,9 @@ const syncSubscriptionBilling = async ({
     endAt: razorpaySubscription.end_at
       ? new Date(Number(razorpaySubscription.end_at) * 1000)
       : subscription.billing?.endAt || null,
+    mandateEndsAt: razorpaySubscription.end_at
+      ? new Date(Number(razorpaySubscription.end_at) * 1000)
+      : subscription.billing?.mandateEndsAt || null,
     currentStart: razorpaySubscription.current_start
       ? new Date(Number(razorpaySubscription.current_start) * 1000)
       : subscription.billing?.currentStart || null,

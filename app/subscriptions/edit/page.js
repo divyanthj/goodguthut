@@ -2,11 +2,19 @@ import SubscriptionEditPage from "@/components/SubscriptionEditPage";
 import { getSubscriptionSetupContext } from "@/libs/subscription-request";
 
 export default async function SubscriptionEditRoute({ searchParams }) {
-  const { skuCatalog, deliveryWindowId, pickupAddress, deliveryBands, currency } =
+  const {
+    skuCatalog,
+    comboCatalog,
+    deliveryWindowId,
+    pickupAddress,
+    deliveryBands,
+    currency,
+  } =
     await getSubscriptionSetupContext().catch((error) => {
       console.error(error);
       return {
         skuCatalog: [],
+        comboCatalog: [],
         deliveryWindowId: "",
         pickupAddress: "",
         deliveryBands: [],
@@ -24,19 +32,20 @@ export default async function SubscriptionEditRoute({ searchParams }) {
       <section className="relative z-10 mx-auto max-w-5xl px-4 py-12 md:px-6 md:py-16">
         <div className="mb-6 rounded-[28px] border border-[#d1c4b0] bg-[#f3edde]/90 p-6 text-[#2f4a3e] shadow-lg md:p-8">
           <div className="text-xs font-semibold uppercase tracking-[0.28em] text-[#6b7d74]">
-            Subscription edit
+            Manage Your Plan
           </div>
           <h1 className="mt-3 text-3xl font-semibold md:text-4xl">
-            Update your lineup and cadence
+            Update your box, schedule, or address
           </h1>
           <p className="mt-3 max-w-2xl text-sm leading-7 text-[#53675d] md:text-base">
-            This secure page lets you review your item quantities, verified address, and recurring cadence without creating an account.
+            Use this secure link to make changes to your plan without creating an account.
           </p>
         </div>
 
         <SubscriptionEditPage
           token={token}
           catalogItems={skuCatalog}
+          comboOptions={comboCatalog}
           deliveryWindowId={deliveryWindowId}
           pickupAddress={pickupAddress}
           deliveryBands={deliveryBands}

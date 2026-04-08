@@ -61,9 +61,9 @@ export default async function AdminPage() {
       <div className="mx-auto max-w-6xl space-y-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold">Admin preorder control</h1>
+            <h1 className="text-3xl font-bold">Settings</h1>
             <p className="mt-2 max-w-3xl opacity-75">
-              Manage the shared SKU catalog, build preorder batches from that catalog, and prepare the checkout flow.
+              Manage the shared SKU catalog and update delivery pricing for each preorder batch.
             </p>
           </div>
           <AdminNav active="settings" />
@@ -74,6 +74,7 @@ export default async function AdminPage() {
           initialSkuCatalog={initialSkuCatalog}
           defaultWindow={defaultWindow}
           adminEmail={session.user.email}
+          view="settings"
         />
       </div>
     </main>

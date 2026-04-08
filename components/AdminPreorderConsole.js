@@ -217,7 +217,10 @@ export default function AdminPreorderConsole({
   initialSkuCatalog,
   defaultWindow,
   adminEmail,
+  view = "full",
 }) {
+  const isSettingsView = view === "settings";
+  const isPreordersView = view === "preorders";
   const [windows, setWindows] = useState(sortPreorderWindows(initialWindows || []));
   const [skuCatalog, setSkuCatalog] = useState(initialSkuCatalog || []);
   const [selectedId, setSelectedId] = useState(initialWindows?.[0]?.id || "new");
@@ -565,7 +568,8 @@ export default function AdminPreorderConsole({
         Signed in as <strong>{adminEmail}</strong>. Only emails listed in <code>ADMINS</code> can use this page.
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
+      <div className={`grid gap-6 ${isPreordersView ? "lg:grid-cols-[320px_minmax(0,1fr)]" : ""}`}>
+        {isPreordersView && (
         <aside className="space-y-4">
           <div className="rounded-2xl bg-base-100 p-4 shadow-xl">
             <div className="flex items-center justify-between gap-3">
@@ -611,8 +615,10 @@ export default function AdminPreorderConsole({
             );
           })}
         </aside>
+        )}
 
         <div className="space-y-6">
+          {!isPreordersView && (
           <div className="card bg-base-100 shadow-xl">
             <div className="card-body gap-5">
               <div className="flex items-center justify-between gap-3">
@@ -719,17 +725,29 @@ export default function AdminPreorderConsole({
               </form>
             </div>
           </div>
+          )}
 
           <form ref={batchEditorRef} onSubmit={onSaveBatch} className="card bg-base-100 shadow-xl">
             <div className="card-body gap-6">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
-                  <h2 className="text-2xl font-semibold">{windowConfig.id ? "Edit preorder batch" : "Create preorder batch"}</h2>
-                  <p className="mt-1 text-sm opacity-70">This batch only controls timing, delivery rules, and which catalog SKUs are included.</p>
+                  <h2 className="text-2xl font-semibold">
+                    {isSettingsView
+                      ? "Delivery settings"
+                      : windowConfig.id
+                        ? "Edit preorder batch"
+                        : "Create preorder batch"}
+                  </h2>
+                  <p className="mt-1 text-sm opacity-70">
+                    {isSettingsView
+                      ? "Choose a batch and update its delivery pricing and pickup settings."
+                      : "This batch only controls timing, delivery rules, and which catalog SKUs are included."}
+                  </p>
                   {!canSaveOpenWindow && (
                     <p className="mt-2 text-sm text-warning">{liveWindowConflictMessage}</p>
                   )}
                 </div>
+                {!isSettingsView && (
                 <div className="flex flex-wrap items-center gap-2">
                   {windowConfig.id && windowConfig.status !== "open" && (
                     <button type="button" className="btn btn-outline" disabled={isSavingBatch || Boolean(liveOpenWindow)} onClick={() => updateStatus("open")}>
@@ -742,13 +760,42 @@ export default function AdminPreorderConsole({
                     </button>
                   )}
                 </div>
+                )}
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">
+                {isSettingsView && (
+                  <label className="form-control w-full md:col-span-2">
+                    <div className="label"><span className="label-text">Choose batch</span></div>
+                    <select
+                      className="select select-bordered"
+                      value={windowConfig.id || "new"}
+                      onChange={(event) => {
+                        const nextWindow = windows.find((item) => item.id === event.target.value);
+                        if (nextWindow) {
+                          selectWindow(nextWindow);
+                          return;
+                        }
+
+                        selectWindow(buildNewBatchConfig(defaultWindow, previousBatchTemplate));
+                      }}
+                    >
+                      {windows.map((windowItem) => (
+                        <option key={windowItem.id} value={windowItem.id}>
+                          {windowItem.title} ({getWindowStatusLabel(windowItem)})
+                        </option>
+                      ))}
+                      {windows.length === 0 && <option value="new">New batch draft</option>}
+                    </select>
+                  </label>
+                )}
+                {!isSettingsView && (
                 <label className="form-control w-full md:col-span-2">
                   <div className="label"><span className="label-text">Batch title</span></div>
                   <input className="input input-bordered" value={windowConfig.title} onChange={(event) => setField("title", event.target.value)} />
                 </label>
+                )}
+                {!isSettingsView && (
                 <label className="form-control w-full">
                   <div className="label"><span className="label-text">Status</span></div>
                   <select className="select select-bordered" value={windowConfig.status} onChange={(event) => setField("status", event.target.value)}>
@@ -761,10 +808,14 @@ export default function AdminPreorderConsole({
                     <div className="mt-2 text-sm text-warning">{liveWindowConflictMessage}</div>
                   )}
                 </label>
+                )}
+                {!isSettingsView && (
                 <label className="form-control w-full">
                   <div className="label"><span className="label-text">Delivery date</span></div>
                   <input type="date" className="input input-bordered" value={windowConfig.deliveryDate} onChange={(event) => setField("deliveryDate", event.target.value)} />
                 </label>
+                )}
+                {!isSettingsView && (
                 <label className="form-control w-full">
                   <div className="label"><span className="label-text">Opens at (optional)</span></div>
                   <input
@@ -792,10 +843,13 @@ export default function AdminPreorderConsole({
                     </label>
                   )}
                 </label>
+                )}
+                {!isSettingsView && (
                 <label className="form-control w-full">
                   <div className="label"><span className="label-text">Close date/time (optional)</span></div>
                   <input type="datetime-local" className="input input-bordered" value={windowConfig.closesAt} onChange={(event) => setField("closesAt", event.target.value)} />
                 </label>
+                )}
                 <label className="form-control w-full">
                   <div className="label"><span className="label-text">Minimum order quantity</span></div>
                   <input type="number" min="1" className="input input-bordered" value={windowConfig.minimumOrderQuantity} onChange={(event) => setField("minimumOrderQuantity", Number(event.target.value || 1))} />
@@ -921,6 +975,7 @@ export default function AdminPreorderConsole({
                 </div>
               </div>
 
+              {!isSettingsView && (
               <div className="rounded-2xl border border-base-300 bg-base-200 p-4">
                 <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                   <div>
@@ -966,12 +1021,15 @@ export default function AdminPreorderConsole({
                   </div>
                 </div>
               </div>
+              )}
 
               <div className="card-actions items-center justify-between">
                 <button type="submit" className="btn btn-primary" disabled={isSavingBatch}>
-                  {isSavingBatch ? "Saving..." : "Save batch"}
+                  {isSavingBatch ? "Saving..." : isSettingsView ? "Save delivery settings" : "Save batch"}
                 </button>
-                <div className="badge badge-outline">Storefront status: {storefrontStatusLabel}</div>
+                {!isSettingsView && (
+                  <div className="badge badge-outline">Storefront status: {storefrontStatusLabel}</div>
+                )}
               </div>
             </div>
           </form>

@@ -1,8 +1,12 @@
 import AdminLoginButton from "@/components/AdminLoginButton";
 import AdminNav from "@/components/AdminNav";
+import AdminSubscriptionCombosManager from "@/components/AdminSubscriptionCombosManager";
 import AdminSubscriptionsList from "@/components/AdminSubscriptionsList";
 import { getAdminSessionState } from "@/libs/admin-auth";
 import connectMongo from "@/libs/mongoose";
+import { listSkuCatalog } from "@/libs/sku-catalog";
+import { getSkuMap } from "@/libs/sku-catalog";
+import { hydrateSubscriptionCombo, listSubscriptionCombos } from "@/libs/subscription-combos";
 import Subscription from "@/models/Subscription";
 
 export default async function AdminSubscriptionsPage() {
@@ -42,9 +46,14 @@ export default async function AdminSubscriptionsPage() {
   }
 
   await connectMongo();
-  const subscriptionDocs = await Subscription.find({})
-    .sort({ createdAt: -1 })
-    .limit(200);
+  const [subscriptionDocs, skuCatalogDocs, comboDocs] = await Promise.all([
+    Subscription.find({}).sort({ createdAt: -1 }).limit(200),
+    listSkuCatalog(),
+    listSubscriptionCombos(),
+  ]);
+  const skuCatalog = JSON.parse(JSON.stringify(skuCatalogDocs));
+  const skuMap = getSkuMap(skuCatalogDocs);
+  const combos = comboDocs.map((combo) => hydrateSubscriptionCombo(combo, skuMap));
   const subscriptions = JSON.parse(JSON.stringify(subscriptionDocs));
 
   return (
@@ -60,6 +69,10 @@ export default async function AdminSubscriptionsPage() {
           <AdminNav active="subscriptions" />
         </div>
 
+        <AdminSubscriptionCombosManager
+          initialCombos={combos}
+          initialSkuCatalog={skuCatalog}
+        />
         <AdminSubscriptionsList initialSubscriptions={subscriptions} />
       </div>
     </main>

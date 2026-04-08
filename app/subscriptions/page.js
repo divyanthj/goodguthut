@@ -1,18 +1,28 @@
 import SubscriptionForm from "@/components/SubscriptionForm";
 import { getSubscriptionSetupContext } from "@/libs/subscription-request";
 
-export default async function SubscriptionsPage() {
-  const { skuCatalog, deliveryWindowId, pickupAddress, deliveryBands, currency } =
+export default async function SubscriptionsPage({ searchParams }) {
+  const {
+    skuCatalog,
+    comboCatalog,
+    deliveryWindowId,
+    pickupAddress,
+    deliveryBands,
+    currency,
+  } =
     await getSubscriptionSetupContext().catch((error) => {
       console.error(error);
       return {
         skuCatalog: [],
+        comboCatalog: [],
         deliveryWindowId: "",
         pickupAddress: "",
         deliveryBands: [],
         currency: "INR",
       };
     });
+  const initialSelectionMode =
+    searchParams?.mode === "custom" ? "custom" : "combo";
 
   return (
     <main className="page-shell landing-page relative isolate overflow-hidden bg-base-200">
@@ -27,21 +37,31 @@ export default async function SubscriptionsPage() {
             SMALL-BATCH SUBSCRIPTIONS
           </div>
           <h1 className="mt-5 max-w-3xl text-4xl font-semibold leading-tight md:text-6xl">
-            Keep your favourites coming, week after week.
+            Pick a ready-to-go box or create your own delivery plan.
           </h1>
           <p className="mt-5 max-w-2xl text-base leading-8 text-[#456154] md:text-lg">
-            Choose the drinks you love, set your preferred rhythm, and we&apos;ll help you keep a steady stock at home with easy recurring delivery.
+            Choose what you&apos;d like in each delivery, how often you&apos;d like it, and how long you want the plan to run.
           </p>
+          <div className="mt-6 grid gap-3 text-sm text-[#456154] md:grid-cols-3">
+            <div className="rounded-2xl border border-[#d8cdbb] bg-[#fff8ec] p-4">Easy starter boxes if you want to keep things simple</div>
+            <div className="rounded-2xl border border-[#d8cdbb] bg-[#fff8ec] p-4">Build-your-own boxes if you know exactly what you love</div>
+            <div className="rounded-2xl border border-[#d8cdbb] bg-[#fff8ec] p-4">Your recurring payments stop automatically when your plan ends</div>
+          </div>
         </div>
       </section>
 
-      <section className="relative z-10 mx-auto max-w-6xl px-4 pb-12 md:px-6">
+      <section
+        id="subscription-flow"
+        className="relative z-10 mx-auto max-w-6xl px-4 pb-12 md:px-6"
+      >
         <SubscriptionForm
           catalogItems={skuCatalog}
+          comboOptions={comboCatalog}
           deliveryWindowId={deliveryWindowId}
           pickupAddress={pickupAddress}
           deliveryBands={deliveryBands}
           currency={currency}
+          initialSelectionMode={initialSelectionMode}
         />
       </section>
     </main>

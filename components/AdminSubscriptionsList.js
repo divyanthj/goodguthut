@@ -3,6 +3,8 @@
 import { useMemo, useState } from "react";
 import {
   formatSubscriptionCadence,
+  formatSubscriptionDuration,
+  formatSubscriptionSelectionMode,
   getSubscriptionSummaryCounts,
   SUBSCRIPTION_STATUSES,
 } from "@/libs/subscriptions";
@@ -325,6 +327,9 @@ export default function AdminSubscriptionsList({ initialSubscriptions }) {
             <div className="flex flex-wrap items-center gap-2">
               <div className="badge badge-outline">{formatSubscriptionCadence(subscription.cadence)}</div>
               <div className="badge badge-outline">
+                {formatSubscriptionDuration(subscription.durationWeeks)}
+              </div>
+              <div className="badge badge-outline">
                 billing: {subscription.billing?.status || "not_configured"}
               </div>
               <select
@@ -395,6 +400,16 @@ export default function AdminSubscriptionsList({ initialSubscriptions }) {
                     <div className="mt-1">{formatSubscriptionCadence(subscription.cadence)}</div>
                   </div>
                   <div>
+                    <div className="text-xs uppercase tracking-[0.16em] opacity-60">Duration</div>
+                    <div className="mt-1">{formatSubscriptionDuration(subscription.durationWeeks)}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase tracking-[0.16em] opacity-60">Selection</div>
+                    <div className="mt-1">
+                      {subscription.comboName || formatSubscriptionSelectionMode(subscription.selectionMode)}
+                    </div>
+                  </div>
+                  <div>
                     <div className="text-xs uppercase tracking-[0.16em] opacity-60">Subtotal</div>
                     <div className="mt-1">{formatCurrency(subscription.currency, subscription.subtotal)}</div>
                   </div>
@@ -430,6 +445,10 @@ export default function AdminSubscriptionsList({ initialSubscriptions }) {
                   <div>
                     <div className="text-xs uppercase tracking-[0.16em] opacity-60">Paid count</div>
                     <div className="mt-1">{subscription.billing?.paidCount || 0}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase tracking-[0.16em] opacity-60">Mandate ends</div>
+                    <div className="mt-1">{formatDate(subscription.billing?.mandateEndsAt || subscription.billing?.endAt)}</div>
                   </div>
                   <div>
                     <div className="text-xs uppercase tracking-[0.16em] opacity-60">Last contacted</div>
