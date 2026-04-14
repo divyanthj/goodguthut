@@ -56,8 +56,19 @@ const buildCartFromCatalog = (catalogItems = [], initialItems = []) => {
   );
 };
 
-const getDefaultComboId = (comboOptions = []) =>
-  comboOptions.find((combo) => combo.isFeatured)?.id || comboOptions[0]?.id || "";
+const buildInitialComboCart = ({ initialValues, comboOptions }) => {
+  const initialComboId = String(initialValues?.comboId || "").trim();
+
+  if (
+    initialValues?.selectionMode === "combo" &&
+    initialComboId &&
+    comboOptions.some((combo) => combo.id === initialComboId)
+  ) {
+    return { [initialComboId]: 1 };
+  }
+
+  return {};
+};
 
 const getInitialSelectionMode = ({
   initialValues,
@@ -212,8 +223,11 @@ export default function SubscriptionForm({
       comboOptions,
     })
   );
-  const [selectedComboId, setSelectedComboId] = useState(
-    initialValues?.comboId || getDefaultComboId(comboOptions)
+  const [comboCart, setComboCart] = useState(() =>
+    buildInitialComboCart({
+      initialValues,
+      comboOptions,
+    })
   );
   const [pendingCheckout, setPendingCheckout] = useState(null);
   const [cart, setCart] = useState(() =>
@@ -300,7 +314,12 @@ export default function SubscriptionForm({
         comboOptions,
       })
     );
-    setSelectedComboId(initialValues.comboId || getDefaultComboId(comboOptions));
+    setComboCart(
+      buildInitialComboCart({
+        initialValues,
+        comboOptions,
+      })
+    );
     setCart(buildCartFromCatalog(catalogItems, initialValues.items || []));
     setStoredPlaceId(initialValues.deliveryPlaceId || "");
     setDeliveryQuote({
@@ -342,9 +361,15 @@ export default function SubscriptionForm({
     [catalogItems]
   );
 
-  const selectedCombo = useMemo(
-    () => comboOptions.find((combo) => combo.id === selectedComboId) || null,
-    [comboOptions, selectedComboId]
+  const selectedComboBreakdown = useMemo(
+    () =>
+      comboOptions
+        .map((combo) => ({
+          ...combo,
+          quantity: Math.max(0, Number(comboCart[combo.id] || 0)),
+        }))
+        .filter((combo) => combo.quantity > 0),
+    [comboCart, comboOptions]
   );
 
   const customSelectedItems = useMemo(
@@ -362,21 +387,45 @@ export default function SubscriptionForm({
     [cart, lineup]
   );
 
-  const comboSelectedItems = useMemo(
-    () =>
-      (selectedCombo?.items || []).map((item) => ({
-        sku: item.sku,
-        productName: item.productName,
-        quantity: Number(item.quantity || 0),
-        unitPrice: Number(item.unitPrice || 0),
-        lineTotal: Number(item.lineTotal || 0),
-        skuType: item.skuType || "perennial",
-      })),
-    [selectedCombo]
-  );
+  const comboSelectedItems = useMemo(() => {
+    const itemsBySku = new Map();
 
-  const effectiveSelectionMode =
-    selectionMode === "combo" && selectedCombo ? "combo" : "custom";
+    selectedComboBreakdown.forEach((combo) => {
+      const comboQuantity = Math.max(0, Number(combo.quantity || 0));
+
+      (combo.items || []).forEach((item) => {
+        const sku = item.sku;
+        const itemQty = Math.max(0, Number(item.quantity || 0));
+        const totalItemQty = comboQuantity * itemQty;
+
+        if (!sku || totalItemQty <= 0) {
+          return;
+        }
+
+        const unitPrice = Math.max(0, Number(item.unitPrice || 0));
+        const existing = itemsBySku.get(sku);
+
+        if (existing) {
+          existing.quantity += totalItemQty;
+          existing.lineTotal = existing.quantity * existing.unitPrice;
+          return;
+        }
+
+        itemsBySku.set(sku, {
+          sku,
+          productName: item.productName,
+          quantity: totalItemQty,
+          unitPrice,
+          lineTotal: totalItemQty * unitPrice,
+          skuType: item.skuType || "perennial",
+        });
+      });
+    });
+
+    return Array.from(itemsBySku.values());
+  }, [selectedComboBreakdown]);
+
+  const effectiveSelectionMode = selectionMode === "combo" ? "combo" : "custom";
   const selectedItems =
     effectiveSelectionMode === "combo" ? comboSelectedItems : customSelectedItems;
 
@@ -592,6 +641,27 @@ export default function SubscriptionForm({
     setCart((prev) => ({ ...prev, [sku]: boundedQty }));
   };
 
+  const updateComboQty = (comboId, nextQty) => {
+    if (billingLocked) {
+      return;
+    }
+
+    const normalizedQty = Math.max(0, Math.min(MAX_QTY, Number(nextQty || 0)));
+
+    setComboCart((current) => {
+      if (normalizedQty <= 0) {
+        const rest = { ...current };
+        delete rest[comboId];
+        return rest;
+      }
+
+      return {
+        ...current,
+        [comboId]: normalizedQty,
+      };
+    });
+  };
+
   const handleAddressInputChange = (value) => {
     setCustomer((prev) => ({ ...prev, address: value }));
     if (selectedPlace || hasVerifiedAddress) {
@@ -644,7 +714,7 @@ export default function SubscriptionForm({
     setCadence("weekly");
     setDurationWeeks(4);
     setSelectionMode(comboOptions.length > 0 ? initialSelectionMode : "custom");
-    setSelectedComboId(getDefaultComboId(comboOptions));
+    setComboCart({});
     setCart(buildCartFromCatalog(catalogItems, []));
     setSelectedPlace(null);
     setStoredPlaceId("");
@@ -674,8 +744,14 @@ export default function SubscriptionForm({
     });
     setCadence(nextSubscription.cadence || "weekly");
     setDurationWeeks(Number(nextSubscription.durationWeeks || 4));
-    setSelectionMode(nextSubscription.selectionMode || "custom");
-    setSelectedComboId(nextSubscription.comboId || getDefaultComboId(comboOptions));
+    const hasValidComboId =
+      nextSubscription.selectionMode === "combo" &&
+      String(nextSubscription.comboId || "").trim() &&
+      comboOptions.some((combo) => combo.id === String(nextSubscription.comboId || "").trim());
+    setSelectionMode(hasValidComboId ? "combo" : "custom");
+    setComboCart(
+      hasValidComboId ? { [String(nextSubscription.comboId || "").trim()]: 1 } : {}
+    );
     setCart(buildCartFromCatalog(catalogItems, nextSubscription.items || []));
     setStoredPlaceId(nextSubscription.deliveryPlaceId || "");
     setHasVerifiedAddress(
@@ -706,8 +782,8 @@ export default function SubscriptionForm({
     setError("");
     setSuccessMessage("");
 
-    if (effectiveSelectionMode === "combo" && !selectedCombo) {
-      setError("Please choose a box before continuing.");
+    if (effectiveSelectionMode === "combo" && selectedComboBreakdown.length === 0) {
+      setError("Please add at least one ready-to-go box before continuing.");
       return;
     }
 
@@ -746,6 +822,14 @@ export default function SubscriptionForm({
       return;
     }
 
+    const singleComboSelection =
+      effectiveSelectionMode === "combo" &&
+      selectedComboBreakdown.length === 1 &&
+      Number(selectedComboBreakdown[0]?.quantity || 0) === 1;
+
+    const submissionSelectionMode = singleComboSelection ? "combo" : "custom";
+    const submissionComboId = singleComboSelection ? selectedComboBreakdown[0].id : "";
+
     setIsSubmitting(true);
 
     try {
@@ -766,8 +850,8 @@ export default function SubscriptionForm({
             cadence,
             durationWeeks: isOneTimeMode ? 0 : durationWeeks,
             startDate: effectiveStartDate,
-            selectionMode: effectiveSelectionMode,
-            comboId: effectiveSelectionMode === "combo" ? selectedCombo?.id || "" : "",
+            selectionMode: submissionSelectionMode,
+            comboId: submissionComboId,
             items: selectedItems,
             mode: isOneTimeMode ? "one_time" : "recurring",
             token,
@@ -1099,21 +1183,22 @@ export default function SubscriptionForm({
         {effectiveSelectionMode === "combo" && comboOptions.length > 0 && (
           <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {comboOptions.map((combo) => {
-              const isActive = combo.id === selectedComboId;
+              const comboQty = Math.max(0, Number(comboCart[combo.id] || 0));
               const isComboRecurringEligible = combo.isRecurringEligible !== false;
-              const isComboDisabled = billingLocked || (isRecurringMode && !isComboRecurringEligible);
+              const canUseComboInCurrentMode = !(isRecurringMode && !isComboRecurringEligible);
+              const canIncrementCombo =
+                !billingLocked &&
+                canUseComboInCurrentMode &&
+                totalQuantity + Number(combo.totalQuantity || 0) <= MAX_TOTAL_QTY;
 
               return (
-                <button
+                <article
                   key={combo.id}
-                  type="button"
-                  className={`rounded-2xl border p-5 text-left transition ${
-                    isActive
+                  className={`flex h-full flex-col rounded-2xl border p-5 text-left transition ${
+                    comboQty > 0
                       ? "border-[#2f5d49] bg-[#eef4ee] shadow-md"
                       : "border-[#d8cdbb] bg-[#fffaf1]"
                   }`}
-                  disabled={isComboDisabled}
-                  onClick={() => setSelectedComboId(combo.id)}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -1136,6 +1221,9 @@ export default function SubscriptionForm({
                       {currency} {Number(combo.subtotal || 0).toFixed(2)}
                     </span>
                   </div>
+                  <div className="mt-3 text-xs text-[#5f7068]">
+                    {comboQty > 0 ? `${comboQty} box${comboQty === 1 ? "" : "es"} selected` : "Not added yet"}
+                  </div>
                   <ul className="mt-4 space-y-2 text-sm text-[#456154]">
                     {(combo.items || []).map((item) => (
                       <li key={`${combo.id}-${item.sku}`}>
@@ -1143,7 +1231,46 @@ export default function SubscriptionForm({
                       </li>
                     ))}
                   </ul>
-                </button>
+                  <div className="mt-auto flex justify-end pt-4">
+                    {comboQty > 0 ? (
+                      <div className="inline-flex min-w-[128px] items-center justify-between rounded-lg border border-[#cdbb9e] bg-[#fffaf1] px-2 py-1">
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-ghost h-7 min-h-0 px-2"
+                          disabled={billingLocked}
+                          onClick={() => updateComboQty(combo.id, comboQty - 1)}
+                        >
+                          -
+                        </button>
+                        <span className="min-w-[2ch] text-center text-sm font-semibold text-[#2f4a3e]">
+                          {comboQty}
+                        </span>
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-ghost h-7 min-h-0 px-2"
+                          disabled={!canIncrementCombo}
+                          onClick={() => updateComboQty(combo.id, comboQty + 1)}
+                        >
+                          +
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline min-w-[128px]"
+                        disabled={!canIncrementCombo}
+                        onClick={() => updateComboQty(combo.id, 1)}
+                      >
+                        Add to cart
+                      </button>
+                    )}
+                  </div>
+                  {!canUseComboInCurrentMode && (
+                    <div className="mt-2 text-xs text-[#7a5a2e]">
+                      This box includes seasonal products and is not available for subscription.
+                    </div>
+                  )}
+                </article>
               );
             })}
           </div>
@@ -1503,7 +1630,9 @@ export default function SubscriptionForm({
                 </div>
                 <p className="mt-2 text-sm leading-7 text-[#53675d]">
                   {effectiveSelectionMode === "combo"
-                    ? `You have chosen ${selectedCombo?.name || "one of our ready-to-go boxes"}.`
+                    ? selectedComboBreakdown.length > 0
+                      ? `You have selected ${selectedComboBreakdown.length} ready-to-go box${selectedComboBreakdown.length === 1 ? "" : "es"}.`
+                      : "Choose one or more ready-to-go boxes to continue."
                     : "You are creating your own box from the current menu."}
                 </p>
               </div>
@@ -1517,27 +1646,53 @@ export default function SubscriptionForm({
                 Nothing selected yet. Choose a box or add a few bottles to continue.
               </p>
             ) : (
-              <div className="mt-4 overflow-x-auto">
-                <table className="table table-sm">
-                  <thead>
-                    <tr>
-                      <th>Item</th>
-                      <th>Qty</th>
-                      <th className="text-right">Line total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {selectedItems.map((item) => (
-                      <tr key={item.sku}>
-                        <td>{item.productName}</td>
-                        <td>{item.quantity}</td>
-                        <td className="text-right">
-                          {currency} {(Number(item.quantity || 0) * Number(item.unitPrice || 0)).toFixed(2)}
-                        </td>
+              <div className="mt-4 space-y-4">
+                {effectiveSelectionMode === "combo" && selectedComboBreakdown.length > 0 && (
+                  <div className="overflow-x-auto">
+                    <table className="table table-sm">
+                      <thead>
+                        <tr>
+                          <th>Box</th>
+                          <th>Qty</th>
+                          <th className="text-right">Line total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selectedComboBreakdown.map((combo) => (
+                          <tr key={combo.id}>
+                            <td>{combo.name}</td>
+                            <td>{combo.quantity}</td>
+                            <td className="text-right">
+                              {currency} {(Number(combo.subtotal || 0) * Number(combo.quantity || 0)).toFixed(2)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                <div className="overflow-x-auto">
+                  <table className="table table-sm">
+                    <thead>
+                      <tr>
+                        <th>Item</th>
+                        <th>Qty</th>
+                        <th className="text-right">Line total</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {selectedItems.map((item) => (
+                        <tr key={item.sku}>
+                          <td>{item.productName}</td>
+                          <td>{item.quantity}</td>
+                          <td className="text-right">
+                            {currency} {(Number(item.quantity || 0) * Number(item.unitPrice || 0)).toFixed(2)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
 
