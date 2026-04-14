@@ -97,3 +97,26 @@ export async function PUT(req, { params }) {
 export async function PATCH(req, { params }) {
   return PUT(req, { params });
 }
+
+export async function DELETE(_req, { params }) {
+  const { error } = await getAdminSession();
+
+  if (error) {
+    return error;
+  }
+
+  await connectMongo();
+
+  try {
+    const deletedCombo = await SubscriptionCombo.findByIdAndDelete(params.id);
+
+    if (!deletedCombo) {
+      return NextResponse.json({ error: "Box not found." }, { status: 404 });
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (deleteError) {
+    console.error(deleteError);
+    return NextResponse.json({ error: deleteError.message }, { status: 500 });
+  }
+}

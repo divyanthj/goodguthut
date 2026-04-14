@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { sendPreorderConfirmationNotifications } from "@/libs/emailSender";
+import { sendOrderPlanConfirmationEmail } from "@/libs/order-plan-notifications";
 import { recalculatePreorderWindowRouteSnapshot } from "@/libs/preorder-route-planner";
 import { recalculateSubscriptionRouteSnapshots } from "@/libs/subscription-route-planner";
 import connectMongo from "@/libs/mongoose";
+import OrderPlan from "@/models/OrderPlan";
 import Preorder from "@/models/Preorder";
 import Subscription from "@/models/Subscription";
 import { verifyRazorpayWebhookSignature } from "@/libs/razorpay";
@@ -34,6 +36,83 @@ export async function POST(req) {
     const razorpayOrderId = getRazorpayOrderIdFromEvent(event);
 
     if (razorpaySubscriptionId) {
+      const orderPlan = await OrderPlan.findOne({
+        "payment.subscriptionId": razorpaySubscriptionId,
+      });
+      if (orderPlan) {
+        const subscriptionEntity = event?.payload?.subscription?.entity || {};
+        const paymentEntity = event?.payload?.payment?.entity || {};
+
+        orderPlan.payment = {
+          ...(orderPlan.payment?.toObject?.() || orderPlan.payment || {}),
+          provider: "razorpay",
+          status: subscriptionEntity.status || orderPlan.payment?.status || "",
+          subscriptionId: subscriptionEntity.id || razorpaySubscriptionId,
+          planId: subscriptionEntity.plan_id || orderPlan.payment?.planId || "",
+          shortUrl: subscriptionEntity.short_url || orderPlan.payment?.shortUrl || "",
+          amount: orderPlan.total,
+          currency: orderPlan.currency || orderPlan.payment?.currency || "INR",
+          totalCount: subscriptionEntity.total_count || orderPlan.payment?.totalCount || 0,
+          paidCount: subscriptionEntity.paid_count || orderPlan.payment?.paidCount || 0,
+          remainingCount: subscriptionEntity.remaining_count || orderPlan.payment?.remainingCount || 0,
+          authAttempts: subscriptionEntity.auth_attempts || orderPlan.payment?.authAttempts || 0,
+          chargeAt: subscriptionEntity.charge_at
+            ? new Date(Number(subscriptionEntity.charge_at) * 1000)
+            : orderPlan.payment?.chargeAt || null,
+          startAt: subscriptionEntity.start_at
+            ? new Date(Number(subscriptionEntity.start_at) * 1000)
+            : orderPlan.payment?.startAt || null,
+          endAt: subscriptionEntity.end_at
+            ? new Date(Number(subscriptionEntity.end_at) * 1000)
+            : orderPlan.payment?.endAt || null,
+          mandateEndsAt: subscriptionEntity.end_at
+            ? new Date(Number(subscriptionEntity.end_at) * 1000)
+            : orderPlan.payment?.mandateEndsAt || null,
+          currentStart: subscriptionEntity.current_start
+            ? new Date(Number(subscriptionEntity.current_start) * 1000)
+            : orderPlan.payment?.currentStart || null,
+          currentEnd: subscriptionEntity.current_end
+            ? new Date(Number(subscriptionEntity.current_end) * 1000)
+            : orderPlan.payment?.currentEnd || null,
+          paymentId: paymentEntity.id || orderPlan.payment?.paymentId || "",
+          authenticatedAt:
+            event.event === "subscription.authenticated" ? new Date() : orderPlan.payment?.authenticatedAt || null,
+          activatedAt:
+            event.event === "subscription.activated" || event.event === "subscription.charged"
+              ? new Date()
+              : orderPlan.payment?.activatedAt || null,
+          cancelledAt:
+            event.event === "subscription.cancelled" ? new Date() : orderPlan.payment?.cancelledAt || null,
+          completedAt:
+            event.event === "subscription.completed" ? new Date() : orderPlan.payment?.completedAt || null,
+          expiredAt:
+            event.event === "subscription.expired" ? new Date() : orderPlan.payment?.expiredAt || null,
+        };
+
+        orderPlan.nextDeliveryDate = getNextSubscriptionDeliveryDate({
+          startDate: orderPlan.firstDeliveryDate || orderPlan.startDate,
+          cadence: orderPlan.cadence,
+          paidCount: orderPlan.payment?.paidCount || 0,
+          totalCount: orderPlan.payment?.totalCount || 0,
+        });
+
+        if (event.event === "subscription.cancelled") {
+          orderPlan.payment.shortUrl = "";
+          orderPlan.status = "cancelled";
+        }
+
+        if (event.event === "subscription.completed" || event.event === "subscription.expired") {
+          orderPlan.payment.shortUrl = "";
+          orderPlan.status = "cancelled";
+        }
+
+        if (event.event === "subscription.activated" || event.event === "subscription.charged") {
+          orderPlan.status = orderPlan.status === "cancelled" ? orderPlan.status : "active";
+        }
+
+        await orderPlan.save();
+      }
+
       const subscription = await Subscription.findOne({
         "billing.subscriptionId": razorpaySubscriptionId,
       });
@@ -121,6 +200,70 @@ export async function POST(req) {
 
     if (!razorpayOrderId) {
       return NextResponse.json({ ok: true });
+    }
+
+    const orderPlan = await OrderPlan.findOne({ "payment.orderId": razorpayOrderId });
+    if (orderPlan) {
+      const paymentEntity = event?.payload?.payment?.entity;
+      const orderEntity = event?.payload?.order?.entity;
+
+      switch (event.event) {
+        case "payment.captured":
+        case "order.paid": {
+          const shouldSendConfirmationEmail = !orderPlan.notifications?.confirmationEmailSentAt;
+
+          orderPlan.status =
+            orderPlan.status === "fulfilled" || orderPlan.status === "cancelled"
+              ? orderPlan.status
+              : "active";
+          orderPlan.payment = {
+            ...(orderPlan.payment?.toObject?.() || orderPlan.payment || {}),
+            provider: "razorpay",
+            status: "paid",
+            orderId: paymentEntity?.order_id || orderEntity?.id || orderPlan.payment?.orderId || "",
+            paymentId: paymentEntity?.id || orderPlan.payment?.paymentId || "",
+            signature: signature || "",
+            webhookEvent: event.event,
+            amount: paymentEntity?.amount ? Number(paymentEntity.amount) / 100 : orderPlan.total,
+            currency: paymentEntity?.currency || orderEntity?.currency || orderPlan.currency,
+            paidAt: paymentEntity?.captured_at
+              ? new Date(Number(paymentEntity.captured_at) * 1000)
+              : new Date(),
+          };
+          await orderPlan.save();
+
+          if (shouldSendConfirmationEmail) {
+            try {
+              await sendOrderPlanConfirmationEmail({ orderPlan });
+              orderPlan.notifications = {
+                ...(orderPlan.notifications?.toObject?.() || orderPlan.notifications || {}),
+                confirmationEmailSentAt: new Date(),
+              };
+              await orderPlan.save();
+            } catch (notificationError) {
+              console.error("Failed to send order plan confirmation email", notificationError);
+            }
+          }
+
+          break;
+        }
+        case "payment.failed": {
+          orderPlan.payment = {
+            ...(orderPlan.payment?.toObject?.() || orderPlan.payment || {}),
+            provider: "razorpay",
+            status: "failed",
+            paymentId: paymentEntity?.id || orderPlan.payment?.paymentId || "",
+            webhookEvent: event.event,
+          };
+          if (orderPlan.status !== "cancelled" && orderPlan.status !== "fulfilled") {
+            orderPlan.status = "failed";
+          }
+          await orderPlan.save();
+          break;
+        }
+        default:
+          break;
+      }
     }
 
     const preorder = await Preorder.findOne({ "payment.orderId": razorpayOrderId });

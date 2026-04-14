@@ -15,7 +15,7 @@ export default async function AdminDiscountCodesPage() {
           <div className="card w-full bg-base-100 shadow-xl">
             <div className="card-body gap-6">
               <h1 className="card-title text-3xl">Admin login</h1>
-              <p>Sign in with Google to access the admin area.</p>
+              <p>Sign in with Google to manage discount codes.</p>
               <AdminLoginButton />
             </div>
           </div>
@@ -30,10 +30,9 @@ export default async function AdminDiscountCodesPage() {
         <div className="hero-content w-full max-w-2xl">
           <div className="card w-full bg-base-100 shadow-xl">
             <div className="card-body gap-4">
-              <h1 className="card-title text-3xl">Admin access denied</h1>
+              <h1 className="card-title text-3xl">Access restricted</h1>
               <p>You are signed in as {session.user.email}.</p>
-              <p className="text-error">No, you&apos;re not an admin.</p>
-              <p className="opacity-70">Add this email address to the <code>ADMINS</code> env variable to grant access.</p>
+              <p className="text-error">This account does not have admin access.</p>
             </div>
           </div>
         </div>
@@ -55,7 +54,7 @@ export default async function AdminDiscountCodesPage() {
       <div className="mx-auto max-w-6xl space-y-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold">Admin discount codes</h1>
+            <h1 className="text-3xl font-bold">Discount Codes</h1>
             <p className="mt-2 max-w-3xl opacity-75">
               Create flat percentage discounts that apply only to order subtotals, not delivery charges.
             </p>

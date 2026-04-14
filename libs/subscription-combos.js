@@ -71,17 +71,24 @@ export const hydrateSubscriptionCombo = (combo, skuMap = new Map()) => {
       unitPrice,
       lineTotal: Number(item.quantity || 0) * unitPrice,
       status: sku?.status || "archived",
+      skuType: sku?.skuType || "perennial",
     };
   });
 
   const totalQuantity = items.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
   const subtotal = items.reduce((sum, item) => sum + Number(item.lineTotal || 0), 0);
+  const isRecurringEligible =
+    items.length > 0 &&
+    items.every(
+      (item) => item.status === "active" && (item.skuType || "perennial") === "perennial"
+    );
 
   return {
     ...serialized,
     items,
     totalQuantity,
     subtotal,
+    isRecurringEligible,
   };
 };
 

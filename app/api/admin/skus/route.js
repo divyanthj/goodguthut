@@ -26,6 +26,10 @@ const normalizeSkuPayload = (body = {}) => ({
   notes: (body.notes || "").trim(),
   unitPrice: Math.max(0, Number(body.unitPrice || 0)),
   status: body.status === "archived" ? "archived" : "active",
+  skuType:
+    body.isSeasonal === true || body.skuType === "seasonal"
+      ? "seasonal"
+      : "perennial",
 });
 
 export async function GET() {

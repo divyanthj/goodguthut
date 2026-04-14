@@ -40,6 +40,7 @@ export default function AdminSubscriptionCombosManager({
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const editorRef = useRef(null);
 
   const comboItemsMap = useMemo(
@@ -174,15 +175,50 @@ export default function AdminSubscriptionCombosManager({
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || "Could not save subscription combo.");
+        throw new Error(data.error || "Could not save box.");
       }
 
       await refreshData(data.combo?.id || comboForm.id);
-      setMessage(isEditing ? "Combo updated." : "Combo created.");
+      setMessage(isEditing ? "Box updated." : "Box created.");
     } catch (saveError) {
-      setError(saveError.message || "Could not save subscription combo.");
+      setError(saveError.message || "Could not save box.");
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const onDelete = async () => {
+    if (!comboForm.id || isDeleting) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Delete this box permanently? This cannot be undone."
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    clearFeedback();
+    setIsDeleting(true);
+
+    try {
+      const response = await fetch(`/api/admin/subscription-combos/${comboForm.id}`, {
+        method: "DELETE",
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Could not delete box.");
+      }
+
+      await refreshData("");
+      setMessage("Box deleted.");
+    } catch (deleteError) {
+      setError(deleteError.message || "Could not delete box.");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -190,13 +226,13 @@ export default function AdminSubscriptionCombosManager({
     <section className="rounded-2xl bg-base-100 p-5 shadow-md">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold">Subscription combos</h2>
+          <h2 className="text-lg font-semibold">Boxes</h2>
           <p className="text-sm opacity-70">
-            Build fixed 4 to 10 bottle boxes that shoppers can choose before checkout.
+            Build fixed 4 to 10 bottle boxes that customers can choose at checkout.
           </p>
         </div>
         <button type="button" className="btn btn-primary btn-sm" onClick={startNewCombo}>
-          New combo
+          New box
         </button>
       </div>
 
@@ -204,7 +240,7 @@ export default function AdminSubscriptionCombosManager({
         <aside className="space-y-3">
           {combos.length === 0 ? (
             <div className="rounded-2xl bg-base-200 p-4 text-sm opacity-75">
-              No combos yet. Create your first one to offer a curated subscription option.
+              No boxes yet. Create your first one to offer a curated option.
             </div>
           ) : (
             combos.map((combo) => {
@@ -237,6 +273,9 @@ export default function AdminSubscriptionCombosManager({
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2 text-xs opacity-70">
                     {combo.isFeatured && <span className="badge badge-warning badge-outline">Featured</span>}
+                    {!combo.isRecurringEligible && (
+                      <span className="badge badge-outline">One-time only</span>
+                    )}
                     <span>INR {Number(combo.subtotal || 0).toFixed(2)}</span>
                   </div>
                 </button>
@@ -249,7 +288,7 @@ export default function AdminSubscriptionCombosManager({
           <div className="grid gap-4 md:grid-cols-2">
             <label className="form-control md:col-span-2">
               <div className="label">
-                <span className="label-text">Combo name</span>
+                <span className="label-text">Box name</span>
               </div>
               <input
                 className="input input-bordered"
@@ -318,13 +357,13 @@ export default function AdminSubscriptionCombosManager({
                 setComboForm((current) => ({ ...current, isFeatured: event.target.checked }))
               }
             />
-            <span className="label-text">Feature this combo on the subscriptions page</span>
+            <span className="label-text">Feature this box where recurring is available</span>
           </label>
 
           <div className="mt-5 rounded-2xl bg-base-100 p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <div className="font-medium">Combo lineup</div>
+                <div className="font-medium">Box lineup</div>
                 <div className="text-sm opacity-70">
                   Keep each combo between 4 and 10 bottles total.
                 </div>
@@ -346,6 +385,9 @@ export default function AdminSubscriptionCombosManager({
                       <div className="font-medium">{item.skuData?.name || item.sku}</div>
                       <div className="mt-1 text-xs uppercase tracking-[0.16em] opacity-60">
                         {item.sku}
+                      </div>
+                      <div className="mt-1 text-xs uppercase tracking-[0.16em] opacity-60">
+                        {item.skuData?.skuType === "seasonal" ? "seasonal" : "perennial"}
                       </div>
                     </div>
                     <input
@@ -390,6 +432,9 @@ export default function AdminSubscriptionCombosManager({
                       </button>
                     </div>
                     <div className="mt-2 text-sm opacity-75">{sku.notes || "No description yet."}</div>
+                    <div className="mt-2 text-xs uppercase tracking-[0.16em] opacity-60">
+                      {sku.skuType === "seasonal" ? "seasonal" : "perennial"}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -397,10 +442,22 @@ export default function AdminSubscriptionCombosManager({
           </div>
 
           <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
-            <button type="submit" className="btn btn-primary" disabled={isSaving}>
-              {isSaving ? "Saving..." : "Save combo"}
+            <button type="submit" className="btn btn-primary" disabled={isSaving || isDeleting}>
+              {isSaving ? "Saving..." : "Save box"}
             </button>
-            {comboForm.id && <div className="badge badge-outline">Combo ID: {comboForm.id}</div>}
+            <div className="flex items-center gap-2">
+              {comboForm.id && (
+                <button
+                  type="button"
+                  className="btn btn-outline btn-error"
+                  onClick={onDelete}
+                  disabled={isSaving || isDeleting}
+                >
+                  {isDeleting ? "Deleting..." : "Delete box"}
+                </button>
+              )}
+              {comboForm.id && <div className="badge badge-outline">Box ID: {comboForm.id}</div>}
+            </div>
           </div>
 
           {message && (

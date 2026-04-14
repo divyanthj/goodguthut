@@ -4,6 +4,7 @@ import { authOptions } from "@/libs/next-auth";
 import { isAdminEmail } from "@/libs/admin";
 import connectMongo from "@/libs/mongoose";
 import Sku from "@/models/Sku";
+import SubscriptionCombo from "@/models/SubscriptionCombo";
 
 const getAdminSession = async () => {
   const session = await getServerSession(authOptions);
@@ -24,6 +25,10 @@ const normalizeSkuUpdatePayload = (body = {}) => ({
   notes: (body.notes || "").trim(),
   unitPrice: Math.max(0, Number(body.unitPrice || 0)),
   status: body.status === "archived" ? "archived" : "active",
+  skuType:
+    body.isSeasonal === true || body.skuType === "seasonal"
+      ? "seasonal"
+      : "perennial",
 });
 
 export async function GET(_req, { params }) {
@@ -78,4 +83,38 @@ export async function PUT(req, { params }) {
 
 export async function PATCH(req, { params }) {
   return PUT(req, { params });
+}
+
+export async function DELETE(_req, { params }) {
+  const { error } = await getAdminSession();
+
+  if (error) {
+    return error;
+  }
+
+  await connectMongo();
+
+  try {
+    const sku = await Sku.findById(params.id);
+
+    if (!sku) {
+      return NextResponse.json({ error: "SKU not found." }, { status: 404 });
+    }
+
+    const comboUsingSku = await SubscriptionCombo.exists({ "items.sku": sku.sku });
+
+    if (comboUsingSku) {
+      return NextResponse.json(
+        { error: "Remove this SKU from all boxes before deleting it." },
+        { status: 409 }
+      );
+    }
+
+    await Sku.findByIdAndDelete(params.id);
+
+    return NextResponse.json({ success: true });
+  } catch (deleteError) {
+    console.error(deleteError);
+    return NextResponse.json({ error: deleteError.message }, { status: 500 });
+  }
 }

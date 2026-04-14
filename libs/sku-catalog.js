@@ -53,9 +53,25 @@ export const normalizeAllowedItemRefs = (allowedItems = []) => {
 export const isLegacySeededSkuCode = (sku = "") => LEGACY_SEEDED_SKU_CODES.has((sku || "").trim().toUpperCase());
 
 export const filterSkuCatalog = (skuCatalog = []) =>
-  skuCatalog.filter((item) => !isLegacySeededSkuCode(item?.sku));
+  skuCatalog
+    .filter((item) => !isLegacySeededSkuCode(item?.sku))
+    .map((item) => {
+      const serialized = item?.toJSON ? item.toJSON() : item;
+      const isSeasonal =
+        serialized?.isSeasonal === true || serialized?.skuType === "seasonal";
+
+      return {
+        ...serialized,
+        skuType: isSeasonal ? "seasonal" : "perennial",
+        isSeasonal,
+      };
+    });
 
 export const listSkuCatalog = async () => {
+  await Sku.updateMany(
+    { skuType: { $exists: false } },
+    { $set: { skuType: "perennial" } }
+  );
   const skuCatalog = await Sku.find({}).sort({ status: 1, name: 1, sku: 1 });
   return filterSkuCatalog(skuCatalog);
 };
@@ -70,6 +86,11 @@ export const getSkuMap = (skuCatalog = []) =>
         notes: item.notes || "",
         unitPrice: Number(item.unitPrice || 0),
         status: item.status || "active",
+        skuType:
+          item.isSeasonal === true || item.skuType === "seasonal"
+            ? "seasonal"
+            : "perennial",
+        isSeasonal: item.isSeasonal === true || item.skuType === "seasonal",
       },
     ])
   );
@@ -89,6 +110,8 @@ export const hydrateAllowedItems = (allowedItems = [], skuMap) =>
         notes: "",
         unitPrice: 0,
         status: "active",
+        skuType: "perennial",
+        isSeasonal: false,
       };
     });
 

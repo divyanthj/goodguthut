@@ -129,6 +129,7 @@ const createEmptySkuForm = () => ({
   notes: "",
   unitPrice: 0,
   status: "active",
+  isSeasonal: false,
 });
 
 const getWindowTimingState = (windowData, now = new Date()) => {
@@ -342,6 +343,8 @@ export default function AdminPreorderConsole({
           notes: nextSku.notes || "",
           unitPrice: Number(nextSku.unitPrice || 0),
           status: nextSku.status || "active",
+          isSeasonal:
+            nextSku.isSeasonal === true || nextSku.skuType === "seasonal",
         });
       }
     }
@@ -474,7 +477,11 @@ export default function AdminPreorderConsole({
       const response = await fetch(isEditing ? `/api/admin/skus/${skuForm.id}` : "/api/admin/skus", {
         method: isEditing ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(skuForm),
+        body: JSON.stringify({
+          ...skuForm,
+          isSeasonal: skuForm.isSeasonal === true,
+          skuType: skuForm.isSeasonal === true ? "seasonal" : "perennial",
+        }),
       });
       const data = await response.json();
 
@@ -648,6 +655,8 @@ export default function AdminPreorderConsole({
                         notes: skuItem.notes || "",
                         unitPrice: Number(skuItem.unitPrice || 0),
                         status: skuItem.status || "active",
+                        isSeasonal:
+                          skuItem.isSeasonal === true || skuItem.skuType === "seasonal",
                       })
                     }
                   >
@@ -659,6 +668,11 @@ export default function AdminPreorderConsole({
                       <div className={`badge ${skuItem.status === "archived" ? "badge-outline" : "badge-success"}`}>
                         {skuItem.status}
                       </div>
+                    </div>
+                    <div className="mt-2 text-xs uppercase tracking-[0.16em] opacity-70">
+                      {skuItem.isSeasonal === true || skuItem.skuType === "seasonal"
+                        ? "seasonal"
+                        : "perennial"}
                     </div>
                     <div className="mt-2 text-sm opacity-75">{skuItem.notes || "No description yet."}</div>
                     <div className="mt-3 text-sm font-medium">INR {Number(skuItem.unitPrice || 0).toFixed(2)}</div>
@@ -687,6 +701,20 @@ export default function AdminPreorderConsole({
                       <option value="active">Active</option>
                       <option value="archived">Archived</option>
                     </select>
+                  </label>
+                  <label className="label mt-6 cursor-pointer justify-start gap-3">
+                    <input
+                      type="checkbox"
+                      className="toggle toggle-sm"
+                      checked={skuForm.isSeasonal === true}
+                      onChange={(event) =>
+                        setSkuForm((current) => ({
+                          ...current,
+                          isSeasonal: event.target.checked,
+                        }))
+                      }
+                    />
+                    <span className="label-text">Seasonal SKU</span>
                   </label>
                   <label className="form-control w-full md:col-span-2">
                     <div className="label"><span className="label-text">Product name</span></div>

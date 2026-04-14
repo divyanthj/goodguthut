@@ -1,12 +1,16 @@
-import connectMongo from "@/libs/mongoose";
-import { getAdminSessionState } from "@/libs/admin-auth";
-import PreorderWindow from "@/models/PreorderWindow";
-import { createDefaultPreorderWindow } from "@/libs/preorder-catalog";
 import AdminLoginButton from "@/components/AdminLoginButton";
-import AdminPreorderConsole from "@/components/AdminPreorderConsole";
 import AdminNav from "@/components/AdminNav";
-import { sortPreorderWindows } from "@/libs/preorder-windows";
-import { listSkuCatalog } from "@/libs/sku-catalog";
+import AdminSkuCatalogManager from "@/components/AdminSkuCatalogManager";
+import AdminSubscriptionCombosManager from "@/components/AdminSubscriptionCombosManager";
+import AdminSubscriptionScheduleManager from "@/components/AdminSubscriptionScheduleManager";
+import { getAdminSessionState } from "@/libs/admin-auth";
+import connectMongo from "@/libs/mongoose";
+import { getSkuMap, listSkuCatalog } from "@/libs/sku-catalog";
+import {
+  hydrateSubscriptionCombo,
+  listSubscriptionCombos,
+} from "@/libs/subscription-combos";
+import { getSubscriptionSettings } from "@/libs/subscription-settings";
 
 export default async function AdminPage() {
   const { session, isAdmin } = await getAdminSessionState();
@@ -17,8 +21,8 @@ export default async function AdminPage() {
         <div className="hero-content w-full max-w-2xl">
           <div className="card w-full bg-base-100 shadow-xl">
             <div className="card-body gap-6">
-              <h1 className="card-title text-3xl">Admin login</h1>
-              <p>Sign in with Google to access the admin area.</p>
+              <h1 className="card-title text-3xl">Sign in</h1>
+              <p>Sign in with Google to manage delivery days.</p>
               <AdminLoginButton />
             </div>
           </div>
@@ -33,10 +37,9 @@ export default async function AdminPage() {
         <div className="hero-content w-full max-w-2xl">
           <div className="card w-full bg-base-100 shadow-xl">
             <div className="card-body gap-4">
-              <h1 className="card-title text-3xl">Admin access denied</h1>
+              <h1 className="card-title text-3xl">Access restricted</h1>
               <p>You are signed in as {session.user.email}.</p>
-              <p className="text-error">No, you&apos;re not an admin.</p>
-              <p className="opacity-70">Add this email address to the <code>ADMINS</code> env variable to grant access.</p>
+              <p className="text-error">This account does not have admin access.</p>
             </div>
           </div>
         </div>
@@ -45,16 +48,13 @@ export default async function AdminPage() {
   }
 
   await connectMongo();
-  const preorderWindowDocs = await PreorderWindow.find({}).sort({
-    status: 1,
-    deliveryDate: -1,
-    updatedAt: -1,
-    createdAt: -1,
-  });
-  const skuCatalogDocs = await listSkuCatalog();
-  const initialWindows = sortPreorderWindows(JSON.parse(JSON.stringify(preorderWindowDocs)));
-  const initialSkuCatalog = JSON.parse(JSON.stringify(skuCatalogDocs));
-  const defaultWindow = createDefaultPreorderWindow();
+  const [settings, skuCatalog, comboDocs] = await Promise.all([
+    getSubscriptionSettings(),
+    listSkuCatalog(),
+    listSubscriptionCombos(),
+  ]);
+  const skuMap = getSkuMap(skuCatalog);
+  const combos = comboDocs.map((combo) => hydrateSubscriptionCombo(combo, skuMap));
 
   return (
     <main className="min-h-screen bg-base-200 px-4 py-10 md:px-6">
@@ -63,18 +63,22 @@ export default async function AdminPage() {
           <div>
             <h1 className="text-3xl font-bold">Settings</h1>
             <p className="mt-2 max-w-3xl opacity-75">
-              Manage the shared SKU catalog and update delivery pricing for each preorder batch.
+              Update delivery days and manage your product catalog.
             </p>
           </div>
           <AdminNav active="settings" />
         </div>
 
-        <AdminPreorderConsole
-          initialWindows={initialWindows}
-          initialSkuCatalog={initialSkuCatalog}
-          defaultWindow={defaultWindow}
-          adminEmail={session.user.email}
-          view="settings"
+        <AdminSubscriptionScheduleManager
+          initialDeliveryDaysOfWeek={settings?.deliveryDaysOfWeek || []}
+          initialMinimumLeadDays={Number(settings?.minimumLeadDays || 3)}
+        />
+
+        <AdminSkuCatalogManager />
+
+        <AdminSubscriptionCombosManager
+          initialCombos={combos}
+          initialSkuCatalog={skuCatalog}
         />
       </div>
     </main>

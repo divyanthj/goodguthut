@@ -38,8 +38,8 @@ const Footer = () => {
             <Link href="/#lineup" className="transition hover:text-primary">
               Lineup
             </Link>
-            <Link href="/#preorder" className="transition hover:text-primary">
-              Preorder
+            <Link href="/#order-flow" className="transition hover:text-primary">
+              Order
             </Link>
             
               <a

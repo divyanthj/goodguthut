@@ -184,6 +184,10 @@ export const buildSubscriptionRequest = async (body = {}) => {
       throw new Error(`SKU ${item.sku} is not currently available`);
     }
 
+    if ((catalogItem.skuType || "perennial") !== "perennial") {
+      throw new Error(`SKU ${item.sku} is seasonal and cannot be used in subscriptions.`);
+    }
+
     if (item.quantity > MAX_PER_ORDER_LIMIT) {
       throw new Error(`SKU ${item.sku} maximum quantity per subscription is ${MAX_PER_ORDER_LIMIT}`);
     }

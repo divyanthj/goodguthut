@@ -130,6 +130,46 @@ const serializeRazorpaySubscriptionResult = (paymentResult = {}) => {
   };
 };
 
+const serializeRazorpayPaymentResult = (paymentResult = {}) => {
+  const rawPaymentResult =
+    paymentResult && typeof paymentResult === "object" ? paymentResult : {};
+
+  return {
+    razorpay_order_id:
+      rawPaymentResult.razorpay_order_id ||
+      rawPaymentResult.orderId ||
+      rawPaymentResult.order_id ||
+      "",
+    razorpay_payment_id:
+      rawPaymentResult.razorpay_payment_id ||
+      rawPaymentResult.paymentId ||
+      rawPaymentResult.payment_id ||
+      "",
+    razorpay_signature:
+      rawPaymentResult.razorpay_signature ||
+      rawPaymentResult.signature ||
+      rawPaymentResult.paymentSignature ||
+      "",
+    paymentResult: {
+      razorpay_order_id:
+        rawPaymentResult.razorpay_order_id ||
+        rawPaymentResult.orderId ||
+        rawPaymentResult.order_id ||
+        "",
+      razorpay_payment_id:
+        rawPaymentResult.razorpay_payment_id ||
+        rawPaymentResult.paymentId ||
+        rawPaymentResult.payment_id ||
+        "",
+      razorpay_signature:
+        rawPaymentResult.razorpay_signature ||
+        rawPaymentResult.signature ||
+        rawPaymentResult.paymentSignature ||
+        "",
+    },
+  };
+};
+
 export default function SubscriptionForm({
   catalogItems = [],
   comboOptions = [],
@@ -146,6 +186,9 @@ export default function SubscriptionForm({
   mode = "create",
   token = "",
 }) {
+  const [wantsRecurring, setWantsRecurring] = useState(mode === "edit");
+  const isRecurringMode = mode === "edit" || wantsRecurring;
+  const isOneTimeMode = !isRecurringMode;
   const [customer, setCustomer] = useState(() => ({
     ...initialCustomer,
     ...(initialValues
@@ -211,6 +254,7 @@ export default function SubscriptionForm({
         initialValues?.billing?.status === "cancelled"
     )
   );
+  const [recurringNotice, setRecurringNotice] = useState("");
   const initialEmailRef = useRef(initialValues?.email || "");
   const isCompletingPaymentRef = useRef(false);
   const loadRazorpay = useRazorpayCheckout();
@@ -279,6 +323,9 @@ export default function SubscriptionForm({
     );
     initialEmailRef.current = initialValues.email || "";
     setStartDate(initialValues.startDate || fallbackStartDate);
+    if (mode === "edit") {
+      setWantsRecurring(true);
+    }
   }, [catalogItems, comboOptions, fallbackStartDate, initialSelectionMode, initialValues, mode]);
 
   const lineup = useMemo(
@@ -290,6 +337,7 @@ export default function SubscriptionForm({
           name: item.name,
           note: item.notes || "",
           unitPrice: Number(item.unitPrice || 0),
+          skuType: item.skuType || "perennial",
         })),
     [catalogItems]
   );
@@ -321,6 +369,7 @@ export default function SubscriptionForm({
         quantity: Number(item.quantity || 0),
         unitPrice: Number(item.unitPrice || 0),
         lineTotal: Number(item.lineTotal || 0),
+        skuType: item.skuType || "perennial",
       })),
     [selectedCombo]
   );
@@ -350,7 +399,19 @@ export default function SubscriptionForm({
   const needsAddressSelection =
     deliveryConfigured && customer.address.trim() && !selectedPlace && !hasVerifiedAddress;
   const durationOptions = getSubscriptionDurationOptions(cadence);
-  const durationIsValid = durationOptions.includes(Number(durationWeeks || 0));
+  const durationIsValid = isOneTimeMode
+    ? true
+    : durationOptions.includes(Number(durationWeeks || 0));
+  const isPerennialOnlySelection =
+    selectedItems.length > 0 &&
+    selectedItems.every((item) => (item.skuType || "perennial") === "perennial");
+  const isQuantityValidForRecurring =
+    totalQuantity >= MIN_TOTAL_QTY && totalQuantity <= MAX_TOTAL_QTY;
+  const canOfferRecurringToggle =
+    mode === "create" &&
+    selectedItems.length > 0 &&
+    isPerennialOnlySelection &&
+    isQuantityValidForRecurring;
   const effectiveStartDate = startDate || fallbackStartDate;
   const selectedStartDateOption = effectiveStartDateOptions.find(
     (option) => option.value === effectiveStartDate
@@ -371,7 +432,7 @@ export default function SubscriptionForm({
       customer.email.trim() &&
       customer.phone.trim() &&
       customer.address.trim() &&
-      cadence &&
+      (isOneTimeMode || cadence) &&
       durationIsValid &&
       selectedItems.length > 0 &&
       totalQuantity >= MIN_TOTAL_QTY &&
@@ -383,10 +444,35 @@ export default function SubscriptionForm({
   );
 
   useEffect(() => {
+    if (mode !== "create") {
+      return;
+    }
+
+    if (wantsRecurring && !canOfferRecurringToggle) {
+      setWantsRecurring(false);
+      setRecurringNotice(
+        selectedItems.length > 0 && !isPerennialOnlySelection
+          ? "This selection includes seasonal items, so it can only be ordered one-time."
+          : "Recurring is available once you have a perennial-only selection between 4 and 10 bottles."
+      );
+    }
+  }, [
+    canOfferRecurringToggle,
+    isPerennialOnlySelection,
+    mode,
+    selectedItems.length,
+    wantsRecurring,
+  ]);
+
+  useEffect(() => {
+    if (isOneTimeMode) {
+      return;
+    }
+
     if (!durationOptions.includes(Number(durationWeeks || 0))) {
       setDurationWeeks(durationOptions[0] || 4);
     }
-  }, [cadence, durationOptions, durationWeeks]);
+  }, [cadence, durationOptions, durationWeeks, isOneTimeMode]);
 
   useEffect(() => {
     if (!effectiveStartDateOptions.length) {
@@ -569,6 +655,8 @@ export default function SubscriptionForm({
     setAddressLookupError("");
     setStartDate(fallbackStartDate);
     setShowStartDateOptions(false);
+    setWantsRecurring(false);
+    setRecurringNotice("");
   };
 
   const applySubscriptionState = (nextSubscription) => {
@@ -622,6 +710,11 @@ export default function SubscriptionForm({
       return;
     }
 
+    if (isRecurringMode && !isPerennialOnlySelection) {
+      setError("Recurring is only available for perennial selections.");
+      return;
+    }
+
     if (selectedItems.length === 0) {
       setError("Choose a box or add a few bottles before continuing.");
       return;
@@ -632,7 +725,7 @@ export default function SubscriptionForm({
       return;
     }
 
-    if (!durationIsValid) {
+    if (!isOneTimeMode && !durationIsValid) {
       setError("Please choose how long you&apos;d like this plan to run.");
       return;
     }
@@ -656,7 +749,7 @@ export default function SubscriptionForm({
 
     try {
       const response = await fetch(
-        mode === "edit" ? "/api/subscription/edit" : "/api/subscription",
+        mode === "edit" ? "/api/subscription/edit" : "/api/order-plan",
         {
           method: mode === "edit" ? "PATCH" : "POST",
           headers: {
@@ -670,11 +763,12 @@ export default function SubscriptionForm({
             deliveryPlaceId: selectedPlace?.placeId || storedPlaceId,
             addressSessionToken,
             cadence,
-            durationWeeks,
+            durationWeeks: isOneTimeMode ? 0 : durationWeeks,
             startDate: effectiveStartDate,
             selectionMode: effectiveSelectionMode,
             comboId: effectiveSelectionMode === "combo" ? selectedCombo?.id || "" : "",
             items: selectedItems,
+            mode: isOneTimeMode ? "one_time" : "recurring",
             token,
           }),
         }
@@ -686,7 +780,7 @@ export default function SubscriptionForm({
             response,
             mode === "edit"
               ? "Could not update subscription."
-              : "Could not create subscription."
+              : "Could not create order."
           )
         );
       }
@@ -701,7 +795,7 @@ export default function SubscriptionForm({
         return;
       }
 
-      setSuccessMessage(data.message || "Subscription saved.");
+      setSuccessMessage(data.message || "Order saved.");
 
       if (mode === "create") {
         resetForCreate();
@@ -737,9 +831,12 @@ export default function SubscriptionForm({
         isCompletingPaymentRef.current = true;
 
         try {
-          const serializedPaymentResult =
-            serializeRazorpaySubscriptionResult(paymentResult);
-          const verifyResponse = await fetch("/api/subscription/payment", {
+          const serializedPaymentResult = isOneTimeMode
+            ? serializeRazorpayPaymentResult(paymentResult)
+            : serializeRazorpaySubscriptionResult(paymentResult);
+          const verifyResponse = await fetch(
+            mode === "edit" ? "/api/subscription/payment" : "/api/order-plan/payment",
+            {
             method: "PATCH",
             headers: {
               "Content-Type": "application/json",
@@ -761,9 +858,13 @@ export default function SubscriptionForm({
           setError("");
           setSuccessMessage(
             verifyData.confirmationMessage ||
-              "Auto-pay is confirmed and your subscription is ready."
+              (isOneTimeMode
+                ? "Payment received and your one-time order is confirmed."
+                : "Auto-pay is confirmed and your subscription is ready.")
           );
-          applySubscriptionState(verifyData.subscription);
+          if (verifyData.subscription && mode === "edit") {
+            applySubscriptionState(verifyData.subscription);
+          }
 
           if (mode === "create") {
             resetForCreate();
@@ -786,7 +887,9 @@ export default function SubscriptionForm({
 
           setPendingCheckout(null);
           setError(
-            "Payment setup was not completed, so the subscription is still waiting for confirmation."
+            isOneTimeMode
+              ? "Payment was not completed, so your order is still waiting for confirmation."
+              : "Payment setup was not completed, so the subscription is still waiting for confirmation."
           );
           setIsSubmitting(false);
         },
@@ -841,52 +944,64 @@ export default function SubscriptionForm({
                 Before You Continue
               </div>
               <h3 className="mt-3 text-2xl font-semibold text-[#2f4a3e]">
-                This sets up your UPI AutoPay mandate
+                {isOneTimeMode
+                  ? "Confirm your one-time payment"
+                  : "This sets up your UPI AutoPay mandate"}
               </h3>
               <p className="mt-3 max-w-xl text-sm leading-7 text-[#53675d]">
-                Razorpay may show a small one-time verification amount, often `1` or `5`, to register your mandate. That is not your weekly delivery charge.
+                {isOneTimeMode
+                  ? "You will be charged now to confirm this order. Once payment succeeds, your delivery is locked in."
+                  : "Razorpay may show a small one-time verification amount, often `1` or `5`, to register your mandate. That is not your weekly delivery charge."}
               </p>
             </div>
 
             <div className="grid gap-4 px-6 py-6 md:grid-cols-3 md:px-8">
               <div className="rounded-2xl border border-[#ddcfb6] bg-[#fffdf8] p-4">
                 <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[#6b7d74]">
-                  Regular charge
+                  {isOneTimeMode ? "Charge now" : "Regular charge"}
                 </div>
                 <div className="mt-2 text-2xl font-semibold text-[#2f4a3e]">
                   {currency} {total.toFixed(2)}
                 </div>
                 <div className="mt-2 text-sm text-[#53675d]">
-                  This is what each scheduled delivery will be charged at.
+                  {isOneTimeMode
+                    ? "This is the full one-time amount for this order."
+                    : "This is what each scheduled delivery will be charged at."}
                 </div>
               </div>
               <div className="rounded-2xl border border-[#ddcfb6] bg-[#fffdf8] p-4">
                 <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[#6b7d74]">
-                  First charge date
+                  {isOneTimeMode ? "Delivery date" : "First charge date"}
                 </div>
                 <div className="mt-2 text-lg font-semibold text-[#2f4a3e]">
                   {formatSubscriptionDate(effectiveStartDate)}
                 </div>
                 <div className="mt-2 text-sm text-[#53675d]">
-                  You will not be charged immediately unless you approve the mandate and that date arrives.
+                  {isOneTimeMode
+                    ? "We auto-assign the next available delivery date."
+                    : "You will not be charged immediately unless you approve the mandate and that date arrives."}
                 </div>
               </div>
               <div className="rounded-2xl border border-[#ddcfb6] bg-[#fffdf8] p-4">
                 <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[#6b7d74]">
-                  What Razorpay may show now
+                  {isOneTimeMode ? "Checkout mode" : "What Razorpay may show now"}
                 </div>
                 <div className="mt-2 text-lg font-semibold text-[#2f4a3e]">
-                  Small verification amount
+                  {isOneTimeMode ? "One-time payment" : "Small verification amount"}
                 </div>
                 <div className="mt-2 text-sm text-[#53675d]">
-                  This temporary amount is only for mandate setup. Your actual subscription amount remains {currency} {total.toFixed(2)}.
+                  {isOneTimeMode
+                    ? `No mandate setup is required. You pay ${currency} ${total.toFixed(2)} now.`
+                    : `This temporary amount is only for mandate setup. Your actual subscription amount remains ${currency} ${total.toFixed(2)}.`}
                 </div>
               </div>
             </div>
 
             <div className="px-6 pb-2 md:px-8">
               <div className="rounded-2xl border border-[#d8cdbb] bg-[#fff8ec] p-4 text-sm leading-7 text-[#53675d]">
-                Closing the Razorpay window without approving means the mandate is not completed. Your plan will stay pending until you finish the setup.
+                {isOneTimeMode
+                  ? "Closing checkout without completing payment means your order remains pending."
+                  : "Closing the Razorpay window without approving means the mandate is not completed. Your plan will stay pending until you finish the setup."}
               </div>
             </div>
 
@@ -984,6 +1099,8 @@ export default function SubscriptionForm({
           <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {comboOptions.map((combo) => {
               const isActive = combo.id === selectedComboId;
+              const isComboRecurringEligible = combo.isRecurringEligible !== false;
+              const isComboDisabled = billingLocked || (isRecurringMode && !isComboRecurringEligible);
 
               return (
                 <button
@@ -994,7 +1111,7 @@ export default function SubscriptionForm({
                       ? "border-[#2f5d49] bg-[#eef4ee] shadow-md"
                       : "border-[#d8cdbb] bg-[#fffaf1]"
                   }`}
-                  disabled={billingLocked}
+                  disabled={isComboDisabled}
                   onClick={() => setSelectedComboId(combo.id)}
                 >
                   <div className="flex items-start justify-between gap-3">
@@ -1017,6 +1134,11 @@ export default function SubscriptionForm({
                     <span className="rounded-full bg-[#f1e8d8] px-3 py-1">
                       {currency} {Number(combo.subtotal || 0).toFixed(2)}
                     </span>
+                    {!isComboRecurringEligible && (
+                      <span className="rounded-full bg-[#f1e8d8] px-3 py-1">
+                        one-time only
+                      </span>
+                    )}
                   </div>
                   <ul className="mt-4 space-y-2 text-sm text-[#456154]">
                     {(combo.items || []).map((item) => (
@@ -1113,88 +1235,126 @@ export default function SubscriptionForm({
         </section>
       )}
 
+      {mode === "create" &&
+        (canOfferRecurringToggle ||
+          (selectedItems.length > 0 && !isPerennialOnlySelection) ||
+          recurringNotice) && (
+          <section className="rounded-2xl border border-[#d8cdbb] bg-[#fffaf1] p-4 text-sm text-[#53675d]">
+            {canOfferRecurringToggle ? (
+              <label className="inline-flex cursor-pointer items-center gap-3">
+                <input
+                  type="checkbox"
+                  className="toggle toggle-sm"
+                  checked={wantsRecurring}
+                  onChange={(event) => {
+                    setWantsRecurring(event.target.checked);
+                    setRecurringNotice("");
+                  }}
+                />
+                <span>Want this on repeat? Make it recurring</span>
+              </label>
+            ) : (
+              <div>
+                {selectedItems.length > 0 && !isPerennialOnlySelection
+                  ? "This selection includes seasonal items, so it can only be ordered one-time."
+                  : recurringNotice}
+              </div>
+            )}
+          </section>
+        )}
+
       <form
         onSubmit={onSubmit}
         className="rounded-[28px] border border-[#d6c6ae] bg-[#fbf7f0]/96 p-6 shadow-xl md:p-8"
       >
         <div className="grid gap-6">
           <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <div className="label">
-                <span className="label-text text-[#365244]">How Often</span>
-              </div>
-              <div className="flex flex-wrap gap-3">
-                {SUBSCRIPTION_CADENCES.map((option) => {
-                  const isActive = cadence === option.value;
+            {isRecurringMode && (
+              <div>
+                <div className="label">
+                  <span className="label-text text-[#365244]">How Often</span>
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  {SUBSCRIPTION_CADENCES.map((option) => {
+                    const isActive = cadence === option.value;
 
-                  return (
-                    <button
-                      key={option.value}
-                      type="button"
-                      disabled={billingLocked}
-                      className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
-                        isActive
-                          ? "border-[#2f5d49] bg-[#355a45] text-[#f7f1e6] shadow-md"
-                          : "border-[#d1c4b0] bg-[#fffaf1] text-[#365244] hover:border-[#a98f6f]"
-                      }`}
-                      onClick={() => setCadence(option.value)}
-                    >
-                      {option.label}
-                    </button>
-                  );
-                })}
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        disabled={billingLocked}
+                        className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
+                          isActive
+                            ? "border-[#2f5d49] bg-[#355a45] text-[#f7f1e6] shadow-md"
+                            : "border-[#d1c4b0] bg-[#fffaf1] text-[#365244] hover:border-[#a98f6f]"
+                        }`}
+                        onClick={() => setCadence(option.value)}
+                      >
+                        {option.label}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-            <div>
-              <div className="label">
-                <span className="label-text text-[#365244]">How Long</span>
-              </div>
-              <div className="flex flex-wrap gap-3">
-                {durationOptions.map((option) => {
-                  const isActive = Number(durationWeeks) === option;
+            )}
+            {isRecurringMode && (
+              <div>
+                <div className="label">
+                  <span className="label-text text-[#365244]">How Long</span>
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  {durationOptions.map((option) => {
+                    const isActive = Number(durationWeeks) === option;
 
-                  return (
-                    <button
-                      key={`${cadence}-${option}`}
-                      type="button"
-                      disabled={billingLocked}
-                      className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
-                        isActive
-                          ? "border-[#2f5d49] bg-[#355a45] text-[#f7f1e6] shadow-md"
-                          : "border-[#d1c4b0] bg-[#fffaf1] text-[#365244] hover:border-[#a98f6f]"
-                      }`}
-                      onClick={() => setDurationWeeks(option)}
-                    >
-                      {formatSubscriptionDuration(option)}
-                    </button>
-                  );
-                })}
+                    return (
+                      <button
+                        key={`${cadence}-${option}`}
+                        type="button"
+                        disabled={billingLocked}
+                        className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
+                          isActive
+                            ? "border-[#2f5d49] bg-[#355a45] text-[#f7f1e6] shadow-md"
+                            : "border-[#d1c4b0] bg-[#fffaf1] text-[#365244] hover:border-[#a98f6f]"
+                        }`}
+                        onClick={() => setDurationWeeks(option)}
+                      >
+                        {formatSubscriptionDuration(option)}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="mt-2 text-xs text-[#6b7d74]">
+                  Your recurring payment will automatically end when this plan is complete.
+                </div>
+                <div className="mt-2 text-xs text-[#6b7d74]">
+                  Deliveries go out on {formatDeliveryDaysOfWeek(deliveryDaysOfWeek)}.
+                </div>
               </div>
-              <div className="mt-2 text-xs text-[#6b7d74]">
-                Your recurring payment will automatically end when this plan is complete.
-              </div>
-              <div className="mt-2 text-xs text-[#6b7d74]">
-                Deliveries go out on {formatDeliveryDaysOfWeek(deliveryDaysOfWeek)}.
-              </div>
-            </div>
+            )}
             <div className="md:col-span-2 rounded-2xl border border-[#ddcfb6] bg-[#fffdf8] p-4 text-sm text-[#365244]">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <div className="font-medium text-[#2f4a3e]">
                     {selectedStartDateOption
-                      ? `Your first delivery is set for ${selectedStartDateOption.label}.`
+                      ? isOneTimeMode
+                        ? `Your delivery date is ${selectedStartDateOption.label}.`
+                        : `Your first delivery is set for ${selectedStartDateOption.label}.`
                       : "We don't have a delivery date available in the next 30 days yet."}
                   </div>
                   <div className="mt-1 text-xs text-[#6b7d74]">
-                    Recurring payment will begin on that date. We currently need at least {formatMinimumLeadDays(minimumLeadDays)} notice, and deliveries go out on {formatDeliveryDaysOfWeek(deliveryDaysOfWeek)}.
+                    {isOneTimeMode
+                      ? `We currently need at least ${formatMinimumLeadDays(minimumLeadDays)} notice, and deliveries go out on ${formatDeliveryDaysOfWeek(deliveryDaysOfWeek)}.`
+                      : `Recurring payment will begin on that date. We currently need at least ${formatMinimumLeadDays(minimumLeadDays)} notice, and deliveries go out on ${formatDeliveryDaysOfWeek(deliveryDaysOfWeek)}.`}
                   </div>
-                  {nextDeliveryDate && nextDeliveryDate !== effectiveStartDate && (
+                  {isRecurringMode &&
+                    nextDeliveryDate &&
+                    nextDeliveryDate !== effectiveStartDate && (
                     <div className="mt-2 text-xs text-[#6b7d74]">
                       After that, your next delivery will be {formatSubscriptionDate(nextDeliveryDate)}.
                     </div>
                   )}
                 </div>
-                {!billingLocked && effectiveStartDateOptions.length > 1 && (
+                {!isOneTimeMode && !billingLocked && effectiveStartDateOptions.length > 1 && (
                   <button
                     type="button"
                     className="btn btn-ghost btn-sm text-[#2f5d49]"
@@ -1343,7 +1503,7 @@ export default function SubscriptionForm({
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <div className="text-sm font-semibold uppercase tracking-[0.2em] text-[#5f7068]">
-                  Your Plan
+                  {isOneTimeMode ? "Your Order" : "Your Plan"}
                 </div>
                 <p className="mt-2 text-sm leading-7 text-[#53675d]">
                   {effectiveSelectionMode === "combo"
@@ -1386,27 +1546,31 @@ export default function SubscriptionForm({
             )}
 
             <div className="mt-4 grid gap-2 text-sm text-[#365244]">
-              <div className="flex justify-between">
-                <span>How often</span>
-                <span>{SUBSCRIPTION_CADENCES.find((item) => item.value === cadence)?.label || cadence}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>How long</span>
-                <span>{formatSubscriptionDuration(durationWeeks)}</span>
-              </div>
-              {effectiveStartDate && (
-                <div className="flex justify-between gap-4">
-                  <span>First delivery</span>
-                  <span className="text-right">{formatSubscriptionDate(effectiveStartDate)}</span>
+              {isRecurringMode && (
+                <div className="flex justify-between">
+                  <span>How often</span>
+                  <span>{SUBSCRIPTION_CADENCES.find((item) => item.value === cadence)?.label || cadence}</span>
+                </div>
+              )}
+              {isRecurringMode && (
+                <div className="flex justify-between">
+                  <span>How long</span>
+                  <span>{formatSubscriptionDuration(durationWeeks)}</span>
                 </div>
               )}
               {effectiveStartDate && (
+                <div className="flex justify-between gap-4">
+                  <span>{isOneTimeMode ? "Delivery date" : "First delivery"}</span>
+                  <span className="text-right">{formatSubscriptionDate(effectiveStartDate)}</span>
+                </div>
+              )}
+              {isRecurringMode && effectiveStartDate && (
                 <div className="flex justify-between gap-4">
                   <span>First recurring charge</span>
                   <span className="text-right">{formatSubscriptionDate(effectiveStartDate)}</span>
                 </div>
               )}
-              {nextDeliveryDate && nextDeliveryDate !== effectiveStartDate && (
+              {isRecurringMode && nextDeliveryDate && nextDeliveryDate !== effectiveStartDate && (
                 <div className="flex justify-between gap-4">
                   <span>Next delivery after that</span>
                   <span className="text-right">{formatSubscriptionDate(nextDeliveryDate)}</span>
@@ -1443,11 +1607,13 @@ export default function SubscriptionForm({
                 <div className="text-error">Please bring this down to 10 bottles or fewer.</div>
               )}
               <div className="flex justify-between text-base font-semibold">
-                <span>Total per delivery</span>
+                <span>{isOneTimeMode ? "Total due now" : "Total per delivery"}</span>
                 <span>{currency} {total.toFixed(2)}</span>
               </div>
               <div className="text-xs text-[#6b7d74]">
-                Your UPI AutoPay setup will be authorized at checkout, and the first charge will happen on your first delivery date.
+                {isOneTimeMode
+                  ? "This is a one-time payment. No UPI AutoPay mandate is required."
+                  : "Your UPI AutoPay setup will be authorized at checkout, and the first charge will happen on your first delivery date."}
               </div>
             </div>
           </div>
@@ -1484,7 +1650,9 @@ export default function SubscriptionForm({
 
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="text-sm text-[#5f7068]">
-              No login needed. We&apos;ll email you a secure link so you can update or cancel your plan anytime.
+              {isOneTimeMode
+                ? "No login needed. Complete checkout to confirm your one-time order."
+                : "No login needed. We&apos;ll email you a secure link so you can update or cancel your plan anytime."}
             </div>
             <div className="flex flex-wrap gap-3">
               {mode === "edit" && !isCancelled && (
@@ -1506,7 +1674,9 @@ export default function SubscriptionForm({
                     ? "Plan cancelled"
                   : mode === "edit"
                     ? "Save updates"
-                    : "Continue"}
+                    : isOneTimeMode
+                      ? "Continue to payment"
+                      : "Continue"}
               </button>
             </div>
           </div>

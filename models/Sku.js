@@ -30,6 +30,11 @@ const skuSchema = mongoose.Schema(
       enum: ["active", "archived"],
       default: "active",
     },
+    skuType: {
+      type: String,
+      enum: ["perennial", "seasonal"],
+      default: "perennial",
+    },
   },
   {
     timestamps: true,
