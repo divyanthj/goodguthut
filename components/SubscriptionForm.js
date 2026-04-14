@@ -357,6 +357,7 @@ export default function SubscriptionForm({
           quantity: Number(cart[product.sku] || 0),
           unitPrice: product.unitPrice,
           lineTotal: Number(cart[product.sku] || 0) * product.unitPrice,
+          skuType: product.skuType || "perennial",
         })),
     [cart, lineup]
   );
@@ -452,7 +453,7 @@ export default function SubscriptionForm({
       setWantsRecurring(false);
       setRecurringNotice(
         selectedItems.length > 0 && !isPerennialOnlySelection
-          ? "This selection includes seasonal items, so it can only be ordered one-time."
+          ? "This selection includes seasonal items, which are not available for subscription."
           : "Recurring is available once you have a perennial-only selection between 4 and 10 bottles."
       );
     }
@@ -1134,11 +1135,6 @@ export default function SubscriptionForm({
                     <span className="rounded-full bg-[#f1e8d8] px-3 py-1">
                       {currency} {Number(combo.subtotal || 0).toFixed(2)}
                     </span>
-                    {!isComboRecurringEligible && (
-                      <span className="rounded-full bg-[#f1e8d8] px-3 py-1">
-                        one-time only
-                      </span>
-                    )}
                   </div>
                   <ul className="mt-4 space-y-2 text-sm text-[#456154]">
                     {(combo.items || []).map((item) => (
@@ -1256,7 +1252,7 @@ export default function SubscriptionForm({
             ) : (
               <div>
                 {selectedItems.length > 0 && !isPerennialOnlySelection
-                  ? "This selection includes seasonal items, so it can only be ordered one-time."
+                  ? "This selection includes seasonal items, which are not available for subscription."
                   : recurringNotice}
               </div>
             )}

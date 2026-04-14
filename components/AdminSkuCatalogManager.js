@@ -27,8 +27,12 @@ export default function AdminSkuCatalogManager() {
     [skuCatalog]
   );
 
-  const refreshData = useCallback(async (preferredSkuId = "") => {
-    setIsLoading(true);
+  const refreshData = useCallback(async (preferredSkuId = "", options = {}) => {
+    const showLoader = options.showLoader !== false;
+
+    if (showLoader) {
+      setIsLoading(true);
+    }
     setError("");
 
     try {
@@ -77,7 +81,9 @@ export default function AdminSkuCatalogManager() {
     } catch (loadError) {
       setError(loadError.message || "Could not load products.");
     } finally {
-      setIsLoading(false);
+      if (showLoader) {
+        setIsLoading(false);
+      }
     }
   }, []);
 
@@ -135,7 +141,7 @@ export default function AdminSkuCatalogManager() {
         throw new Error(data.error || "Could not save product.");
       }
 
-      await refreshData(data.sku?.id || skuForm.id);
+      await refreshData(data.sku?.id || skuForm.id, { showLoader: false });
       setMessage(isEditing ? "Product updated." : "Product created.");
     } catch (saveError) {
       setError(saveError.message || "Could not save product.");
@@ -171,7 +177,7 @@ export default function AdminSkuCatalogManager() {
         throw new Error(data.error || "Could not delete product.");
       }
 
-      await refreshData("");
+      await refreshData("", { showLoader: false });
       setMessage("Product deleted.");
     } catch (deleteError) {
       setError(deleteError.message || "Could not delete product.");
