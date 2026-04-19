@@ -1,4 +1,5 @@
 import SubscriptionCombo from "@/models/SubscriptionCombo";
+import { MAX_TOTAL_QTY } from "@/libs/order-quantity";
 
 export const sanitizeSubscriptionComboItems = (items = []) => {
   const seenSkus = new Set();
@@ -46,8 +47,8 @@ export const validateSubscriptionComboItems = (items = [], skuMap = new Map()) =
     throw new Error("Subscription combos must contain at least 4 bottles.");
   }
 
-  if (totalQuantity > 10) {
-    throw new Error("Subscription combos cannot contain more than 10 bottles.");
+  if (totalQuantity > MAX_TOTAL_QTY) {
+    throw new Error(`Subscription combos cannot contain more than ${MAX_TOTAL_QTY} bottles.`);
   }
 
   return normalizedItems;
@@ -72,6 +73,7 @@ export const hydrateSubscriptionCombo = (combo, skuMap = new Map()) => {
       lineTotal: Number(item.quantity || 0) * unitPrice,
       status: sku?.status || "archived",
       skuType: sku?.skuType || "perennial",
+      recurringCutoffDate: String(sku?.recurringCutoffDate || ""),
     };
   });
 
@@ -80,7 +82,10 @@ export const hydrateSubscriptionCombo = (combo, skuMap = new Map()) => {
   const isRecurringEligible =
     items.length > 0 &&
     items.every(
-      (item) => item.status === "active" && (item.skuType || "perennial") === "perennial"
+      (item) =>
+        item.status === "active" &&
+        ((item.skuType || "perennial") === "perennial" ||
+          String(item.recurringCutoffDate || "").trim())
     );
 
   return {

@@ -64,6 +64,7 @@ export const filterSkuCatalog = (skuCatalog = []) =>
         ...serialized,
         skuType: isSeasonal ? "seasonal" : "perennial",
         isSeasonal,
+        recurringCutoffDate: String(serialized?.recurringCutoffDate || "").trim(),
       };
     });
 
@@ -91,6 +92,7 @@ export const getSkuMap = (skuCatalog = []) =>
             ? "seasonal"
             : "perennial",
         isSeasonal: item.isSeasonal === true || item.skuType === "seasonal",
+        recurringCutoffDate: String(item.recurringCutoffDate || "").trim(),
       },
     ])
   );
@@ -112,6 +114,7 @@ export const hydrateAllowedItems = (allowedItems = [], skuMap) =>
         status: "active",
         skuType: "perennial",
         isSeasonal: false,
+        recurringCutoffDate: "",
       };
     });
 

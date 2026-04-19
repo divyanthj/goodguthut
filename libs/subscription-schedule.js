@@ -234,3 +234,20 @@ export const getNextSubscriptionDeliveryDate = ({
 
   return addDaysToDateKey(startDate, normalizedPaidCount * cycleDays);
 };
+
+export const listPlannedSubscriptionDeliveryDates = ({
+  startDate = "",
+  cadence = "",
+  totalCount = 0,
+}) => {
+  const cycleDays = getSubscriptionCycleDays(cadence);
+  const normalizedTotalCount = Math.max(0, Number(totalCount || 0));
+
+  if (!startDate || !cycleDays || normalizedTotalCount === 0) {
+    return [];
+  }
+
+  return Array.from({ length: normalizedTotalCount }, (_, index) =>
+    addDaysToDateKey(startDate, index * cycleDays)
+  ).filter(Boolean);
+};

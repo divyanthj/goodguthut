@@ -15,6 +15,7 @@ import {
   getRazorpayPublicConfig,
   isRazorpayConfigured,
 } from "@/libs/razorpay";
+import { verifySignedRecurringRolloutToken } from "@/libs/subscription-rollout";
 import { recalculateSubscriptionRouteSnapshots } from "@/libs/subscription-route-planner";
 import {
   formatSubscriptionDate,
@@ -82,6 +83,14 @@ export async function POST(req) {
   }
 
   try {
+    const recurringAccess = verifySignedRecurringRolloutToken(
+      String(body.rolloutAccessToken || "").trim()
+    );
+
+    if (!recurringAccess.isValid) {
+      throw new Error("Recurring subscription access is not enabled for this link.");
+    }
+
     const subscriptionRequest = await buildSubscriptionRequest(body);
     await connectMongo();
 
@@ -231,11 +240,12 @@ export async function POST(req) {
       error.message === "We do not deliver there yet." ||
       error.message === "Add at least one product quantity (SKU + quantity) before starting a subscription." ||
       error.message === "Too many distinct products in one subscription." ||
-      error.message === "Subscriptions must include at least 4 bottles." ||
-      error.message === "Subscriptions cannot include more than 10 bottles." ||
+      error.message?.startsWith("Subscriptions must include at least ") ||
+      error.message?.startsWith("Subscriptions cannot include more than ") ||
       error.message === "Subscriptions are not available until delivery days are configured." ||
       error.message === "There are no delivery dates available in the next 30 days." ||
-      error.message === "Choose a valid first delivery date within the next 30 days."
+      error.message === "Choose a valid first delivery date within the next 30 days." ||
+      error.message === "Recurring subscription access is not enabled for this link."
     ) {
       logAbuseEvent("subscription-invalid-request", req, { message: error.message });
       return jsonError(error.message, 400);

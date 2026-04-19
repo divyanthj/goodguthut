@@ -1,4 +1,4 @@
-export const MAX_PER_ORDER_LIMIT = 10;
+export const MAX_PER_ORDER_LIMIT = 24;
 
 const ACTIVE_STATUS = "open";
 const VALID_STATUSES = new Set(["draft", "open", "closed", "archived"]);

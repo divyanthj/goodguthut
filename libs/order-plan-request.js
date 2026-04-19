@@ -21,9 +21,8 @@ import {
 } from "@/libs/subscription-request";
 import { getSkuMap } from "@/libs/sku-catalog";
 import { getDefaultSubscriptionStartDate } from "@/libs/subscription-schedule";
-
-const MIN_TOTAL_QTY = 4;
-const MAX_TOTAL_QTY = 10;
+import { MAX_TOTAL_QTY, ONE_TIME_MIN_TOTAL_QTY } from "@/libs/order-quantity";
+import { verifySignedRecurringRolloutToken } from "@/libs/subscription-rollout";
 
 const buildOneTimeRequest = async (body = {}) => {
   const name = normalizeName(body.name || "");
@@ -120,12 +119,12 @@ const buildOneTimeRequest = async (body = {}) => {
   const subtotal = items.reduce((sum, item) => sum + item.lineTotal, 0);
   const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
 
-  if (totalQuantity < MIN_TOTAL_QTY) {
-    throw new Error("Orders must include at least 4 bottles.");
+  if (totalQuantity < ONE_TIME_MIN_TOTAL_QTY) {
+    throw new Error(`Orders must include at least ${ONE_TIME_MIN_TOTAL_QTY} bottles.`);
   }
 
   if (totalQuantity > MAX_TOTAL_QTY) {
-    throw new Error("Orders cannot include more than 10 bottles.");
+    throw new Error(`Orders cannot include more than ${MAX_TOTAL_QTY} bottles.`);
   }
 
   if (deliveryDaysOfWeek.length === 0) {
@@ -202,6 +201,14 @@ export const buildOrderPlanRequest = async (body = {}) => {
   const mode = String(body.mode || "one_time").trim().toLowerCase();
 
   if (mode === "recurring") {
+    const recurringAccess = verifySignedRecurringRolloutToken(
+      String(body.rolloutAccessToken || "").trim()
+    );
+
+    if (!recurringAccess.isValid) {
+      throw new Error("Recurring subscription access is not enabled for this link.");
+    }
+
     const recurringRequest = await buildSubscriptionRequest(body);
     return {
       ...recurringRequest,

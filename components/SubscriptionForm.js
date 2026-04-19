@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   canEditSubscriptionBilling,
+  getSubscriptionDurationConfig,
   formatSubscriptionDuration,
   SUBSCRIPTION_CADENCES,
   getSubscriptionDurationOptions,
@@ -14,12 +15,91 @@ import {
   formatSubscriptionDate,
   getDefaultSubscriptionStartDate,
   getNextSubscriptionDeliveryDate,
+  listPlannedSubscriptionDeliveryDates,
   listAvailableSubscriptionStartDates,
 } from "@/libs/subscription-schedule";
+import { MAX_TOTAL_QTY, ONE_TIME_MIN_TOTAL_QTY } from "@/libs/order-quantity";
 
-const MAX_QTY = 10;
-const MIN_TOTAL_QTY = 4;
-const MAX_TOTAL_QTY = 10;
+const MAX_QTY = MAX_TOTAL_QTY;
+
+const buildRecurringEligibility = ({
+  selectedItems = [],
+  cadence = "",
+  durationWeeks = 0,
+  startDate = "",
+  recurringMinTotalQuantity = 6,
+}) => {
+  if (selectedItems.length === 0) {
+    return { isEligible: false, reason: "" };
+  }
+
+  const totalQuantity = selectedItems.reduce(
+    (sum, item) => sum + Number(item.quantity || 0),
+    0
+  );
+
+  if (totalQuantity < recurringMinTotalQuantity || totalQuantity > MAX_TOTAL_QTY) {
+    return {
+      isEligible: false,
+      reason: `Recurring is available once your selection is between ${recurringMinTotalQuantity} and ${MAX_TOTAL_QTY} bottles.`,
+    };
+  }
+
+  let totalCount = 0;
+
+  try {
+    totalCount = getSubscriptionDurationConfig(cadence, durationWeeks).totalCount;
+  } catch (_error) {
+    return {
+      isEligible: false,
+      reason: "Select a valid recurring duration to enable recurring checkout.",
+    };
+  }
+
+  const plannedDeliveryDates = listPlannedSubscriptionDeliveryDates({
+    startDate,
+    cadence,
+    totalCount,
+  });
+
+  if (!plannedDeliveryDates.length) {
+    return {
+      isEligible: false,
+      reason: "Choose a valid first delivery date to enable recurring checkout.",
+    };
+  }
+
+  const invalidSeasonalItem = selectedItems.find((item) => {
+    if ((item.skuType || "perennial") !== "seasonal") {
+      return false;
+    }
+
+    const cutoffDate = String(item.recurringCutoffDate || "").trim();
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(cutoffDate)) {
+      return true;
+    }
+
+    return plannedDeliveryDates.some((deliveryDate) => deliveryDate >= cutoffDate);
+  });
+
+  if (invalidSeasonalItem) {
+    if (!invalidSeasonalItem.recurringCutoffDate) {
+      return {
+        isEligible: false,
+        reason:
+          "This selection includes seasonal items that are not yet configured for recurring deliveries.",
+      };
+    }
+
+    return {
+      isEligible: false,
+      reason: `This selection includes seasonal items that must be delivered before ${invalidSeasonalItem.recurringCutoffDate}.`,
+    };
+  }
+
+  return { isEligible: true, reason: "" };
+};
 
 const initialCustomer = {
   name: "",
@@ -189,9 +269,13 @@ export default function SubscriptionForm({
   deliveryBands = [],
   deliveryDaysOfWeek = [],
   minimumLeadDays = 3,
+  recurringMinTotalQuantity = 6,
+  freeDeliveryThreshold = null,
   availableStartDates = [],
   defaultStartDate = "",
   currency = "INR",
+  allowRecurringRollout = false,
+  rolloutAccessToken = "",
   initialValues,
   initialSelectionMode = "combo",
   mode = "create",
@@ -357,6 +441,7 @@ export default function SubscriptionForm({
           note: item.notes || "",
           unitPrice: Number(item.unitPrice || 0),
           skuType: item.skuType || "perennial",
+          recurringCutoffDate: String(item.recurringCutoffDate || "").trim(),
         })),
     [catalogItems]
   );
@@ -383,6 +468,7 @@ export default function SubscriptionForm({
           unitPrice: product.unitPrice,
           lineTotal: Number(cart[product.sku] || 0) * product.unitPrice,
           skuType: product.skuType || "perennial",
+          recurringCutoffDate: String(product.recurringCutoffDate || "").trim(),
         })),
     [cart, lineup]
   );
@@ -418,6 +504,7 @@ export default function SubscriptionForm({
           unitPrice,
           lineTotal: totalItemQty * unitPrice,
           skuType: item.skuType || "perennial",
+          recurringCutoffDate: String(item.recurringCutoffDate || "").trim(),
         });
       });
     });
@@ -452,20 +539,75 @@ export default function SubscriptionForm({
   const durationIsValid = isOneTimeMode
     ? true
     : durationOptions.includes(Number(durationWeeks || 0));
-  const isPerennialOnlySelection =
-    selectedItems.length > 0 &&
-    selectedItems.every((item) => (item.skuType || "perennial") === "perennial");
-  const isQuantityValidForRecurring =
-    totalQuantity >= MIN_TOTAL_QTY && totalQuantity <= MAX_TOTAL_QTY;
+  const recurringEligibility = useMemo(
+    () =>
+      buildRecurringEligibility({
+        selectedItems,
+        cadence,
+        durationWeeks,
+        startDate: startDate || fallbackStartDate,
+        recurringMinTotalQuantity,
+      }),
+    [
+      cadence,
+      durationWeeks,
+      fallbackStartDate,
+      recurringMinTotalQuantity,
+      selectedItems,
+      startDate,
+    ]
+  );
   const canOfferRecurringToggle =
     mode === "create" &&
+    allowRecurringRollout &&
     selectedItems.length > 0 &&
-    isPerennialOnlySelection &&
-    isQuantityValidForRecurring;
+    recurringEligibility.isEligible;
   const effectiveStartDate = startDate || fallbackStartDate;
   const selectedStartDateOption = effectiveStartDateOptions.find(
     (option) => option.value === effectiveStartDate
   );
+  const minimumQuantityForMode = isRecurringMode
+    ? recurringMinTotalQuantity
+    : ONE_TIME_MIN_TOTAL_QTY;
+  const recurringToggleProgress = useMemo(() => {
+    if (mode !== "create" || effectiveSelectionMode !== "custom" || totalQuantity <= 0) {
+      return { message: "", tone: "" };
+    }
+
+    if (totalQuantity < ONE_TIME_MIN_TOTAL_QTY) {
+      const remaining = ONE_TIME_MIN_TOTAL_QTY - totalQuantity;
+      return {
+        message: `${remaining} more bottle${remaining === 1 ? "" : "s"} to place this order.`,
+        tone: "text-[#8a5a20]",
+      };
+    }
+
+    if (totalQuantity < recurringMinTotalQuantity) {
+      const recurringRemaining = recurringMinTotalQuantity - totalQuantity;
+      return {
+        message:
+          totalQuantity === ONE_TIME_MIN_TOTAL_QTY
+            ? `Order minimum reached. Add ${recurringRemaining} more for recurring.`
+            : `Add ${recurringRemaining} more for recurring.`,
+        tone: "text-[#8a5a20]",
+      };
+    }
+
+    if (recurringEligibility.isEligible) {
+      return {
+        message: "You're eligible to make this recurring.",
+        tone: "text-success",
+      };
+    }
+
+    return { message: "", tone: "" };
+  }, [
+    effectiveSelectionMode,
+    mode,
+    recurringEligibility.isEligible,
+    recurringMinTotalQuantity,
+    totalQuantity,
+  ]);
   const nextDeliveryDate = useMemo(
     () =>
       getNextSubscriptionDeliveryDate({
@@ -474,6 +616,22 @@ export default function SubscriptionForm({
       }),
     [cadence, effectiveStartDate]
   );
+  const recurringPlannedDeliveryDates = useMemo(() => {
+    if (!durationIsValid) {
+      return [];
+    }
+
+    try {
+      const { totalCount } = getSubscriptionDurationConfig(cadence, durationWeeks);
+      return listPlannedSubscriptionDeliveryDates({
+        startDate: effectiveStartDate,
+        cadence,
+        totalCount,
+      });
+    } catch (_error) {
+      return [];
+    }
+  }, [cadence, durationIsValid, durationWeeks, effectiveStartDate]);
   const canSubmit = Boolean(
     !billingLocked &&
       !isCancelled &&
@@ -485,7 +643,7 @@ export default function SubscriptionForm({
       (isOneTimeMode || cadence) &&
       durationIsValid &&
       selectedItems.length > 0 &&
-      totalQuantity >= MIN_TOTAL_QTY &&
+      totalQuantity >= minimumQuantityForMode &&
       totalQuantity <= MAX_TOTAL_QTY &&
       effectiveStartDate &&
       !isQuotingDelivery &&
@@ -498,18 +656,21 @@ export default function SubscriptionForm({
       return;
     }
 
+    if (!allowRecurringRollout && wantsRecurring) {
+      setWantsRecurring(false);
+      setRecurringNotice("");
+      return;
+    }
+
     if (wantsRecurring && !canOfferRecurringToggle) {
       setWantsRecurring(false);
-      setRecurringNotice(
-        selectedItems.length > 0 && !isPerennialOnlySelection
-          ? "This selection includes seasonal items, which are not available for subscription."
-          : "Recurring is available once you have a perennial-only selection between 4 and 10 bottles."
-      );
+      setRecurringNotice(recurringEligibility.reason);
     }
   }, [
+    allowRecurringRollout,
     canOfferRecurringToggle,
-    isPerennialOnlySelection,
     mode,
+    recurringEligibility.reason,
     selectedItems.length,
     wantsRecurring,
   ]);
@@ -607,6 +768,7 @@ export default function SubscriptionForm({
             address: fullAddress,
             placeId: selectedPlace.placeId,
             sessionToken: addressSessionToken,
+            orderSubtotal: subtotal,
           }),
         });
         const data = await response.json();
@@ -630,7 +792,14 @@ export default function SubscriptionForm({
     }, 200);
 
     return () => clearTimeout(timeoutId);
-  }, [addressSessionToken, deliveryConfigured, deliveryWindowId, fullAddress, selectedPlace]);
+  }, [
+    addressSessionToken,
+    deliveryConfigured,
+    deliveryWindowId,
+    fullAddress,
+    selectedPlace,
+    subtotal,
+  ]);
 
   const updateQty = (sku, nextQty) => {
     if (billingLocked) {
@@ -787,8 +956,8 @@ export default function SubscriptionForm({
       return;
     }
 
-    if (isRecurringMode && !isPerennialOnlySelection) {
-      setError("Recurring is only available for perennial selections.");
+    if (isRecurringMode && !allowRecurringRollout && mode === "create") {
+      setError("Recurring subscription access is not enabled for this link.");
       return;
     }
 
@@ -797,8 +966,15 @@ export default function SubscriptionForm({
       return;
     }
 
-    if (totalQuantity < MIN_TOTAL_QTY || totalQuantity > MAX_TOTAL_QTY) {
-      setError("Please choose between 4 and 10 bottles.");
+    if (totalQuantity < minimumQuantityForMode || totalQuantity > MAX_TOTAL_QTY) {
+      setError(
+        `Please choose between ${minimumQuantityForMode} and ${MAX_TOTAL_QTY} bottles.`
+      );
+      return;
+    }
+
+    if (isRecurringMode && !recurringEligibility.isEligible) {
+      setError(recurringEligibility.reason || "This selection is not eligible for recurring.");
       return;
     }
 
@@ -854,6 +1030,7 @@ export default function SubscriptionForm({
             comboId: submissionComboId,
             items: selectedItems,
             mode: isOneTimeMode ? "one_time" : "recurring",
+            rolloutAccessToken: isOneTimeMode ? "" : rolloutAccessToken,
             token,
           }),
         }
@@ -1143,7 +1320,7 @@ export default function SubscriptionForm({
             </p>
           </div>
           <div className="badge border-[#d1c4b0] bg-[#f7f1e6] text-[#2f5d49]">
-            4 to 10 bottles
+            4 to {MAX_TOTAL_QTY} bottles
           </div>
         </div>
 
@@ -1184,8 +1361,22 @@ export default function SubscriptionForm({
           <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {comboOptions.map((combo) => {
               const comboQty = Math.max(0, Number(comboCart[combo.id] || 0));
-              const isComboRecurringEligible = combo.isRecurringEligible !== false;
-              const canUseComboInCurrentMode = !(isRecurringMode && !isComboRecurringEligible);
+              const seasonalIneligibility = (combo.items || []).find((item) => {
+                if ((item.skuType || "perennial") !== "seasonal") {
+                  return false;
+                }
+
+                const cutoffDate = String(item.recurringCutoffDate || "").trim();
+
+                if (!/^\d{4}-\d{2}-\d{2}$/.test(cutoffDate)) {
+                  return true;
+                }
+
+                return recurringPlannedDeliveryDates.some(
+                  (deliveryDate) => deliveryDate >= cutoffDate
+                );
+              });
+              const canUseComboInCurrentMode = !(isRecurringMode && seasonalIneligibility);
               const canIncrementCombo =
                 !billingLocked &&
                 canUseComboInCurrentMode &&
@@ -1267,7 +1458,9 @@ export default function SubscriptionForm({
                   </div>
                   {!canUseComboInCurrentMode && (
                     <div className="mt-2 text-xs text-[#7a5a2e]">
-                      This box includes seasonal products and is not available for subscription.
+                      {!seasonalIneligibility?.recurringCutoffDate
+                        ? "This box includes seasonal items that are not configured for recurring deliveries yet."
+                        : `This box includes seasonal items that must be delivered before ${seasonalIneligibility.recurringCutoffDate}.`}
                     </div>
                   )}
                 </article>
@@ -1291,7 +1484,7 @@ export default function SubscriptionForm({
                 Build Your Own Box
               </div>
               <p className="mt-2 max-w-2xl text-sm leading-7 text-[#53675d]">
-                Choose any mix of drinks you like, with at least 4 bottles and up to 10 bottles in each delivery.
+                Choose any mix of drinks you like, with at least 4 bottles and up to {MAX_TOTAL_QTY} bottles in each delivery.
               </p>
             </div>
             <div className="badge border-[#d1c4b0] bg-[#f7f1e6] text-[#2f5d49]">
@@ -1359,29 +1552,31 @@ export default function SubscriptionForm({
       )}
 
       {mode === "create" &&
-        (canOfferRecurringToggle ||
-          (selectedItems.length > 0 && !isPerennialOnlySelection) ||
-          recurringNotice) && (
+        allowRecurringRollout &&
+        (canOfferRecurringToggle || recurringNotice || recurringToggleProgress.message) && (
           <section className="rounded-2xl border border-[#d8cdbb] bg-[#fffaf1] p-4 text-sm text-[#53675d]">
             {canOfferRecurringToggle ? (
-              <label className="inline-flex cursor-pointer items-center gap-3">
-                <input
-                  type="checkbox"
-                  className="toggle toggle-sm"
-                  checked={wantsRecurring}
-                  onChange={(event) => {
-                    setWantsRecurring(event.target.checked);
-                    setRecurringNotice("");
-                  }}
-                />
-                <span>Want this on repeat? Make it recurring</span>
-              </label>
-            ) : (
-              <div>
-                {selectedItems.length > 0 && !isPerennialOnlySelection
-                  ? "This selection includes seasonal items, which are not available for subscription."
-                  : recurringNotice}
+              <div className="space-y-2">
+                <label className="inline-flex cursor-pointer items-center gap-3">
+                  <input
+                    type="checkbox"
+                    className="toggle toggle-sm"
+                    checked={wantsRecurring}
+                    onChange={(event) => {
+                      setWantsRecurring(event.target.checked);
+                      setRecurringNotice("");
+                    }}
+                  />
+                  <span>Want this on repeat? Make it recurring</span>
+                </label>
+                {recurringToggleProgress.message && (
+                  <div className={recurringToggleProgress.tone}>
+                    {recurringToggleProgress.message}
+                  </div>
+                )}
               </div>
+            ) : (
+              <div>{recurringNotice || recurringToggleProgress.message}</div>
             )}
           </section>
         )}
@@ -1739,6 +1934,19 @@ export default function SubscriptionForm({
                     : `${currency} ${Number(deliveryQuote?.deliveryFee || 0).toFixed(2)}`}
                 </span>
               </div>
+              {deliveryQuote?.isFreeDelivery && (
+                <div className="text-xs text-[#5f7068]">
+                  Delivery is free for this subtotal.
+                </div>
+              )}
+              {!deliveryQuote?.isFreeDelivery &&
+                Number.isFinite(Number(freeDeliveryThreshold)) &&
+                Number(freeDeliveryThreshold) > 0 && (
+                <div className="text-xs text-[#5f7068]">
+                  Delivery is free for orders above {currency}{" "}
+                  {Number(freeDeliveryThreshold).toFixed(2)}.
+                </div>
+              )}
               {deliveryQuote?.distanceKm > 0 && (
                 <div className="flex justify-between">
                   <span>Distance</span>
@@ -1749,13 +1957,8 @@ export default function SubscriptionForm({
               {!deliveryError && needsAddressSelection && (
                 <div className="text-[#6b7d74]">Please choose one of the suggested addresses to continue.</div>
               )}
-              {totalQuantity < MIN_TOTAL_QTY && (
-                <div className="text-[#8a5a20]">
-                  Add {MIN_TOTAL_QTY - totalQuantity} more bottle{MIN_TOTAL_QTY - totalQuantity === 1 ? "" : "s"} to reach the minimum box size.
-                </div>
-              )}
               {totalQuantity > MAX_TOTAL_QTY && (
-                <div className="text-error">Please bring this down to 10 bottles or fewer.</div>
+                <div className="text-error">Please bring this down to {MAX_TOTAL_QTY} bottles or fewer.</div>
               )}
               <div className="flex justify-between text-base font-semibold">
                 <span>{isOneTimeMode ? "Total due now" : "Total per delivery"}</span>

@@ -10,7 +10,14 @@ const createEmptySkuForm = () => ({
   unitPrice: 0,
   status: "active",
   isSeasonal: false,
+  recurringCutoffDate: "",
 });
+
+const getDefaultSeasonalCutoffDate = (now = new Date()) => {
+  const next = new Date(now);
+  next.setMonth(next.getMonth() + 3);
+  return next.toISOString().slice(0, 10);
+};
 
 export default function AdminSkuCatalogManager() {
   const [skuCatalog, setSkuCatalog] = useState([]);
@@ -63,6 +70,7 @@ export default function AdminSkuCatalogManager() {
             status: nextSku.status || "active",
             isSeasonal:
               nextSku.isSeasonal === true || nextSku.skuType === "seasonal",
+            recurringCutoffDate: String(nextSku.recurringCutoffDate || "").trim(),
           });
           return;
         }
@@ -77,6 +85,7 @@ export default function AdminSkuCatalogManager() {
         unitPrice: Number(first.unitPrice || 0),
         status: first.status || "active",
         isSeasonal: first.isSeasonal === true || first.skuType === "seasonal",
+        recurringCutoffDate: String(first.recurringCutoffDate || "").trim(),
       });
     } catch (loadError) {
       setError(loadError.message || "Could not load products.");
@@ -102,6 +111,7 @@ export default function AdminSkuCatalogManager() {
       unitPrice: Number(skuItem.unitPrice || 0),
       status: skuItem.status || "active",
       isSeasonal: skuItem.isSeasonal === true || skuItem.skuType === "seasonal",
+      recurringCutoffDate: String(skuItem.recurringCutoffDate || "").trim(),
     });
 
   };
@@ -132,6 +142,10 @@ export default function AdminSkuCatalogManager() {
             ...skuForm,
             isSeasonal: skuForm.isSeasonal === true,
             skuType: skuForm.isSeasonal === true ? "seasonal" : "perennial",
+            recurringCutoffDate:
+              skuForm.isSeasonal === true
+                ? String(skuForm.recurringCutoffDate || "").trim()
+                : "",
           }),
         }
       );
@@ -240,6 +254,12 @@ export default function AdminSkuCatalogManager() {
                       ? "seasonal"
                       : "perennial"}
                   </div>
+                  {(skuItem.isSeasonal === true || skuItem.skuType === "seasonal") &&
+                    skuItem.recurringCutoffDate && (
+                      <div className="mt-1 text-xs opacity-70">
+                        Subscription end date: {skuItem.recurringCutoffDate}
+                      </div>
+                    )}
                   <div className="mt-2 text-sm opacity-75">{skuItem.notes || "No description yet."}</div>
                   <div className="mt-3 text-sm font-medium">INR {Number(skuItem.unitPrice || 0).toFixed(2)}</div>
                 </button>
@@ -284,11 +304,52 @@ export default function AdminSkuCatalogManager() {
                   className="toggle toggle-sm"
                   checked={skuForm.isSeasonal === true}
                   onChange={(event) =>
-                    setSkuForm((current) => ({ ...current, isSeasonal: event.target.checked }))
+                    setSkuForm((current) => {
+                      const nextIsSeasonal = event.target.checked;
+
+                      return {
+                        ...current,
+                        isSeasonal: nextIsSeasonal,
+                        recurringCutoffDate:
+                          nextIsSeasonal && !String(current.recurringCutoffDate || "").trim()
+                            ? getDefaultSeasonalCutoffDate()
+                            : current.recurringCutoffDate,
+                      };
+                    })
                   }
                 />
                 <span className="label-text">Seasonal item</span>
               </label>
+
+              {skuForm.isSeasonal && (
+                <label className="form-control w-full md:col-span-2">
+                  <div className="label items-center">
+                    <span className="label-text">Subscription end date</span>
+                    <span
+                      className="ml-2 cursor-help rounded-full border border-base-300 px-2 py-0.5 text-xs opacity-70"
+                      title="Seasonal products can be included in subscriptions only for deliveries before this date."
+                    >
+                      ?
+                    </span>
+                  </div>
+                  <input
+                    type="date"
+                    className="input input-bordered"
+                    value={skuForm.recurringCutoffDate || ""}
+                    onChange={(event) =>
+                      setSkuForm((current) => ({
+                        ...current,
+                        recurringCutoffDate: event.target.value,
+                      }))
+                    }
+                  />
+                  <div className="label">
+                    <span className="label-text-alt">
+                      Last date before which this seasonal product can be delivered in a subscription.
+                    </span>
+                  </div>
+                </label>
+              )}
 
               <label className="form-control w-full md:col-span-2">
                 <div className="label"><span className="label-text">Product name</span></div>

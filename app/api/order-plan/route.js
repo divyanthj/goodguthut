@@ -292,6 +292,7 @@ export async function POST(req) {
     console.error(error);
     if (
       error.message?.startsWith("SKU ") ||
+      error.message === "Recurring subscription access is not enabled for this link." ||
       error.message === "Select a valid order mode." ||
       error.message === "Enter a valid name." ||
       error.message === "Enter a valid phone number." ||
@@ -308,10 +309,10 @@ export async function POST(req) {
       error.message === "Add at least one product quantity (SKU + quantity) before starting a subscription." ||
       error.message === "Too many distinct products in one order." ||
       error.message === "Too many distinct products in one subscription." ||
-      error.message === "Orders must include at least 4 bottles." ||
-      error.message === "Orders cannot include more than 10 bottles." ||
-      error.message === "Subscriptions must include at least 4 bottles." ||
-      error.message === "Subscriptions cannot include more than 10 bottles." ||
+      error.message?.startsWith("Orders must include at least ") ||
+      error.message?.startsWith("Orders cannot include more than ") ||
+      error.message?.startsWith("Subscriptions must include at least ") ||
+      error.message?.startsWith("Subscriptions cannot include more than ") ||
       error.message === "Subscriptions are not available until delivery days are configured." ||
       error.message === "Orders are not available until delivery days are configured." ||
       error.message === "There are no delivery dates available in the next 30 days." ||

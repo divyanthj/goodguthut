@@ -6,6 +6,11 @@ import connectMongo from "@/libs/mongoose";
 import Sku from "@/models/Sku";
 import { listSkuCatalog } from "@/libs/sku-catalog";
 
+const normalizeRecurringCutoffDate = (value = "") => {
+  const normalized = String(value || "").trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized : "";
+};
+
 const getAdminSession = async () => {
   const session = await getServerSession(authOptions);
 
@@ -30,6 +35,7 @@ const normalizeSkuPayload = (body = {}) => ({
     body.isSeasonal === true || body.skuType === "seasonal"
       ? "seasonal"
       : "perennial",
+  recurringCutoffDate: normalizeRecurringCutoffDate(body.recurringCutoffDate),
 });
 
 export async function GET() {

@@ -7,6 +7,7 @@ import {
   getSubscriptionSettings,
   sanitizeDeliveryDaysOfWeek,
   sanitizeMinimumLeadDays,
+  sanitizeRecurringMinTotalQuantity,
 } from "@/libs/subscription-settings";
 import { recalculateSubscriptionRouteSnapshots } from "@/libs/subscription-route-planner";
 
@@ -51,6 +52,9 @@ export async function PUT(req) {
     const settings = await getSubscriptionSettings();
     settings.deliveryDaysOfWeek = sanitizeDeliveryDaysOfWeek(body.deliveryDaysOfWeek);
     settings.minimumLeadDays = sanitizeMinimumLeadDays(body.minimumLeadDays);
+    settings.recurringMinTotalQuantity = sanitizeRecurringMinTotalQuantity(
+      body.recurringMinTotalQuantity
+    );
     await settings.save();
     await recalculateSubscriptionRouteSnapshots();
     const refreshedSettings = await getSubscriptionSettings();

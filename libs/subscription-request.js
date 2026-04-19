@@ -8,7 +8,9 @@ import {
   getSubscriptionSettings,
   sanitizeDeliveryDaysOfWeek,
   sanitizeMinimumLeadDays,
+  sanitizeRecurringMinTotalQuantity,
 } from "@/libs/subscription-settings";
+import { MAX_TOTAL_QTY } from "@/libs/order-quantity";
 import PreorderWindow from "@/models/PreorderWindow";
 import {
   isValidAddress,
@@ -28,6 +30,7 @@ import {
   getDefaultSubscriptionStartDate,
   getNextSubscriptionDeliveryDate,
   isValidSubscriptionStartDate,
+  listPlannedSubscriptionDeliveryDates,
   listAvailableSubscriptionStartDates,
 } from "@/libs/subscription-schedule";
 
@@ -80,8 +83,12 @@ export const getSubscriptionSetupContext = async () => {
     deliveryWindowId: serializedDeliveryWindow?.id || "",
     pickupAddress: serializedDeliveryWindow?.pickupAddress || "",
     deliveryBands: serializedDeliveryWindow?.deliveryBands || [],
+    freeDeliveryThreshold: serializedDeliveryWindow?.freeDeliveryThreshold ?? null,
     deliveryDaysOfWeek: sanitizeDeliveryDaysOfWeek(subscriptionSettings?.deliveryDaysOfWeek),
     minimumLeadDays: sanitizeMinimumLeadDays(subscriptionSettings?.minimumLeadDays),
+    recurringMinTotalQuantity: sanitizeRecurringMinTotalQuantity(
+      subscriptionSettings?.recurringMinTotalQuantity
+    ),
     availableStartDates: listAvailableSubscriptionStartDates({
       deliveryDaysOfWeek: sanitizeDeliveryDaysOfWeek(subscriptionSettings?.deliveryDaysOfWeek),
       minimumLeadDays: sanitizeMinimumLeadDays(subscriptionSettings?.minimumLeadDays),
@@ -155,8 +162,10 @@ export const buildSubscriptionRequest = async (body = {}) => {
     comboCatalog,
     pickupAddress,
     deliveryBands,
+    freeDeliveryThreshold,
     deliveryDaysOfWeek,
     minimumLeadDays,
+    recurringMinTotalQuantity,
     currency,
   } = await getSubscriptionSetupContext();
   const skuMap = getSkuMap(skuCatalog);
@@ -184,10 +193,6 @@ export const buildSubscriptionRequest = async (body = {}) => {
       throw new Error(`SKU ${item.sku} is not currently available`);
     }
 
-    if ((catalogItem.skuType || "perennial") !== "perennial") {
-      throw new Error(`SKU ${item.sku} is seasonal and cannot be used in subscriptions.`);
-    }
-
     if (item.quantity > MAX_PER_ORDER_LIMIT) {
       throw new Error(`SKU ${item.sku} maximum quantity per subscription is ${MAX_PER_ORDER_LIMIT}`);
     }
@@ -200,18 +205,22 @@ export const buildSubscriptionRequest = async (body = {}) => {
       quantity: item.quantity,
       unitPrice,
       lineTotal: item.quantity * unitPrice,
+      skuType: catalogItem.skuType || "perennial",
+      recurringCutoffDate: String(catalogItem.recurringCutoffDate || "").trim(),
     };
   });
 
   const subtotal = items.reduce((sum, item) => sum + item.lineTotal, 0);
   const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
 
-  if (totalQuantity < 4) {
-    throw new Error("Subscriptions must include at least 4 bottles.");
+  if (totalQuantity < recurringMinTotalQuantity) {
+    throw new Error(
+      `Subscriptions must include at least ${recurringMinTotalQuantity} bottles.`
+    );
   }
 
-  if (totalQuantity > 10) {
-    throw new Error("Subscriptions cannot include more than 10 bottles.");
+  if (totalQuantity > MAX_TOTAL_QTY) {
+    throw new Error(`Subscriptions cannot include more than ${MAX_TOTAL_QTY} bottles.`);
   }
 
   if (deliveryDaysOfWeek.length === 0) {
@@ -239,6 +248,38 @@ export const buildSubscriptionRequest = async (body = {}) => {
     throw new Error("Choose a valid first delivery date within the next 30 days.");
   }
 
+  const plannedDeliveryDates = listPlannedSubscriptionDeliveryDates({
+    startDate,
+    cadence,
+    totalCount: durationConfig.totalCount,
+  });
+
+  const invalidSeasonalItem = items.find((item) => {
+    if ((item.skuType || "perennial") !== "seasonal") {
+      return false;
+    }
+
+    const cutoffDate = String(item.recurringCutoffDate || "").trim();
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(cutoffDate)) {
+      return true;
+    }
+
+    return plannedDeliveryDates.some((deliveryDate) => deliveryDate >= cutoffDate);
+  });
+
+  if (invalidSeasonalItem) {
+    if (!invalidSeasonalItem.recurringCutoffDate) {
+      throw new Error(
+        `SKU ${invalidSeasonalItem.sku} is seasonal and cannot be used in subscriptions until a recurring cutoff date is set.`
+      );
+    }
+
+    throw new Error(
+      `SKU ${invalidSeasonalItem.sku} is seasonal and can only be subscribed to when all deliveries are before ${invalidSeasonalItem.recurringCutoffDate}.`
+    );
+  }
+
   let deliveryFee = 0;
   let deliveryDistanceKm = 0;
   let normalizedDeliveryAddress = address;
@@ -254,6 +295,8 @@ export const buildSubscriptionRequest = async (body = {}) => {
       deliveryBands,
       address,
       placeDetails,
+      orderSubtotal: subtotal,
+      freeDeliveryThreshold,
     });
 
     if (!deliveryQuote.isDeliverable) {
@@ -280,6 +323,7 @@ export const buildSubscriptionRequest = async (body = {}) => {
     comboName: selectedCombo?.name || "",
     deliveryDaysOfWeek,
     minimumLeadDays,
+    recurringMinTotalQuantity,
     startDate,
     firstDeliveryDate: startDate,
     nextDeliveryDate: getNextSubscriptionDeliveryDate({

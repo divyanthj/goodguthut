@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
+import { MAX_TOTAL_QTY } from "@/libs/order-quantity";
 
 const createEmptyComboForm = () => ({
   id: "",
@@ -133,7 +134,10 @@ export default function AdminSubscriptionCombosManager({
       ...current,
       items: current.items.map((item) =>
         item.sku === sku
-          ? { ...item, quantity: Math.max(1, Math.min(10, Number(quantity || 1))) }
+          ? {
+              ...item,
+              quantity: Math.max(1, Math.min(MAX_TOTAL_QTY, Number(quantity || 1))),
+            }
           : item
       ),
     }));
@@ -228,7 +232,7 @@ export default function AdminSubscriptionCombosManager({
         <div>
           <h2 className="text-lg font-semibold">Boxes</h2>
           <p className="text-sm opacity-70">
-            Build fixed 4 to 10 bottle boxes that customers can choose at checkout.
+            Build fixed 4 to {MAX_TOTAL_QTY} bottle boxes that customers can choose at checkout.
           </p>
         </div>
         <button type="button" className="btn btn-primary btn-sm" onClick={startNewCombo}>
@@ -365,7 +369,7 @@ export default function AdminSubscriptionCombosManager({
               <div>
                 <div className="font-medium">Box lineup</div>
                 <div className="text-sm opacity-70">
-                  Keep each combo between 4 and 10 bottles total.
+                  Keep each combo between 4 and {MAX_TOTAL_QTY} bottles total.
                 </div>
               </div>
               <div className="badge badge-outline">
@@ -393,7 +397,7 @@ export default function AdminSubscriptionCombosManager({
                     <input
                       type="number"
                       min="1"
-                      max="10"
+                      max={String(MAX_TOTAL_QTY)}
                       className="input input-bordered"
                       value={item.quantity}
                       onChange={(event) => updateItemQuantity(item.sku, event.target.value)}

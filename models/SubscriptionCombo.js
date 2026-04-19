@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import toJSON from "./plugins/toJSON";
+import { MAX_TOTAL_QTY } from "@/libs/order-quantity";
 
 const subscriptionComboItemSchema = mongoose.Schema(
   {
@@ -22,7 +23,7 @@ const subscriptionComboItemSchema = mongoose.Schema(
 const totalQuantityValidator = (items = []) =>
   Array.isArray(items) &&
   items.reduce((sum, item) => sum + Number(item?.quantity || 0), 0) >= 4 &&
-  items.reduce((sum, item) => sum + Number(item?.quantity || 0), 0) <= 10;
+  items.reduce((sum, item) => sum + Number(item?.quantity || 0), 0) <= MAX_TOTAL_QTY;
 
 const subscriptionComboSchema = mongoose.Schema(
   {
@@ -54,7 +55,7 @@ const subscriptionComboSchema = mongoose.Schema(
       default: [],
       validate: {
         validator: totalQuantityValidator,
-        message: "Subscription combos must contain between 4 and 10 bottles.",
+        message: `Subscription combos must contain between 4 and ${MAX_TOTAL_QTY} bottles.`,
       },
     },
   },

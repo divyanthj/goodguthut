@@ -1,16 +1,19 @@
 import AdminLoginButton from "@/components/AdminLoginButton";
 import AdminNav from "@/components/AdminNav";
+import AdminPreorderConsole from "@/components/AdminPreorderConsole";
 import AdminSkuCatalogManager from "@/components/AdminSkuCatalogManager";
 import AdminSubscriptionCombosManager from "@/components/AdminSubscriptionCombosManager";
 import AdminSubscriptionScheduleManager from "@/components/AdminSubscriptionScheduleManager";
 import { getAdminSessionState } from "@/libs/admin-auth";
 import connectMongo from "@/libs/mongoose";
+import { createDefaultPreorderWindow } from "@/libs/preorder-catalog";
 import { getSkuMap, listSkuCatalog } from "@/libs/sku-catalog";
 import {
   hydrateSubscriptionCombo,
   listSubscriptionCombos,
 } from "@/libs/subscription-combos";
 import { getSubscriptionSettings } from "@/libs/subscription-settings";
+import PreorderWindow from "@/models/PreorderWindow";
 
 export default async function AdminPage() {
   const { session, isAdmin } = await getAdminSessionState();
@@ -48,13 +51,16 @@ export default async function AdminPage() {
   }
 
   await connectMongo();
-  const [settings, skuCatalog, comboDocs] = await Promise.all([
+  const [settings, skuCatalog, comboDocs, preorderWindowDocs] = await Promise.all([
     getSubscriptionSettings(),
     listSkuCatalog(),
     listSubscriptionCombos(),
+    PreorderWindow.find({}).sort({ status: 1, deliveryDate: -1, updatedAt: -1, createdAt: -1 }),
   ]);
   const skuMap = getSkuMap(skuCatalog);
   const combos = comboDocs.map((combo) => hydrateSubscriptionCombo(combo, skuMap));
+  const preorderWindows = JSON.parse(JSON.stringify(preorderWindowDocs || []));
+  const defaultPreorderWindow = createDefaultPreorderWindow();
 
   return (
     <main className="min-h-screen bg-base-200 px-4 py-10 md:px-6">
@@ -72,7 +78,26 @@ export default async function AdminPage() {
         <AdminSubscriptionScheduleManager
           initialDeliveryDaysOfWeek={settings?.deliveryDaysOfWeek || []}
           initialMinimumLeadDays={Number(settings?.minimumLeadDays || 3)}
+          initialRecurringMinTotalQuantity={Number(
+            settings?.recurringMinTotalQuantity || 6
+          )}
         />
+
+        <section className="rounded-2xl bg-base-100 p-5 shadow-md">
+          <div className="mb-4">
+            <h2 className="text-lg font-semibold">Delivery Pricing & Slabs</h2>
+            <p className="text-sm opacity-70">
+              These settings are used directly when customers see delivery charges at checkout.
+            </p>
+          </div>
+          <AdminPreorderConsole
+            initialWindows={preorderWindows}
+            initialSkuCatalog={skuCatalog}
+            defaultWindow={defaultPreorderWindow}
+            adminEmail={session.user.email}
+            view="settings"
+          />
+        </section>
 
         <AdminSkuCatalogManager />
 

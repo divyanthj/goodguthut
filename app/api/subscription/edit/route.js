@@ -375,8 +375,8 @@ export async function PATCH(req) {
       error.message === "We do not deliver there yet." ||
       error.message === "Add at least one product quantity (SKU + quantity) before starting a subscription." ||
       error.message === "Too many distinct products in one subscription." ||
-      error.message === "Subscriptions must include at least 4 bottles." ||
-      error.message === "Subscriptions cannot include more than 10 bottles." ||
+      error.message?.startsWith("Subscriptions must include at least ") ||
+      error.message?.startsWith("Subscriptions cannot include more than ") ||
       error.message === "Subscriptions are not available until delivery days are configured." ||
       error.message === "There are no delivery dates available in the next 30 days." ||
       error.message === "Choose a valid first delivery date within the next 30 days."

@@ -572,9 +572,11 @@ export default function AdminPreorderConsole({
 
   return (
     <div className="space-y-6">
+      {!isSettingsView && (
       <div className="rounded-2xl border border-base-300 bg-base-200 p-4 text-sm">
         Signed in as <strong>{adminEmail}</strong>. Only emails listed in <code>ADMINS</code> can use this page.
       </div>
+      )}
 
       <div className={`grid gap-6 ${isPreordersView ? "lg:grid-cols-[320px_minmax(0,1fr)]" : ""}`}>
         {isPreordersView && (
@@ -626,7 +628,7 @@ export default function AdminPreorderConsole({
         )}
 
         <div className="space-y-6">
-          {!isPreordersView && (
+          {!isPreordersView && !isSettingsView && (
           <div className="card bg-base-100 shadow-xl">
             <div className="card-body gap-5">
               <div className="flex items-center justify-between gap-3">
@@ -769,7 +771,7 @@ export default function AdminPreorderConsole({
                   </h2>
                   <p className="mt-1 text-sm opacity-70">
                     {isSettingsView
-                      ? "Choose a batch and update its delivery pricing and pickup settings."
+                      ? "Choose a batch and update delivery pricing slabs and pickup settings used at checkout."
                       : "This batch only controls timing, delivery rules, and which catalog SKUs are included."}
                   </p>
                   {!canSaveOpenWindow && (
@@ -879,14 +881,18 @@ export default function AdminPreorderConsole({
                   <input type="datetime-local" className="input input-bordered" value={windowConfig.closesAt} onChange={(event) => setField("closesAt", event.target.value)} />
                 </label>
                 )}
+                {!isSettingsView && (
                 <label className="form-control w-full">
                   <div className="label"><span className="label-text">Minimum order quantity</span></div>
                   <input type="number" min="1" className="input input-bordered" value={windowConfig.minimumOrderQuantity} onChange={(event) => setField("minimumOrderQuantity", Number(event.target.value || 1))} />
                 </label>
+                )}
+                {!isSettingsView && (
                 <label className="form-control w-full">
                   <div className="label"><span className="label-text">Currency</span></div>
                   <input className="input input-bordered" value={windowConfig.currency} onChange={(event) => setField("currency", event.target.value.toUpperCase())} />
                 </label>
+                )}
                 <div className="form-control w-full md:col-span-2">
                   <div className="label"><span className="label-text">Pickup address</span></div>
                   <div className="grid gap-4 md:grid-cols-[220px_minmax(0,1fr)]">

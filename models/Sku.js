@@ -35,6 +35,11 @@ const skuSchema = mongoose.Schema(
       enum: ["perennial", "seasonal"],
       default: "perennial",
     },
+    recurringCutoffDate: {
+      type: String,
+      trim: true,
+      default: "",
+    },
   },
   {
     timestamps: true,

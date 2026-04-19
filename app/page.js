@@ -1,8 +1,19 @@
 import Image from "next/image";
 import UnifiedOrderCheckout from "@/components/UnifiedOrderCheckout";
 import { getSubscriptionSetupContext } from "@/libs/subscription-request";
+import {
+  RECURRING_ROLLOUT_QUERY_PARAM,
+  verifySignedRecurringRolloutToken,
+} from "@/libs/subscription-rollout";
 
-export default async function HomePage() {
+export default async function HomePage({ searchParams }) {
+  const rawRolloutAccessToken = searchParams?.[RECURRING_ROLLOUT_QUERY_PARAM];
+  const rolloutAccessToken = String(
+    Array.isArray(rawRolloutAccessToken)
+      ? rawRolloutAccessToken[0] || ""
+      : rawRolloutAccessToken || ""
+  ).trim();
+  const rolloutAccess = verifySignedRecurringRolloutToken(rolloutAccessToken);
   const {
     skuCatalog,
     comboCatalog,
@@ -11,6 +22,8 @@ export default async function HomePage() {
     deliveryBands,
     deliveryDaysOfWeek,
     minimumLeadDays,
+    recurringMinTotalQuantity,
+    freeDeliveryThreshold,
     availableStartDates,
     defaultStartDate,
     currency,
@@ -24,6 +37,8 @@ export default async function HomePage() {
       deliveryBands: [],
       deliveryDaysOfWeek: [],
       minimumLeadDays: 3,
+      recurringMinTotalQuantity: 6,
+      freeDeliveryThreshold: null,
       availableStartDates: [],
       defaultStartDate: "",
       currency: "INR",
@@ -73,9 +88,13 @@ export default async function HomePage() {
           deliveryBands={deliveryBands}
           deliveryDaysOfWeek={deliveryDaysOfWeek}
           minimumLeadDays={minimumLeadDays}
+          recurringMinTotalQuantity={recurringMinTotalQuantity}
+          freeDeliveryThreshold={freeDeliveryThreshold}
           availableStartDates={availableStartDates}
           defaultStartDate={defaultStartDate}
           currency={currency}
+          allowRecurringRollout={rolloutAccess.isValid}
+          rolloutAccessToken={rolloutAccess.isValid ? rolloutAccessToken : ""}
         />
       </section>
     </main>

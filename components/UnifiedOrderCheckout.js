@@ -10,9 +10,13 @@ export default function UnifiedOrderCheckout({
   deliveryBands = [],
   deliveryDaysOfWeek = [],
   minimumLeadDays = 3,
+  recurringMinTotalQuantity = 6,
+  freeDeliveryThreshold = null,
   availableStartDates = [],
   defaultStartDate = "",
   currency = "INR",
+  allowRecurringRollout = false,
+  rolloutAccessToken = "",
 }) {
   return (
     <div>
@@ -24,10 +28,14 @@ export default function UnifiedOrderCheckout({
         deliveryBands={deliveryBands}
         deliveryDaysOfWeek={deliveryDaysOfWeek}
         minimumLeadDays={minimumLeadDays}
+        recurringMinTotalQuantity={recurringMinTotalQuantity}
+        freeDeliveryThreshold={freeDeliveryThreshold}
         availableStartDates={availableStartDates}
         defaultStartDate={defaultStartDate}
         currency={currency}
         initialSelectionMode="combo"
+        allowRecurringRollout={allowRecurringRollout}
+        rolloutAccessToken={rolloutAccessToken}
       />
     </div>
   );

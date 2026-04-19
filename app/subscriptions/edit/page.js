@@ -12,6 +12,8 @@ export default async function SubscriptionEditRoute({ searchParams }) {
     deliveryBands,
     deliveryDaysOfWeek,
     minimumLeadDays,
+    recurringMinTotalQuantity,
+    freeDeliveryThreshold,
     availableStartDates,
     defaultStartDate,
     currency,
@@ -26,6 +28,8 @@ export default async function SubscriptionEditRoute({ searchParams }) {
         deliveryBands: [],
         deliveryDaysOfWeek: [],
         minimumLeadDays: 3,
+        recurringMinTotalQuantity: 6,
+        freeDeliveryThreshold: null,
         availableStartDates: [],
         defaultStartDate: "",
         currency: "INR",
@@ -64,6 +68,8 @@ export default async function SubscriptionEditRoute({ searchParams }) {
           deliveryBands={deliveryBands}
           deliveryDaysOfWeek={deliveryDaysOfWeek}
           minimumLeadDays={minimumLeadDays}
+          recurringMinTotalQuantity={recurringMinTotalQuantity}
+          freeDeliveryThreshold={freeDeliveryThreshold}
           availableStartDates={availableStartDates}
           defaultStartDate={defaultStartDate}
           currency={currency}
