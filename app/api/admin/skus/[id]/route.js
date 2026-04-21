@@ -111,7 +111,7 @@ export async function DELETE(_req, { params }) {
 
     if (comboUsingSku) {
       return NextResponse.json(
-        { error: "Remove this SKU from all boxes before deleting it." },
+        { error: "Remove this SKU from all sets before deleting it." },
         { status: 409 }
       );
     }
@@ -124,3 +124,4 @@ export async function DELETE(_req, { params }) {
     return NextResponse.json({ error: deleteError.message }, { status: 500 });
   }
 }
+

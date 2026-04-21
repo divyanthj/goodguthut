@@ -88,13 +88,13 @@ const buildRecurringEligibility = ({
       return {
         isEligible: false,
         reason:
-          "This selection includes seasonal items that are not yet configured for recurring deliveries.",
+          "Recurring is only available when every selected item is available for the full plan duration.",
       };
     }
 
     return {
       isEligible: false,
-      reason: `This selection includes seasonal items that must be delivered before ${invalidSeasonalItem.recurringCutoffDate}.`,
+      reason: `Recurring requires full-plan item availability. One or more seasonal items are only available before ${invalidSeasonalItem.recurringCutoffDate}.`,
     };
   }
 
@@ -532,7 +532,8 @@ export default function SubscriptionForm({
 
   const deliveryConfigured = Boolean(pickupAddress && deliveryBands.length > 0);
   const fullAddress = buildFullAddress(customer.addressLine2, customer.address);
-  const total = subtotal + Number(deliveryQuote?.deliveryFee || 0);
+  const effectiveDeliveryFee = isRecurringMode ? 0 : Number(deliveryQuote?.deliveryFee || 0);
+  const total = subtotal + effectiveDeliveryFee;
   const needsAddressSelection =
     deliveryConfigured && customer.address.trim() && !selectedPlace && !hasVerifiedAddress;
   const durationOptions = getSubscriptionDurationOptions(cadence);
@@ -952,7 +953,7 @@ export default function SubscriptionForm({
     setSuccessMessage("");
 
     if (effectiveSelectionMode === "combo" && selectedComboBreakdown.length === 0) {
-      setError("Please add at least one ready-to-go box before continuing.");
+      setError("Please add at least one ready-to-go set before continuing.");
       return;
     }
 
@@ -962,7 +963,7 @@ export default function SubscriptionForm({
     }
 
     if (selectedItems.length === 0) {
-      setError("Choose a box or add a few bottles before continuing.");
+      setError("Choose a set or add a few bottles before continuing.");
       return;
     }
 
@@ -1313,10 +1314,10 @@ export default function SubscriptionForm({
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <div>
             <div className="text-xs font-semibold uppercase tracking-[0.24em] text-[#6b7d74]">
-              Choose Your Box
+              Choose Your Set
             </div>
             <p className="mt-2 max-w-2xl text-sm leading-7 text-[#53675d]">
-              Start with one of our ready-to-go boxes, or build your own with the drinks you love.
+              Start with one of our ready-to-go sets, or build your own with the drinks you love.
             </p>
           </div>
           <div className="badge border-[#d1c4b0] bg-[#f7f1e6] text-[#2f5d49]">
@@ -1335,7 +1336,7 @@ export default function SubscriptionForm({
             disabled={billingLocked || comboOptions.length === 0}
             onClick={() => setSelectionMode("combo")}
           >
-            <div className="text-lg font-semibold text-[#2f4a3e]">Ready-to-go boxes</div>
+            <div className="text-lg font-semibold text-[#2f4a3e]">Ready-to-go sets</div>
             <p className="mt-2 text-sm leading-7 text-[#53675d]">
               Easy picks put together by us if you want the quickest way to get started.
             </p>
@@ -1350,7 +1351,7 @@ export default function SubscriptionForm({
             disabled={billingLocked}
             onClick={() => setSelectionMode("custom")}
           >
-            <div className="text-lg font-semibold text-[#2f4a3e]">Build your own box</div>
+            <div className="text-lg font-semibold text-[#2f4a3e]">Build your own set</div>
             <p className="mt-2 text-sm leading-7 text-[#53675d]">
               Mix and match your favourites and choose exactly what goes into each delivery.
             </p>
@@ -1413,7 +1414,7 @@ export default function SubscriptionForm({
                     </span>
                   </div>
                   <div className="mt-3 text-xs text-[#5f7068]">
-                    {comboQty > 0 ? `${comboQty} box${comboQty === 1 ? "" : "es"} selected` : "Not added yet"}
+                    {comboQty > 0 ? `${comboQty} set${comboQty === 1 ? "" : "s"} selected` : "Not added yet"}
                   </div>
                   <ul className="mt-4 space-y-2 text-sm text-[#456154]">
                     {(combo.items || []).map((item) => (
@@ -1459,8 +1460,8 @@ export default function SubscriptionForm({
                   {!canUseComboInCurrentMode && (
                     <div className="mt-2 text-xs text-[#7a5a2e]">
                       {!seasonalIneligibility?.recurringCutoffDate
-                        ? "This box includes seasonal items that are not configured for recurring deliveries yet."
-                        : `This box includes seasonal items that must be delivered before ${seasonalIneligibility.recurringCutoffDate}.`}
+                        ? "This set includes seasonal items that are not configured for recurring deliveries yet."
+                        : `This set includes seasonal items that must be delivered before ${seasonalIneligibility.recurringCutoffDate}.`}
                     </div>
                   )}
                 </article>
@@ -1471,7 +1472,7 @@ export default function SubscriptionForm({
 
         {selectionMode === "combo" && comboOptions.length === 0 && (
           <div className="mt-6 rounded-2xl border border-[#d8cdbb] bg-[#fffaf1] p-4 text-sm text-[#53675d]">
-            We don&apos;t have any ready-to-go boxes live right now, so you can build your own below.
+            We don&apos;t have any ready-to-go sets live right now, so you can build your own below.
           </div>
         )}
       </section>
@@ -1481,7 +1482,7 @@ export default function SubscriptionForm({
           <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
             <div>
               <div className="text-xs font-semibold uppercase tracking-[0.24em] text-[#6b7d74]">
-                Build Your Own Box
+                Build Your Own Set
               </div>
               <p className="mt-2 max-w-2xl text-sm leading-7 text-[#53675d]">
                 Choose any mix of drinks you like, with at least 4 bottles and up to {MAX_TOTAL_QTY} bottles in each delivery.
@@ -1569,6 +1570,9 @@ export default function SubscriptionForm({
                   />
                   <span>Want this on repeat? Make it recurring</span>
                 </label>
+                <div className="text-xs text-[#6b7d74]">
+                  Recurring is available only when all selected items can be delivered for the full selected duration.
+                </div>
                 {recurringToggleProgress.message && (
                   <div className={recurringToggleProgress.tone}>
                     {recurringToggleProgress.message}
@@ -1826,9 +1830,9 @@ export default function SubscriptionForm({
                 <p className="mt-2 text-sm leading-7 text-[#53675d]">
                   {effectiveSelectionMode === "combo"
                     ? selectedComboBreakdown.length > 0
-                      ? `You have selected ${selectedComboBreakdown.length} ready-to-go box${selectedComboBreakdown.length === 1 ? "" : "es"}.`
-                      : "Choose one or more ready-to-go boxes to continue."
-                    : "You are creating your own box from the current menu."}
+                      ? `You have selected ${selectedComboBreakdown.length} ready-to-go set${selectedComboBreakdown.length === 1 ? "" : "s"}.`
+                      : "Choose one or more ready-to-go sets to continue."
+                    : "You are creating your own set from the current menu."}
                 </p>
               </div>
               <div className="badge border-[#d1c4b0] bg-[#f7f1e6] text-[#2f5d49]">
@@ -1838,7 +1842,7 @@ export default function SubscriptionForm({
 
             {selectedItems.length === 0 ? (
               <p className="mt-4 text-sm opacity-70">
-                Nothing selected yet. Choose a box or add a few bottles to continue.
+                Nothing selected yet. Choose a set or add a few bottles to continue.
               </p>
             ) : (
               <div className="mt-4 space-y-4">
@@ -1847,7 +1851,7 @@ export default function SubscriptionForm({
                     <table className="table table-sm">
                       <thead>
                         <tr>
-                          <th>Box</th>
+                          <th>Set</th>
                           <th>Qty</th>
                           <th className="text-right">Line total</th>
                         </tr>
@@ -1929,17 +1933,25 @@ export default function SubscriptionForm({
               <div className="flex justify-between">
                 <span>Delivery</span>
                 <span>
-                  {isQuotingDelivery
+                  {isRecurringMode
+                    ? "Free"
+                    : isQuotingDelivery
                     ? "Calculating..."
                     : `${currency} ${Number(deliveryQuote?.deliveryFee || 0).toFixed(2)}`}
                 </span>
               </div>
-              {deliveryQuote?.isFreeDelivery && (
+              {isRecurringMode && (
+                <div className="text-xs text-[#5f7068]">
+                  Recurring plans include free delivery.
+                </div>
+              )}
+              {!isRecurringMode && deliveryQuote?.isFreeDelivery && (
                 <div className="text-xs text-[#5f7068]">
                   Delivery is free for this subtotal.
                 </div>
               )}
-              {!deliveryQuote?.isFreeDelivery &&
+              {!isRecurringMode &&
+                !deliveryQuote?.isFreeDelivery &&
                 Number.isFinite(Number(freeDeliveryThreshold)) &&
                 Number(freeDeliveryThreshold) > 0 && (
                 <div className="text-xs text-[#5f7068]">
@@ -2039,3 +2051,4 @@ export default function SubscriptionForm({
     </div>
   );
 }
+

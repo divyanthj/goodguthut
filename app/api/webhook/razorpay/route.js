@@ -8,8 +8,10 @@ import connectMongo from "@/libs/mongoose";
 import OrderPlan from "@/models/OrderPlan";
 import Preorder from "@/models/Preorder";
 import Subscription from "@/models/Subscription";
-import { verifyRazorpayWebhookSignature } from "@/libs/razorpay";
+import Sku from "@/models/Sku";
+import { cancelRazorpaySubscription, verifyRazorpayWebhookSignature } from "@/libs/razorpay";
 import { getNextSubscriptionDeliveryDate } from "@/libs/subscription-schedule";
+import { buildSeasonalCutoffMapFromCatalog, getValidRecurringDeliveryCount } from "@/libs/recurring-seasonal-policy";
 
 const getRazorpayOrderIdFromEvent = (event) => {
   return event?.payload?.payment?.entity?.order_id || event?.payload?.order?.entity?.id || "";
@@ -19,6 +21,48 @@ const getRazorpaySubscriptionIdFromEvent = (event) =>
   event?.payload?.subscription?.entity?.id ||
   event?.payload?.payment?.entity?.subscription_id ||
   "";
+
+const TERMINAL_BILLING_STATUSES = new Set(["cancelled", "completed", "expired"]);
+
+const applyRecurringNaturalEnd = ({
+  planDoc,
+  paymentField = "payment",
+  seasonalCutoffBySku,
+}) => {
+  const payment = planDoc?.[paymentField] || {};
+  const requestedTotalCount = Math.max(0, Number(payment?.totalCount || 0));
+  const paidCount = Math.max(0, Number(payment?.paidCount || 0));
+
+  if (!requestedTotalCount || !planDoc?.startDate || !planDoc?.cadence) {
+    return { shouldCancelNow: false };
+  }
+
+  const validTotalCount = getValidRecurringDeliveryCount({
+    items: planDoc.items || [],
+    startDate: planDoc.firstDeliveryDate || planDoc.startDate,
+    cadence: planDoc.cadence,
+    requestedTotalCount,
+    seasonalCutoffBySku,
+  });
+
+  const effectiveTotalCount = Math.min(requestedTotalCount, validTotalCount);
+
+  planDoc[paymentField].totalCount = effectiveTotalCount;
+  planDoc[paymentField].remainingCount = Math.max(0, effectiveTotalCount - paidCount);
+  planDoc.nextDeliveryDate = getNextSubscriptionDeliveryDate({
+    startDate: planDoc.firstDeliveryDate || planDoc.startDate,
+    cadence: planDoc.cadence,
+    paidCount,
+    totalCount: effectiveTotalCount,
+  });
+
+  return {
+    shouldCancelNow:
+      requestedTotalCount > effectiveTotalCount &&
+      paidCount >= effectiveTotalCount &&
+      Boolean(payment?.subscriptionId),
+  };
+};
 
 export async function POST(req) {
   const body = await req.text();
@@ -32,6 +76,9 @@ export async function POST(req) {
     await connectMongo();
 
     const event = JSON.parse(body);
+    const seasonalCutoffBySku = buildSeasonalCutoffMapFromCatalog(
+      await Sku.find({}).select("sku skuType recurringCutoffDate").lean()
+    );
     const razorpaySubscriptionId = getRazorpaySubscriptionIdFromEvent(event);
     const razorpayOrderId = getRazorpayOrderIdFromEvent(event);
 
@@ -110,6 +157,31 @@ export async function POST(req) {
           orderPlan.status = orderPlan.status === "cancelled" ? orderPlan.status : "active";
         }
 
+        const { shouldCancelNow } = applyRecurringNaturalEnd({
+          planDoc: orderPlan,
+          paymentField: "payment",
+          seasonalCutoffBySku,
+        });
+
+        if (
+          shouldCancelNow &&
+          !TERMINAL_BILLING_STATUSES.has(String(orderPlan.payment?.status || "").toLowerCase())
+        ) {
+          try {
+            await cancelRazorpaySubscription({
+              subscriptionId: orderPlan.payment.subscriptionId,
+              cancelAtCycleEnd: false,
+            });
+          } catch (cancelError) {
+            console.error("Failed to cancel invalid recurring order plan mandate", cancelError);
+          }
+
+          orderPlan.payment.status = "cancelled";
+          orderPlan.payment.cancelledAt = new Date();
+          orderPlan.payment.shortUrl = "";
+          orderPlan.status = "cancelled";
+        }
+
         await orderPlan.save();
       }
 
@@ -186,6 +258,31 @@ export async function POST(req) {
 
         if (event.event === "subscription.activated" || event.event === "subscription.charged") {
           subscription.status = subscription.status === "cancelled" ? subscription.status : "active";
+        }
+
+        const { shouldCancelNow } = applyRecurringNaturalEnd({
+          planDoc: subscription,
+          paymentField: "billing",
+          seasonalCutoffBySku,
+        });
+
+        if (
+          shouldCancelNow &&
+          !TERMINAL_BILLING_STATUSES.has(String(subscription.billing?.status || "").toLowerCase())
+        ) {
+          try {
+            await cancelRazorpaySubscription({
+              subscriptionId: subscription.billing.subscriptionId,
+              cancelAtCycleEnd: false,
+            });
+          } catch (cancelError) {
+            console.error("Failed to cancel invalid recurring subscription mandate", cancelError);
+          }
+
+          subscription.billing.status = "cancelled";
+          subscription.billing.cancelledAt = new Date();
+          subscription.billing.shortUrl = "";
+          subscription.status = "cancelled";
         }
 
         await subscription.save();

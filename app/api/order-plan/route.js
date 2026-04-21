@@ -22,6 +22,7 @@ import {
   parseDateKeyToIstDate,
 } from "@/libs/subscription-schedule";
 import { getSubscriptionDurationConfig } from "@/libs/subscriptions";
+import { RECURRING_SEASONAL_FULL_PERIOD_ERROR } from "@/libs/recurring-seasonal-policy";
 import OrderPlan from "@/models/OrderPlan";
 
 const buildLineupSummary = (items = []) =>
@@ -301,7 +302,7 @@ export async function POST(req) {
       error.message === "Select a valid subscription cadence." ||
       error.message === "Select a valid subscription duration." ||
       error.message === "Select one of the available subscription combos." ||
-      error.message === "Select one of the available boxes." ||
+      error.message === "Select one of the available sets." ||
       error.message === "Invalid delivery placeId." ||
       error.message === "Invalid delivery lookup session." ||
       error.message === "Please select a delivery address from the suggestions." ||
@@ -313,6 +314,7 @@ export async function POST(req) {
       error.message?.startsWith("Orders cannot include more than ") ||
       error.message?.startsWith("Subscriptions must include at least ") ||
       error.message?.startsWith("Subscriptions cannot include more than ") ||
+      error.message === RECURRING_SEASONAL_FULL_PERIOD_ERROR ||
       error.message === "Subscriptions are not available until delivery days are configured." ||
       error.message === "Orders are not available until delivery days are configured." ||
       error.message === "There are no delivery dates available in the next 30 days." ||
@@ -326,3 +328,4 @@ export async function POST(req) {
     return jsonError(error.message || "Could not create order.", 500);
   }
 }
+

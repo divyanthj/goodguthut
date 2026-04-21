@@ -33,6 +33,10 @@ import {
   listPlannedSubscriptionDeliveryDates,
   listAvailableSubscriptionStartDates,
 } from "@/libs/subscription-schedule";
+import {
+  buildSeasonalCutoffMapFromCatalog,
+  getSeasonalCoverageError,
+} from "@/libs/recurring-seasonal-policy";
 
 export const sanitizeSubscriptionItems = (items = []) =>
   items
@@ -254,30 +258,14 @@ export const buildSubscriptionRequest = async (body = {}) => {
     totalCount: durationConfig.totalCount,
   });
 
-  const invalidSeasonalItem = items.find((item) => {
-    if ((item.skuType || "perennial") !== "seasonal") {
-      return false;
-    }
-
-    const cutoffDate = String(item.recurringCutoffDate || "").trim();
-
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(cutoffDate)) {
-      return true;
-    }
-
-    return plannedDeliveryDates.some((deliveryDate) => deliveryDate >= cutoffDate);
+  const seasonalCoverageError = getSeasonalCoverageError({
+    items,
+    plannedDeliveryDates,
+    seasonalCutoffBySku: buildSeasonalCutoffMapFromCatalog(skuCatalog),
   });
 
-  if (invalidSeasonalItem) {
-    if (!invalidSeasonalItem.recurringCutoffDate) {
-      throw new Error(
-        `SKU ${invalidSeasonalItem.sku} is seasonal and cannot be used in subscriptions until a recurring cutoff date is set.`
-      );
-    }
-
-    throw new Error(
-      `SKU ${invalidSeasonalItem.sku} is seasonal and can only be subscribed to when all deliveries are before ${invalidSeasonalItem.recurringCutoffDate}.`
-    );
+  if (seasonalCoverageError) {
+    throw new Error(seasonalCoverageError);
   }
 
   let deliveryFee = 0;
@@ -303,7 +291,8 @@ export const buildSubscriptionRequest = async (body = {}) => {
       throw new Error(deliveryQuote.reason || "We do not deliver there yet.");
     }
 
-    deliveryFee = deliveryQuote.deliveryFee;
+    // Recurring plans now always ship free; keep quote only for deliverability checks.
+    deliveryFee = 0;
     deliveryDistanceKm = deliveryQuote.distanceKm;
     normalizedDeliveryAddress = deliveryQuote.normalizedAddress;
   }

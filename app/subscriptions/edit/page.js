@@ -49,7 +49,7 @@ export default async function SubscriptionEditRoute({ searchParams }) {
             Manage Your Plan
           </div>
           <h1 className="mt-3 text-3xl font-semibold md:text-4xl">
-            Update your box, schedule, or address
+            Update your set, schedule, or address
           </h1>
           <p className="mt-3 max-w-2xl text-sm leading-7 text-[#53675d] md:text-base">
             Use this secure link to make changes to your plan without creating an account.
@@ -78,3 +78,4 @@ export default async function SubscriptionEditRoute({ searchParams }) {
     </main>
   );
 }
+

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import connectMongo from "@/libs/mongoose";
 import Subscription from "@/models/Subscription";
+import Sku from "@/models/Sku";
 import {
   cancelRazorpaySubscription,
   extractRazorpaySubscriptionResult,
@@ -15,6 +16,7 @@ import {
   formatSubscriptionDate,
   getNextSubscriptionDeliveryDate,
 } from "@/libs/subscription-schedule";
+import { buildSeasonalCutoffMapFromCatalog, getValidRecurringDeliveryCount } from "@/libs/recurring-seasonal-policy";
 
 const sanitizeSubscription = (subscription) => ({
   id: subscription.id,
@@ -49,6 +51,7 @@ const sanitizeSubscription = (subscription) => ({
 const syncSubscriptionBilling = async ({
   subscription,
   razorpaySubscription,
+  seasonalCutoffBySku,
   paymentId = "",
 }) => {
   const payment = paymentId ? await fetchRazorpayPayment(paymentId) : null;
@@ -116,11 +119,31 @@ const syncSubscriptionBilling = async ({
         ? subscription.billing?.expiredAt || new Date()
         : subscription.billing?.expiredAt || null,
   };
+  const requestedTotalCount = Math.max(0, Number(subscription.billing?.totalCount || 0));
+  const effectiveTotalCount = requestedTotalCount
+    ? Math.min(
+        requestedTotalCount,
+        getValidRecurringDeliveryCount({
+          items: subscription.items || [],
+          startDate: subscription.firstDeliveryDate || subscription.startDate,
+          cadence: subscription.cadence,
+          requestedTotalCount,
+          seasonalCutoffBySku,
+        })
+      )
+    : 0;
+
+  subscription.billing.totalCount = effectiveTotalCount;
+  subscription.billing.remainingCount = Math.max(
+    0,
+    effectiveTotalCount - Math.max(0, Number(subscription.billing?.paidCount || 0))
+  );
+
   subscription.nextDeliveryDate = getNextSubscriptionDeliveryDate({
     startDate: subscription.firstDeliveryDate || subscription.startDate,
     cadence: subscription.cadence,
     paidCount: subscription.billing?.paidCount || 0,
-    totalCount: subscription.billing?.totalCount || 0,
+    totalCount: effectiveTotalCount,
   });
 
   if (["authenticated", "active"].includes(effectiveStatus)) {
@@ -131,6 +154,9 @@ const syncSubscriptionBilling = async ({
 export async function PATCH(req) {
   try {
     await connectMongo();
+    const seasonalCutoffBySku = buildSeasonalCutoffMapFromCatalog(
+      await Sku.find({}).select("sku skuType recurringCutoffDate").lean()
+    );
 
     const body = await req.json();
     const { subscriptionId: callbackSubscriptionId, paymentId, signature } =
@@ -219,6 +245,7 @@ export async function PATCH(req) {
     await syncSubscriptionBilling({
       subscription,
       razorpaySubscription,
+      seasonalCutoffBySku,
       paymentId,
     });
     await subscription.save();

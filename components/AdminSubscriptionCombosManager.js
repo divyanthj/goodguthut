@@ -179,13 +179,13 @@ export default function AdminSubscriptionCombosManager({
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || "Could not save box.");
+        throw new Error(data.error || "Could not save set.");
       }
 
       await refreshData(data.combo?.id || comboForm.id);
-      setMessage(isEditing ? "Box updated." : "Box created.");
+      setMessage(isEditing ? "Set updated." : "Set created.");
     } catch (saveError) {
-      setError(saveError.message || "Could not save box.");
+      setError(saveError.message || "Could not save set.");
     } finally {
       setIsSaving(false);
     }
@@ -197,7 +197,7 @@ export default function AdminSubscriptionCombosManager({
     }
 
     const confirmed = window.confirm(
-      "Delete this box permanently? This cannot be undone."
+      "Delete this set permanently? This cannot be undone."
     );
 
     if (!confirmed) {
@@ -214,13 +214,13 @@ export default function AdminSubscriptionCombosManager({
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || "Could not delete box.");
+        throw new Error(data.error || "Could not delete set.");
       }
 
       await refreshData("");
-      setMessage("Box deleted.");
+      setMessage("Set deleted.");
     } catch (deleteError) {
-      setError(deleteError.message || "Could not delete box.");
+      setError(deleteError.message || "Could not delete set.");
     } finally {
       setIsDeleting(false);
     }
@@ -230,13 +230,13 @@ export default function AdminSubscriptionCombosManager({
     <section className="rounded-2xl bg-base-100 p-5 shadow-md">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold">Boxes</h2>
+          <h2 className="text-lg font-semibold">Sets</h2>
           <p className="text-sm opacity-70">
-            Build fixed 4 to {MAX_TOTAL_QTY} bottle boxes that customers can choose at checkout.
+            Build fixed 4 to {MAX_TOTAL_QTY} bottle sets that customers can choose at checkout.
           </p>
         </div>
         <button type="button" className="btn btn-primary btn-sm" onClick={startNewCombo}>
-          New box
+          New set
         </button>
       </div>
 
@@ -244,7 +244,7 @@ export default function AdminSubscriptionCombosManager({
         <aside className="space-y-3">
           {combos.length === 0 ? (
             <div className="rounded-2xl bg-base-200 p-4 text-sm opacity-75">
-              No boxes yet. Create your first one to offer a curated option.
+              No sets yet. Create your first one to offer a curated option.
             </div>
           ) : (
             combos.map((combo) => {
@@ -292,7 +292,7 @@ export default function AdminSubscriptionCombosManager({
           <div className="grid gap-4 md:grid-cols-2">
             <label className="form-control md:col-span-2">
               <div className="label">
-                <span className="label-text">Box name</span>
+                <span className="label-text">Set name</span>
               </div>
               <input
                 className="input input-bordered"
@@ -361,13 +361,13 @@ export default function AdminSubscriptionCombosManager({
                 setComboForm((current) => ({ ...current, isFeatured: event.target.checked }))
               }
             />
-            <span className="label-text">Feature this box where recurring is available</span>
+            <span className="label-text">Feature this set where recurring is available</span>
           </label>
 
           <div className="mt-5 rounded-2xl bg-base-100 p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <div className="font-medium">Box lineup</div>
+                <div className="font-medium">Set lineup</div>
                 <div className="text-sm opacity-70">
                   Keep each combo between 4 and {MAX_TOTAL_QTY} bottles total.
                 </div>
@@ -447,7 +447,7 @@ export default function AdminSubscriptionCombosManager({
 
           <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
             <button type="submit" className="btn btn-primary" disabled={isSaving || isDeleting}>
-              {isSaving ? "Saving..." : "Save box"}
+              {isSaving ? "Saving..." : "Save set"}
             </button>
             <div className="flex items-center gap-2">
               {comboForm.id && (
@@ -457,10 +457,10 @@ export default function AdminSubscriptionCombosManager({
                   onClick={onDelete}
                   disabled={isSaving || isDeleting}
                 >
-                  {isDeleting ? "Deleting..." : "Delete box"}
+                  {isDeleting ? "Deleting..." : "Delete set"}
                 </button>
               )}
-              {comboForm.id && <div className="badge badge-outline">Box ID: {comboForm.id}</div>}
+              {comboForm.id && <div className="badge badge-outline">Set ID: {comboForm.id}</div>}
             </div>
           </div>
 
@@ -480,3 +480,4 @@ export default function AdminSubscriptionCombosManager({
     </section>
   );
 }
+

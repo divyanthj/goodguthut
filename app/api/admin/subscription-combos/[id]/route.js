@@ -111,7 +111,7 @@ export async function DELETE(_req, { params }) {
     const deletedCombo = await SubscriptionCombo.findByIdAndDelete(params.id);
 
     if (!deletedCombo) {
-      return NextResponse.json({ error: "Box not found." }, { status: 404 });
+      return NextResponse.json({ error: "Set not found." }, { status: 404 });
     }
 
     return NextResponse.json({ success: true });
@@ -120,3 +120,4 @@ export async function DELETE(_req, { params }) {
     return NextResponse.json({ error: deleteError.message }, { status: 500 });
   }
 }
+

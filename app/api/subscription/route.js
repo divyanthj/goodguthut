@@ -17,6 +17,7 @@ import {
 } from "@/libs/razorpay";
 import { verifySignedRecurringRolloutToken } from "@/libs/subscription-rollout";
 import { recalculateSubscriptionRouteSnapshots } from "@/libs/subscription-route-planner";
+import { RECURRING_SEASONAL_FULL_PERIOD_ERROR } from "@/libs/recurring-seasonal-policy";
 import {
   formatSubscriptionDate,
   getNextSubscriptionDeliveryDate,
@@ -242,6 +243,7 @@ export async function POST(req) {
       error.message === "Too many distinct products in one subscription." ||
       error.message?.startsWith("Subscriptions must include at least ") ||
       error.message?.startsWith("Subscriptions cannot include more than ") ||
+      error.message === RECURRING_SEASONAL_FULL_PERIOD_ERROR ||
       error.message === "Subscriptions are not available until delivery days are configured." ||
       error.message === "There are no delivery dates available in the next 30 days." ||
       error.message === "Choose a valid first delivery date within the next 30 days." ||

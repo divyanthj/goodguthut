@@ -68,7 +68,7 @@ export const sendSubscriptionEditLinkEmail = async ({
     "",
     `How often: ${cadenceLabel}`,
     `How long: ${durationLabel}`,
-    subscription.comboName ? `Your box: ${subscription.comboName}` : "Your box: Build your own",
+    subscription.comboName ? `Your set: ${subscription.comboName}` : "Your set: Build your own",
     `Delivery days: ${deliveryDaysLabel}`,
     firstDeliveryLabel ? `First delivery: ${firstDeliveryLabel}` : "",
     nextDeliveryLabel ? `Next delivery: ${nextDeliveryLabel}` : "",
@@ -105,7 +105,7 @@ export const sendSubscriptionEditLinkEmail = async ({
             <td>${escapeHtml(durationLabel)}</td>
           </tr>
           <tr>
-            <td>Your box</td>
+            <td>Your set</td>
             <td>${escapeHtml(subscription.comboName || "Build your own")}</td>
           </tr>
           <tr>
@@ -133,7 +133,7 @@ export const sendSubscriptionEditLinkEmail = async ({
             <td>${escapeHtml(`${subscription.currency || "INR"} ${Number(subscription.total || 0).toFixed(2)}`)}</td>
           </tr>
         </table>
-        ${itemSummaryHtml ? `<h2 class="section-title">What&apos;s in your box</h2><ul class="item-list">${itemSummaryHtml}</ul>` : ""}
+        ${itemSummaryHtml ? `<h2 class="section-title">What&apos;s in your set</h2><ul class="item-list">${itemSummaryHtml}</ul>` : ""}
         <p>This link expires in 7 days. If it expires, you can request a fresh one using your email address.</p>
       `,
       footer: `Need help? Email ${config.mailgun.supportEmail}.`,
@@ -144,3 +144,4 @@ export const sendSubscriptionEditLinkEmail = async ({
 
   return { editUrl };
 };
+

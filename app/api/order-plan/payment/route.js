@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import connectMongo from "@/libs/mongoose";
 import { sendOrderPlanConfirmationEmail } from "@/libs/order-plan-notifications";
+import Sku from "@/models/Sku";
 import {
   extractRazorpayPaymentResult,
   extractRazorpaySubscriptionResult,
@@ -14,6 +15,7 @@ import {
   verifySignedCheckoutToken,
 } from "@/libs/razorpay";
 import { formatSubscriptionDate, getNextSubscriptionDeliveryDate } from "@/libs/subscription-schedule";
+import { buildSeasonalCutoffMapFromCatalog, getValidRecurringDeliveryCount } from "@/libs/recurring-seasonal-policy";
 import OrderPlan from "@/models/OrderPlan";
 
 const sanitizeOrderPlan = (orderPlan) => JSON.parse(JSON.stringify(orderPlan));
@@ -21,6 +23,7 @@ const sanitizeOrderPlan = (orderPlan) => JSON.parse(JSON.stringify(orderPlan));
 const syncRecurringOrderPlanPayment = async ({
   orderPlan,
   razorpaySubscription,
+  seasonalCutoffBySku,
   paymentId = "",
 }) => {
   const payment = paymentId ? await fetchRazorpayPayment(paymentId) : null;
@@ -91,11 +94,31 @@ const syncRecurringOrderPlanPayment = async ({
         ? orderPlan.payment?.expiredAt || new Date()
         : orderPlan.payment?.expiredAt || null,
   };
+  const requestedTotalCount = Math.max(0, Number(orderPlan.payment?.totalCount || 0));
+  const effectiveTotalCount = requestedTotalCount
+    ? Math.min(
+        requestedTotalCount,
+        getValidRecurringDeliveryCount({
+          items: orderPlan.items || [],
+          startDate: orderPlan.firstDeliveryDate || orderPlan.startDate,
+          cadence: orderPlan.cadence,
+          requestedTotalCount,
+          seasonalCutoffBySku,
+        })
+      )
+    : 0;
+
+  orderPlan.payment.totalCount = effectiveTotalCount;
+  orderPlan.payment.remainingCount = Math.max(
+    0,
+    effectiveTotalCount - Math.max(0, Number(orderPlan.payment?.paidCount || 0))
+  );
+
   orderPlan.nextDeliveryDate = getNextSubscriptionDeliveryDate({
     startDate: orderPlan.firstDeliveryDate || orderPlan.startDate,
     cadence: orderPlan.cadence,
     paidCount: orderPlan.payment?.paidCount || 0,
-    totalCount: orderPlan.payment?.totalCount || 0,
+    totalCount: effectiveTotalCount,
   });
 
   if (["authenticated", "active"].includes(effectiveStatus)) {
@@ -106,6 +129,9 @@ const syncRecurringOrderPlanPayment = async ({
 export async function PATCH(req) {
   try {
     await connectMongo();
+    const seasonalCutoffBySku = buildSeasonalCutoffMapFromCatalog(
+      await Sku.find({}).select("sku skuType recurringCutoffDate").lean()
+    );
 
     const body = await req.json();
     const checkoutToken = body.checkoutToken || "";
@@ -266,6 +292,7 @@ export async function PATCH(req) {
     await syncRecurringOrderPlanPayment({
       orderPlan,
       razorpaySubscription,
+      seasonalCutoffBySku,
       paymentId,
     });
     await orderPlan.save();

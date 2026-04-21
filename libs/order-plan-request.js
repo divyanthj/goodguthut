@@ -81,7 +81,7 @@ const buildOneTimeRequest = async (body = {}) => {
     selectionMode === "combo" ? comboCatalog.find((combo) => combo.id === comboId) : null;
 
   if (selectionMode === "combo" && !selectedCombo) {
-    throw new Error("Select one of the available boxes.");
+    throw new Error("Select one of the available sets.");
   }
 
   const sourceItems =
@@ -223,3 +223,4 @@ export const buildOrderPlanRequest = async (body = {}) => {
 
   return buildOneTimeRequest(body);
 };
+
