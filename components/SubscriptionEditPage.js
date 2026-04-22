@@ -52,7 +52,7 @@ function ResendEditLinkForm() {
         Request a fresh link
       </div>
       <p className="mt-3 text-sm leading-7 text-[#53675d]">
-        Enter the email you used for your subscription, and we&apos;ll send a fresh secure edit link if we find a match.
+        Enter the email you used for your subscription, and we’ll send a fresh secure edit link if we find a match.
       </p>
       <div className="mt-4 flex flex-col gap-3 md:flex-row">
         <input
@@ -166,9 +166,9 @@ export default function SubscriptionEditPage({
           <div className="text-xs font-semibold uppercase tracking-[0.28em] text-[#6b7d74]">
             Edit link unavailable
           </div>
-          <h1 className="mt-3 text-3xl font-semibold text-[#2f4a3e]">This link can&apos;t be used</h1>
+          <h1 className="mt-3 text-3xl font-semibold text-[#2f4a3e]">This link can’t be used</h1>
           <p className="mt-4 max-w-2xl text-sm leading-7 text-[#53675d] md:text-base">
-            {error || "This edit link is invalid or has expired. Request a fresh link below and we&apos;ll email it to you if we find a matching subscription."}
+            {error || "This edit link is invalid or has expired. Request a fresh link below and we’ll email it to you if we find a matching subscription."}
           </p>
         </section>
         <ResendEditLinkForm />

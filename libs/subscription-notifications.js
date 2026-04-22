@@ -133,7 +133,7 @@ export const sendSubscriptionEditLinkEmail = async ({
             <td>${escapeHtml(`${subscription.currency || "INR"} ${Number(subscription.total || 0).toFixed(2)}`)}</td>
           </tr>
         </table>
-        ${itemSummaryHtml ? `<h2 class="section-title">What&apos;s in your set</h2><ul class="item-list">${itemSummaryHtml}</ul>` : ""}
+        ${itemSummaryHtml ? `<h2 class="section-title">What's in your set</h2><ul class="item-list">${itemSummaryHtml}</ul>` : ""}
         <p>This link expires in 7 days. If it expires, you can request a fresh one using your email address.</p>
       `,
       footer: `Need help? Email ${config.mailgun.supportEmail}.`,

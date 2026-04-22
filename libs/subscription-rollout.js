@@ -105,8 +105,9 @@ export const verifySignedRecurringRolloutToken = (token = "") => {
   }
 };
 
-export const buildRecurringRolloutUrl = (token = "") => {
-  const siteUrl = getSiteUrl().replace(/\/+$/g, "");
+export const buildRecurringRolloutUrl = (token = "", baseUrl = "") => {
+  const resolvedBaseUrl = String(baseUrl || "").trim() || getSiteUrl();
+  const siteUrl = resolvedBaseUrl.replace(/\/+$/g, "");
   return `${siteUrl}/?${RECURRING_ROLLOUT_QUERY_PARAM}=${encodeURIComponent(
     token
   )}`;

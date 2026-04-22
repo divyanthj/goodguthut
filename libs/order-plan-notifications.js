@@ -93,7 +93,7 @@ export const sendOrderPlanConfirmationEmail = async ({ orderPlan }) => {
           <tr><td>Delivery address</td><td>${escapeHtml(orderPlan.normalizedDeliveryAddress || orderPlan.address || "-")}</td></tr>
           <tr><td>Total</td><td>${escapeHtml(`${orderPlan.currency || "INR"} ${Number(orderPlan.total || 0).toFixed(2)}`)}</td></tr>
         </table>
-        ${itemSummaryHtml ? `<h2 class="section-title">What&apos;s in your set</h2><ul class="item-list">${itemSummaryHtml}</ul>` : ""}
+        ${itemSummaryHtml ? `<h2 class="section-title">What's in your set</h2><ul class="item-list">${itemSummaryHtml}</ul>` : ""}
       `,
       footer: `Need help? Email ${config.mailgun.supportEmail}.`,
       logoUrl: `https://${config.domainName}/icon.png`,

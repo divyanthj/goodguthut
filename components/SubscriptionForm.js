@@ -21,6 +21,7 @@ import {
 import { MAX_TOTAL_QTY, ONE_TIME_MIN_TOTAL_QTY } from "@/libs/order-quantity";
 
 const MAX_QTY = MAX_TOTAL_QTY;
+const LOCKED_SUBSCRIPTION_CADENCE = "weekly";
 
 const buildRecurringEligibility = ({
   selectedItems = [],
@@ -295,7 +296,7 @@ export default function SubscriptionForm({
         }
       : {}),
   }));
-  const [cadence, setCadence] = useState(initialValues?.cadence || "weekly");
+  const [cadence, setCadence] = useState(LOCKED_SUBSCRIPTION_CADENCE);
   const [durationWeeks, setDurationWeeks] = useState(
     Number(initialValues?.durationWeeks || 4)
   );
@@ -389,7 +390,7 @@ export default function SubscriptionForm({
       phone: initialValues.phone || "",
       address: initialValues.address || "",
     });
-    setCadence(initialValues.cadence || "weekly");
+    setCadence(LOCKED_SUBSCRIPTION_CADENCE);
     setDurationWeeks(Number(initialValues.durationWeeks || 4));
     setSelectionMode(
       getInitialSelectionMode({
@@ -881,7 +882,7 @@ export default function SubscriptionForm({
 
   const resetForCreate = () => {
     setCustomer(initialCustomer);
-    setCadence("weekly");
+    setCadence(LOCKED_SUBSCRIPTION_CADENCE);
     setDurationWeeks(4);
     setSelectionMode(comboOptions.length > 0 ? initialSelectionMode : "custom");
     setComboCart({});
@@ -912,7 +913,7 @@ export default function SubscriptionForm({
       phone: nextSubscription.phone || "",
       address: nextSubscription.address || "",
     });
-    setCadence(nextSubscription.cadence || "weekly");
+    setCadence(LOCKED_SUBSCRIPTION_CADENCE);
     setDurationWeeks(Number(nextSubscription.durationWeeks || 4));
     const hasValidComboId =
       nextSubscription.selectionMode === "combo" &&
@@ -980,7 +981,7 @@ export default function SubscriptionForm({
     }
 
     if (!isOneTimeMode && !durationIsValid) {
-      setError("Please choose how long you&apos;d like this plan to run.");
+      setError("Please choose how long you'd like this plan to run.");
       return;
     }
 
@@ -1472,7 +1473,7 @@ export default function SubscriptionForm({
 
         {selectionMode === "combo" && comboOptions.length === 0 && (
           <div className="mt-6 rounded-2xl border border-[#d8cdbb] bg-[#fffaf1] p-4 text-sm text-[#53675d]">
-            We don&apos;t have any ready-to-go sets live right now, so you can build your own below.
+            We don’t have any ready-to-go sets live right now, so you can build your own below.
           </div>
         )}
       </section>
@@ -1597,25 +1598,18 @@ export default function SubscriptionForm({
                   <span className="label-text text-[#365244]">How Often</span>
                 </div>
                 <div className="flex flex-wrap gap-3">
-                  {SUBSCRIPTION_CADENCES.map((option) => {
-                    const isActive = cadence === option.value;
-
-                    return (
-                      <button
-                        key={option.value}
-                        type="button"
-                        disabled={billingLocked}
-                        className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
-                          isActive
-                            ? "border-[#2f5d49] bg-[#355a45] text-[#f7f1e6] shadow-md"
-                            : "border-[#d1c4b0] bg-[#fffaf1] text-[#365244] hover:border-[#a98f6f]"
-                        }`}
-                        onClick={() => setCadence(option.value)}
-                      >
-                        {option.label}
-                      </button>
-                    );
-                  })}
+                  <button
+                    type="button"
+                    disabled
+                    aria-disabled="true"
+                    className="cursor-not-allowed rounded-full border border-[#2f5d49] bg-[#355a45]/85 px-4 py-2 text-sm font-medium text-[#f7f1e6] opacity-70 shadow-md"
+                  >
+                    {SUBSCRIPTION_CADENCES.find((item) => item.value === LOCKED_SUBSCRIPTION_CADENCE)
+                      ?.label || "Weekly"}
+                  </button>
+                </div>
+                <div className="mt-2 text-xs text-[#6b7d74]">
+                  Cadence is currently fixed to weekly.
                 </div>
               </div>
             )}
@@ -1998,7 +1992,7 @@ export default function SubscriptionForm({
 
           {billingLocked && (
             <div className="rounded-2xl border border-[#ddcfb6] bg-[#f7f1e6] px-4 py-4 text-sm text-[#52655b]">
-              This plan already has an active recurring payment attached. If you need help making billing changes, email us and we&apos;ll sort it out.
+              This plan already has an active recurring payment attached. If you need help making billing changes, email us and we’ll sort it out.
             </div>
           )}
 
@@ -2010,7 +2004,7 @@ export default function SubscriptionForm({
 
           {didEmailChange && (
             <div className="rounded-2xl border border-[#ddcfb6] bg-[#f7f1e6] px-4 py-4 text-sm text-[#52655b]">
-              We&apos;ve sent a fresh update link to your new email address.
+              We’ve sent a fresh update link to your new email address.
             </div>
           )}
 
@@ -2018,7 +2012,7 @@ export default function SubscriptionForm({
             <div className="text-sm text-[#5f7068]">
               {isOneTimeMode
                 ? "No login needed. Complete checkout to confirm your one-time order."
-                : "No login needed. We&apos;ll email you a secure link so you can update or cancel your plan anytime."}
+                : "No login needed. We’ll email you a secure link so you can update or cancel your plan anytime."}
             </div>
             <div className="flex flex-wrap gap-3">
               {mode === "edit" && !isCancelled && (

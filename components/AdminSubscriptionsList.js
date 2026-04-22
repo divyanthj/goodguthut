@@ -241,7 +241,7 @@ export default function AdminSubscriptionsList({ initialSubscriptions }) {
           <div>
             <h2 className="text-lg font-semibold">Weekly production summary</h2>
             <p className="text-sm opacity-70">
-              Fortnightly counts as half a weekly run, and monthly counts as one quarter. Use confirmed bottles to plan this week&apos;s production and shipping; pending is your near-term pipeline.
+              Fortnightly counts as half a weekly run, and monthly counts as one quarter. Use confirmed bottles to plan this week’s production and shipping; pending is your near-term pipeline.
             </p>
           </div>
         </div>

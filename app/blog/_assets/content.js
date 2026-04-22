@@ -190,8 +190,8 @@ export const articles = [
         <section>
           <h2 className={styles.h2}>Introduction</h2>
           <p className={styles.p}>
-            Supabase is an open-source Firebase alternative. It&apos;s a great
-            tool for building a backend for your app. It&apos;s now integrated
+            Supabase is an open-source Firebase alternative. It’s a great
+            tool for building a backend for your app. It’s now integrated
             with ShipFast!
           </p>
         </section>
@@ -203,7 +203,7 @@ export const articles = [
             <a href="https://supabase.com/" className="link link-primary">
               Supabase
             </a>{" "}
-            and create an account. It&apos;s free for up to 10,000 rows per
+            and create an account. It’s free for up to 10,000 rows per
             table.
             <br />
             Then create a new project and a new table. You can use the following

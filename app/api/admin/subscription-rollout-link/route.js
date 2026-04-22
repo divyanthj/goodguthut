@@ -43,7 +43,7 @@ export async function POST(req) {
     const expiresInHours = sanitizeHours(body.expiresInHours);
     const expiresAt = Date.now() + expiresInHours * 60 * 60 * 1000;
     const token = createSignedRecurringRolloutToken({ expiresAt });
-    const url = buildRecurringRolloutUrl(token);
+    const url = buildRecurringRolloutUrl(token, req?.nextUrl?.origin || "");
 
     return NextResponse.json({
       token,

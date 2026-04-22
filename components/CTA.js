@@ -17,7 +17,7 @@ const CTA = () => {
             Boost your app, launch, earn
           </h2>
           <p className="text-lg opacity-80 mb-12 md:mb-16">
-            Don&apos;t waste time integrating APIs or designing a pricing
+            Don’t waste time integrating APIs or designing a pricing
             section...
           </p>
 

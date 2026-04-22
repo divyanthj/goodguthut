@@ -96,7 +96,7 @@ export default function Custom404() {
         </svg>
       </div>
       <p className="text-lg md:text-xl font-semibold">
-        This page doesn&apos;t exist 😅
+        This page doesn’t exist.
       </p>
 
       <div className="flex flex-wrap gap-4 justify-center">

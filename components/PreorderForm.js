@@ -596,7 +596,7 @@ export default function PreorderForm({
             {successState.customerName
               ? `${successState.customerName}, your Good Gut Hut order is in and confirmed.`
               : "Your Good Gut Hut order is in and confirmed."}{" "}
-            We&apos;ll prepare your batch with care and keep things smooth from here.
+            We’ll prepare your batch with care and keep things smooth from here.
           </p>
         </div>
         <div className="grid gap-4 px-6 py-6 md:grid-cols-2 md:px-10">
@@ -607,7 +607,7 @@ export default function PreorderForm({
             <p className="mt-3 text-sm leading-7">
               {successState.isPaid
                 ? "Your payment has been received and your preorder has been locked in."
-                : "Your preorder is received and we&apos;ll contact you shortly to confirm the next steps."}
+                : "Your preorder is received and we’ll contact you shortly to confirm the next steps."}
             </p>
             {successState.deliveryDate && (
               <p className="mt-3 text-sm leading-7">

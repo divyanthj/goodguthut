@@ -26,9 +26,9 @@ const Testimonial1Small = () => {
         <div className="text-base leading-relaxed space-y-2 max-w-md mx-auto text-center">
           <p>
             <span className="bg-warning/25 px-1.5">
-              I don&apos;t want to pay Stripe $2 for every invoice.
+              I don’t want to pay Stripe $2 for every invoice.
             </span>{" "}
-            I don&apos;t want to spend 10 minutes manually crafting every
+            I don’t want to spend 10 minutes manually crafting every
             invoice either.
           </p>
           <p>

@@ -342,7 +342,7 @@ const Testimonials11 = () => {
             </h2>
           </div>
           <p className="lg:w-2/3 mx-auto leading-relaxed text-base text-base-content/80">
-            Don&apos;t take our word for it. Here&apos;s what they have to say
+            Don’t take our word for it. Here’s what they have to say
             about {config.appName}.
           </p>
         </div>
