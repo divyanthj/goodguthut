@@ -3,7 +3,7 @@ import connectMongo from "@/libs/mongoose";
 import { calculateDeliveryQuote, isGoogleMapsConfigured } from "@/libs/delivery";
 import { getPlaceDetails } from "@/libs/places";
 import PreorderWindow from "@/models/PreorderWindow";
-import { getActiveWindowFilter, isWindowAcceptingOrders } from "@/libs/preorder-windows";
+import { getActiveWindowFilter } from "@/libs/preorder-windows";
 import {
   enforceBrowserOrigin,
   isValidAddress,
@@ -77,13 +77,6 @@ export async function POST(req) {
 
     if (!preorderWindow) {
       return NextResponse.json({ error: "Preorder window not found." }, { status: 404 });
-    }
-
-    if (!isWindowAcceptingOrders(preorderWindow)) {
-      return NextResponse.json(
-        { error: "Preorders are closed for the selected delivery window." },
-        { status: 400 }
-      );
     }
 
     if (!isGoogleMapsConfigured()) {

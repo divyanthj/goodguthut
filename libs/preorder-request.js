@@ -5,7 +5,6 @@ import { resolveDiscountCode, normalizeDiscountCode } from "@/libs/discount-code
 import { getPlaceDetails } from "@/libs/places";
 import {
   formatPickupAddress,
-  isWindowAcceptingOrders,
   MAX_PER_ORDER_LIMIT,
 } from "@/libs/preorder-windows";
 import { getSkuMap, listSkuCatalog, normalizeAllowedItemRefs } from "@/libs/sku-catalog";
@@ -101,10 +100,6 @@ export const buildPreorderRequest = async (body = {}) => {
     preorderWindow = await PreorderWindow.findById(preorderWindowId);
     if (!preorderWindow) {
       throw new Error("Selected preorder window was not found");
-    }
-
-    if (!isWindowAcceptingOrders(preorderWindow)) {
-      throw new Error("Preorders are closed for the selected delivery window");
     }
 
     if (isPickup && !preorderWindow.allowFreePickup) {

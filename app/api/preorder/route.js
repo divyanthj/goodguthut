@@ -195,7 +195,6 @@ export async function POST(req) {
       e.message?.startsWith("SKU ") ||
       e.message === "Invalid preorder window." ||
       e.message === "Selected preorder window was not found" ||
-      e.message === "Preorders are closed for the selected delivery window" ||
       e.message === "Name, phone number, and address are required" ||
       e.message === "Name and phone number are required for pickup." ||
       e.message === "Enter a valid name." ||
