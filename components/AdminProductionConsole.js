@@ -861,6 +861,12 @@ export default function AdminProductionConsole() {
                       <div>End Date: _____</div>
                       <div>Start Time: _____</div>
                       <div>End Time: _____</div>
+                      <div className="wall-sheet-meta-span-2">
+                        Bottles (ordered/planned): {formatQty(skuEntry.weeklyEquivalentBottles, 0)}/{formatQty((Number(skuEntry.plannedLitres || 0) * 1000) / Number(sheet?.bottleSizeMl || 200), 0)}
+                      </div>
+                      <div className="wall-sheet-meta-span-2">
+                        Planned Qty: {formatQty(skuEntry.plannedLitres, 2)} L
+                      </div>
                       <div className="wall-sheet-meta-span-2">Batch Number: {sharedBatchNumber || "-"}</div>
                     </div>
                   </header>
