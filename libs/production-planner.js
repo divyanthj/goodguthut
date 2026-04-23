@@ -2,6 +2,15 @@ const BOTTLE_SIZE_ML = 200;
 
 const CONFIRMED_BILLING_STATUSES = new Set(["authenticated", "active", "pending", "completed"]);
 const EXCLUDED_SUBSCRIPTION_STATUSES = new Set(["cancelled", "paused"]);
+const WEEKDAY_TO_INDEX = {
+  sunday: 0,
+  monday: 1,
+  tuesday: 2,
+  wednesday: 3,
+  thursday: 4,
+  friday: 5,
+  saturday: 6,
+};
 
 const cadenceToWeeklyFactor = (cadence = "") => {
   switch (cadence) {
@@ -160,7 +169,76 @@ const addDemandItem = (demandMap, item, quantityToAdd = 0) => {
 
 const sortDateKeys = (keys = []) => [...keys].filter(Boolean).sort((left, right) => left.localeCompare(right));
 
-const findNextDeliveryDateKey = ({ subscriptions = [], orderPlans = [], preorders = [] }) => {
+const isDateKey = (value = "") => /^\d{4}-\d{2}-\d{2}$/.test(String(value || "").trim());
+
+const sanitizeDeliveryDaysOfWeek = (days = []) => {
+  const seen = new Set();
+
+  return (Array.isArray(days) ? days : [])
+    .map((day) => String(day || "").trim().toLowerCase())
+    .filter((day) => Object.prototype.hasOwnProperty.call(WEEKDAY_TO_INDEX, day))
+    .filter((day) => {
+      if (seen.has(day)) {
+        return false;
+      }
+
+      seen.add(day);
+      return true;
+    });
+};
+
+const buildMonthDeliveryDateKeys = (deliveryDate = "", deliveryDaysOfWeek = []) => {
+  if (!isDateKey(deliveryDate)) {
+    return [];
+  }
+
+  const normalizedDays = sanitizeDeliveryDaysOfWeek(deliveryDaysOfWeek);
+  const [year, month, day] = deliveryDate.split("-").map((part) => Number(part));
+
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
+    return [];
+  }
+
+  const monthStart = new Date(Date.UTC(year, month - 1, 1));
+  const monthDates = [];
+
+  for (let cursor = new Date(monthStart); cursor.getUTCMonth() === monthStart.getUTCMonth(); cursor.setUTCDate(cursor.getUTCDate() + 1)) {
+    const weekdayIndex = cursor.getUTCDay();
+
+    if (normalizedDays.length > 0) {
+      const matchesConfiguredDay = normalizedDays.some((weekday) => WEEKDAY_TO_INDEX[weekday] === weekdayIndex);
+
+      if (!matchesConfiguredDay) {
+        continue;
+      }
+    }
+
+    const dateKey = [
+      cursor.getUTCFullYear(),
+      String(cursor.getUTCMonth() + 1).padStart(2, "0"),
+      String(cursor.getUTCDate()).padStart(2, "0"),
+    ].join("-");
+    monthDates.push(dateKey);
+  }
+
+  return monthDates;
+};
+
+const computeCalendarBatchSequenceInMonth = (deliveryDate = "", deliveryDaysOfWeek = []) => {
+  if (!isDateKey(deliveryDate)) {
+    return 0;
+  }
+
+  const monthDateKeys = buildMonthDeliveryDateKeys(deliveryDate, deliveryDaysOfWeek);
+  const combinedDateKeys = monthDateKeys.includes(deliveryDate)
+    ? monthDateKeys
+    : sortDateKeys([...monthDateKeys, deliveryDate]);
+  const position = combinedDateKeys.indexOf(deliveryDate);
+
+  return Math.max(1, position + 1);
+};
+
+const getCommittedDeliveryDateKeys = ({ subscriptions = [], orderPlans = [], preorders = [] }) => {
   const recurringSubscriptionDates = subscriptions
     .filter((subscription) => {
       if (EXCLUDED_SUBSCRIPTION_STATUSES.has(subscription.status)) {
@@ -194,7 +272,11 @@ const findNextDeliveryDateKey = ({ subscriptions = [], orderPlans = [], preorder
     ...oneTimeOrderPlanDates,
     ...preorderDates,
   ]);
-  const uniqueDateKeys = [...new Set(allDateKeys)];
+  return [...new Set(allDateKeys)];
+};
+
+const findNextDeliveryDateKey = ({ subscriptions = [], orderPlans = [], preorders = [] }) => {
+  const uniqueDateKeys = getCommittedDeliveryDateKeys({ subscriptions, orderPlans, preorders });
   const todayKey = todayDateKey();
   const nextUpcoming = uniqueDateKeys.find((dateKey) => dateKey >= todayKey);
 
@@ -205,6 +287,7 @@ export const computeDemandForNextDeliveryDate = ({
   subscriptions = [],
   orderPlans = [],
   preorders = [],
+  deliveryDaysOfWeek = [],
 }) => {
   const deliveryDate = findNextDeliveryDateKey({ subscriptions, orderPlans, preorders });
   const demandMap = new Map();
@@ -220,6 +303,7 @@ export const computeDemandForNextDeliveryDate = ({
         recurringOrderPlanCount: 0,
         oneTimeOrderPlanCount: 0,
         preorderCount: 0,
+        batchSequenceInMonth: 0,
       },
     };
   }
@@ -296,6 +380,8 @@ export const computeDemandForNextDeliveryDate = ({
     });
   });
 
+  const batchSequenceInMonth = computeCalendarBatchSequenceInMonth(deliveryDate, deliveryDaysOfWeek);
+
   return {
     deliveryDate,
     demandBySku: [...demandMap.values()]
@@ -311,6 +397,7 @@ export const computeDemandForNextDeliveryDate = ({
       recurringOrderPlanCount,
       oneTimeOrderPlanCount,
       preorderCount,
+      batchSequenceInMonth,
     },
   };
 };

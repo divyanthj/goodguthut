@@ -17,7 +17,7 @@ export default function SiteChrome({ children }) {
 
   return (
     <div className="flex min-h-screen flex-col bg-base-200">
-      <header className="border-b border-base-300 bg-base-100/95 backdrop-blur">
+      <header className="site-chrome-header border-b border-base-300 bg-base-100/95 backdrop-blur">
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-4 py-2.5 md:px-6">
           <div className="min-w-0">
             <Link
@@ -63,7 +63,7 @@ export default function SiteChrome({ children }) {
 
       <div className="flex-1">{children}</div>
 
-      <footer className="border-t border-base-300 bg-base-200 text-base-content">
+      <footer className="site-chrome-footer border-t border-base-300 bg-base-200 text-base-content">
         <div className="mx-auto grid max-w-6xl gap-12 px-6 py-14 md:grid-cols-[1.3fr_1fr_1fr_1fr] md:px-8">
           <div className="max-w-xs">
             <Link href="/" className="flex items-center gap-3" aria-label={`${config.appName} homepage`}>

@@ -29,6 +29,47 @@ const formatTolerance = (ingredient) => {
   return `+/- ${formatQty(ingredient.toleranceValue, 2)} ${ingredient.unit}`;
 };
 
+const toBatchSkuToken = (sku = "") => {
+  const normalized = String(sku || "")
+    .trim()
+    .toUpperCase()
+    .replace(/^GGH[-_]?/, "")
+    .replace(/[^A-Z0-9]/g, "");
+
+  return normalized || "NA";
+};
+
+const buildSharedBatchNumber = (sheet) => {
+  const deliveryDate = String(sheet?.deliveryDate || "").trim();
+
+  if (!deliveryDate || !/^\d{4}-\d{2}-\d{2}$/.test(deliveryDate)) {
+    return "";
+  }
+
+  const year = deliveryDate.slice(2, 4);
+  const month = deliveryDate.slice(5, 7);
+  const monthSequence = Math.max(1, Number(sheet?.summary?.batchSequenceInMonth || 1));
+  const monthSequencePart = String(monthSequence).padStart(2, "0");
+  const sharedSku = toBatchSkuToken(sheet?.ingredientsBySku?.[0]?.sku || "");
+
+  return `${sharedSku}${year}${month}${monthSequencePart}`;
+};
+
+const shiftDateKey = (dateKey = "", deltaDays = 0) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dateKey || "").trim())) {
+    return "";
+  }
+
+  const [year, month, day] = dateKey.split("-").map((part) => Number(part));
+  const date = new Date(Date.UTC(year, month - 1, day));
+  date.setUTCDate(date.getUTCDate() + Number(deltaDays || 0));
+
+  const nextYear = date.getUTCFullYear();
+  const nextMonth = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const nextDay = String(date.getUTCDate()).padStart(2, "0");
+  return `${nextYear}-${nextMonth}-${nextDay}`;
+};
+
 export default function AdminProductionConsole() {
   const [sheet, setSheet] = useState(null);
   const [recipes, setRecipes] = useState([]);
@@ -115,6 +156,38 @@ export default function AdminProductionConsole() {
   useEffect(() => {
     loadSkuCatalog();
   }, [loadSkuCatalog]);
+
+  const printSkuCards = useMemo(() => {
+    const skuItems = sheet?.ingredientsBySku || [];
+    const pageSize = 6;
+    const orderedForPriority = [...skuItems].sort((left, right) => {
+      const rightVolume = Number(right.plannedLitres || right.targetLitres || 0);
+      const leftVolume = Number(left.plannedLitres || left.targetLitres || 0);
+
+      if (rightVolume !== leftVolume) {
+        return rightVolume - leftVolume;
+      }
+
+      return Number(right.weeklyEquivalentBottles || 0) - Number(left.weeklyEquivalentBottles || 0);
+    });
+    const cards = orderedForPriority.slice(0, pageSize);
+
+    if (cards.length > 0 && cards.length < pageSize) {
+      const needed = pageSize - cards.length;
+
+      for (let index = 0; index < needed; index += 1) {
+        cards.push(orderedForPriority[index % orderedForPriority.length]);
+      }
+    }
+
+    return cards;
+  }, [sheet]);
+  const sharedBatchNumber = useMemo(() => buildSharedBatchNumber(sheet), [sheet]);
+  const printStartDate = useMemo(() => {
+    const deliveryDate = String(sheet?.deliveryDate || "").trim();
+    const minimumLeadDays = Math.max(0, Number(sheet?.summary?.minimumLeadDays || 0));
+    return shiftDateKey(deliveryDate, -minimumLeadDays);
+  }, [sheet]);
 
   const groupedRecipes = useMemo(() => {
     const groups = new Map();
@@ -291,8 +364,19 @@ export default function AdminProductionConsole() {
     }
   };
 
+  const handleExportPdf = () => {
+    if (!sheet?.ingredientsBySku?.length) {
+      setError("No SKU sheets available to export yet.");
+      return;
+    }
+
+    setMessage("Opening print dialog. Choose Save as PDF.");
+    window.print();
+  };
+
   return (
     <div className="space-y-6">
+      <div className="space-y-6 print:hidden">
       {error && (
         <div className="alert alert-error">
           <span>{error}</span>
@@ -352,10 +436,25 @@ export default function AdminProductionConsole() {
       </section>
 
       <section className="rounded-2xl bg-base-100 p-5 shadow-md">
-        <h2 className="text-xl font-semibold">Ingredient sheet</h2>
-        <p className="mt-1 text-sm opacity-75">
-          Consolidated totals and per-SKU requirements for production.
-        </p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-semibold">Ingredient sheet</h2>
+            <p className="mt-1 text-sm opacity-75">
+              Consolidated totals and per-SKU requirements for production.
+            </p>
+          </div>
+          <div className="flex flex-col items-end gap-1">
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={handleExportPdf}
+              disabled={!sheet?.ingredientsBySku?.length}
+            >
+              Export as PDF
+            </button>
+            <div className="text-xs opacity-70">Use Save as PDF in the print dialog.</div>
+          </div>
+        </div>
 
         {sheet?.missingRecipes?.length > 0 && (
           <div className="alert alert-warning mt-4">
@@ -411,7 +510,6 @@ export default function AdminProductionConsole() {
                   <div>Demand: {formatQty(skuEntry.targetLitres, 2)} L</div>
                   <div>Planned: {formatQty(skuEntry.plannedLitres, 2)} L</div>
                   <div>Wastage buffer: {formatQty(skuEntry.wastageLitres, 2)} L</div>
-                  <div>Batch count: {skuEntry.batchCount}</div>
                   <div className="opacity-70">recipe v{skuEntry.formulaVersion}</div>
                 </div>
               </div>
@@ -739,6 +837,53 @@ export default function AdminProductionConsole() {
           </div>
         )}
       </section>
+      </div>
+
+      <div id="production-print-root" className="hidden print:block">
+        <section className="wall-sheet-page wall-sheet-page-grid">
+          {[0, 1, 2, 3, 4, 5].map((slotIndex) => {
+              const skuEntry = printSkuCards[slotIndex];
+
+              if (!skuEntry) {
+                return <article key={`print-empty-${slotIndex}`} className="wall-sheet-sku-card wall-sheet-sku-card-empty" />;
+              }
+
+              return (
+                <article key={`print-sku-${skuEntry.sku}-${slotIndex}`} className="wall-sheet-sku-card">
+                  <header className="wall-sheet-header">
+                    <div className="wall-sheet-brand">
+                      <img src="/images/logo.jpg" alt="GGH logo" className="wall-sheet-logo" />
+                    </div>
+                    <div className="wall-sheet-title">{skuEntry.skuName}</div>
+                    <div className="wall-sheet-subtitle">SKU: {skuEntry.sku}</div>
+                    <div className="wall-sheet-meta-grid">
+                      <div>Start Date: {printStartDate || "_____"}</div>
+                      <div>End Date: _____</div>
+                      <div>Start Time: _____</div>
+                      <div>End Time: _____</div>
+                      <div className="wall-sheet-meta-span-2">Batch Number: {sharedBatchNumber || "-"}</div>
+                    </div>
+                  </header>
+
+                  <div className="wall-sheet-ingredients">
+                    {skuEntry.ingredients.map((ingredient, index) => (
+                      <div key={`print-ingredient-${skuEntry.sku}-${index}`} className="wall-sheet-ingredient-row">
+                        <div className="wall-sheet-check-box" aria-hidden="true" />
+                        <div className="wall-sheet-ingredient-name">{ingredient.name}</div>
+                        <div className="wall-sheet-ingredient-qty">{formatQty(ingredient.quantity, 2)} {ingredient.unit}</div>
+                        <div className="wall-sheet-ingredient-tolerance">
+                          {ingredient.toleranceType === "plus_minus"
+                            ? `+/- ${formatQty(ingredient.toleranceValue, 2)} ${ingredient.unit}`
+                            : "Exact"}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </article>
+              );
+            })}
+        </section>
+      </div>
     </div>
   );
 }

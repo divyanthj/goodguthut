@@ -7,6 +7,7 @@ import Subscription from "@/models/Subscription";
 import OrderPlan from "@/models/OrderPlan";
 import Preorder from "@/models/Preorder";
 import RecipeFormula from "@/models/RecipeFormula";
+import { getSubscriptionSettings } from "@/libs/subscription-settings";
 import {
   buildIngredientSheet,
   computeDemandForNextDeliveryDate,
@@ -36,17 +37,19 @@ export async function GET() {
   await connectMongo();
 
   try {
-    const [subscriptions, orderPlans, preorders, approvedRecipes] = await Promise.all([
+    const [subscriptions, orderPlans, preorders, approvedRecipes, settings] = await Promise.all([
       Subscription.find({}).sort({ createdAt: -1 }),
       OrderPlan.find({}).sort({ createdAt: -1 }),
       Preorder.find({}).sort({ createdAt: -1 }),
       RecipeFormula.find({ status: "approved" }).sort({ sku: 1, version: -1 }),
+      getSubscriptionSettings(),
     ]);
 
     const demandSummary = computeDemandForNextDeliveryDate({
       subscriptions: JSON.parse(JSON.stringify(subscriptions)),
       orderPlans: JSON.parse(JSON.stringify(orderPlans)),
       preorders: JSON.parse(JSON.stringify(preorders)),
+      deliveryDaysOfWeek: settings?.deliveryDaysOfWeek || [],
     });
     const recipeMap = new Map(
       approvedRecipes.map((recipeDoc) => {
@@ -67,7 +70,10 @@ export async function GET() {
 
     return NextResponse.json({
       ...sheet,
-      summary: demandSummary.summary,
+      summary: {
+        ...demandSummary.summary,
+        minimumLeadDays: Number(settings?.minimumLeadDays || 0),
+      },
     });
   } catch (sheetError) {
     console.error(sheetError);

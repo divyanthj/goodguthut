@@ -52,3 +52,191 @@ progress::-webkit-progress-value {
     @apply !capitalize;
   }
 }
+
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 0;
+  }
+
+  html,
+  body {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: auto;
+    height: auto;
+  }
+
+  body {
+    background: #fff !important;
+  }
+
+  .site-chrome-header,
+  .site-chrome-footer,
+  .admin-production-page-header {
+    display: none !important;
+  }
+
+  .wall-sheet-page {
+    break-after: avoid-page;
+    page-break-after: avoid;
+    width: 285mm;
+    height: 170mm;
+    margin: 0 auto;
+    padding: 0;
+    box-sizing: border-box;
+    color: #111;
+    overflow: hidden;
+  }
+
+  .wall-sheet-page-grid {
+    display: flex;
+    flex-wrap: wrap;
+    width: 285mm;
+    height: 170mm;
+    gap: 0;
+    align-content: flex-start;
+  }
+
+  .wall-sheet-sku-card {
+    width: 95mm;
+    height: 85mm;
+    min-height: 85mm;
+    max-height: 85mm;
+    border: 0.6px solid #111;
+    border-radius: 0;
+    padding: 0.65mm 0.85mm;
+    box-sizing: border-box;
+    overflow: hidden;
+    break-inside: avoid;
+    page-break-inside: avoid;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .wall-sheet-sku-card-empty {
+    border: 0.6px dashed #666;
+  }
+
+  .wall-sheet-header {
+    border-bottom: 0.6px solid #111;
+    padding-bottom: 0.45mm;
+    margin-bottom: 0.45mm;
+    flex: 0 0 auto;
+    overflow: hidden;
+  }
+
+  .wall-sheet-brand {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 0.6mm;
+  }
+
+  .wall-sheet-logo {
+    width: 4.5mm;
+    height: 4.5mm;
+    border-radius: 50%;
+    object-fit: cover;
+  }
+
+  .wall-sheet-title {
+    font-size: 7.2pt;
+    font-weight: 800;
+    line-height: 1.15;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .wall-sheet-subtitle {
+    margin-top: 0.3mm;
+    font-size: 5.7pt;
+    font-weight: 700;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .wall-sheet-meta-grid {
+    margin-top: 0.35mm;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.3mm 0.9mm;
+    font-size: 5.2pt;
+    font-weight: 700;
+    line-height: 1.15;
+    overflow: hidden;
+  }
+
+  .wall-sheet-meta-span-2 {
+    grid-column: 1 / span 2;
+  }
+
+  .wall-sheet-ingredients {
+    display: block;
+    border: 0.6px solid #111;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .wall-sheet-ingredient-row {
+    display: grid;
+    grid-template-columns: 3mm 1.4fr 1fr 1fr;
+    gap: 0;
+    align-items: center;
+    border-bottom: 0.6px solid #111;
+    height: 4.2mm;
+    min-height: 4.2mm;
+    max-height: 4.2mm;
+    overflow: hidden;
+  }
+
+  .wall-sheet-ingredient-row:last-child {
+    border-bottom: 0;
+  }
+
+  .wall-sheet-check-box {
+    width: 2.3mm;
+    height: 2.3mm;
+    border: 0.6px solid #111;
+    border-radius: 0.2mm;
+    justify-self: center;
+  }
+
+  .wall-sheet-ingredient-name {
+    font-size: 5.7pt;
+    font-weight: 800;
+    line-height: 1.1;
+    border-left: 0.6px solid #111;
+    padding: 0.35mm 0.45mm;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .wall-sheet-ingredient-qty {
+    font-size: 5.8pt;
+    font-weight: 800;
+    line-height: 1.1;
+    text-align: right;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    border-left: 0.6px solid #111;
+    padding: 0.35mm 0.45mm;
+  }
+
+  .wall-sheet-ingredient-tolerance {
+    font-size: 5.3pt;
+    font-weight: 700;
+    line-height: 1.1;
+    text-align: right;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    border-left: 0.6px solid #111;
+    padding: 0.35mm 0.45mm;
+  }
+}

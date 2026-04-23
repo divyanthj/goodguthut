@@ -41,7 +41,7 @@ export default async function AdminProductionPage() {
   return (
     <main className="min-h-screen bg-base-200 px-4 py-10 md:px-6">
       <div className="mx-auto max-w-6xl space-y-6">
-        <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="admin-production-page-header flex flex-wrap items-center justify-between gap-4 print:hidden">
           <div>
             <h1 className="text-3xl font-bold">Production</h1>
             <p className="mt-2 opacity-75">
