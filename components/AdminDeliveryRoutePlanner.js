@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 const formatCurrency = (currency, amount) =>
   new Intl.NumberFormat("en-IN", {
@@ -19,10 +19,92 @@ const formatDateOnly = (value) => {
   });
 };
 
+const buildGoogleMapsRouteLink = (originAddress, stops = []) => {
+  const cleanedOrigin = String(originAddress || "").trim();
+  const stopAddresses = (Array.isArray(stops) ? stops : [])
+    .map((stop) => String(stop?.address || "").trim())
+    .filter(Boolean);
+
+  if (!cleanedOrigin || stopAddresses.length === 0) {
+    return "";
+  }
+
+  const destination = stopAddresses[stopAddresses.length - 1];
+  const waypoints = stopAddresses.slice(0, -1);
+  const query = new URLSearchParams({
+    api: "1",
+    origin: cleanedOrigin,
+    destination,
+    travelmode: "driving",
+  });
+
+  if (waypoints.length > 0) {
+    query.set("waypoints", waypoints.join("|"));
+  }
+
+  return `https://www.google.com/maps/dir/?${query.toString()}`;
+};
+
+const formatPhoneForMessage = (value) => {
+  const rawPhone = String(value || "").trim();
+
+  if (!rawPhone) {
+    return "-";
+  }
+
+  const withoutLeadingZeroes = rawPhone.replace(/^0+/, "");
+  return withoutLeadingZeroes || rawPhone;
+};
+
+const formatWhatsAppRouteMessage = (batch, routePlan) => {
+  const routeMapLink = buildGoogleMapsRouteLink(routePlan.originAddress, routePlan.stops);
+  const lines = [
+    `*Delivery Route: ${batch.title || "Batch"}*`,
+    `*Date:* ${formatDateOnly(batch.deliveryDate)}`,
+    `*Total Stops:* ${routePlan.totalStops || routePlan.stops.length || 0}`,
+    `*Route Map:* ${routeMapLink || "-"}`,
+    "",
+  ];
+
+  routePlan.stops.forEach((stop, index) => {
+    lines.push(`${index + 1}. *Name:* ${stop.customerName || "-"}`);
+    lines.push(`   *Phone:* ${formatPhoneForMessage(stop.phone)}`);
+    lines.push(`   *Address:* ${stop.address || "-"}`);
+    lines.push(`   *Location:* ${stop.mapsUrl || "-"}`);
+    lines.push("");
+  });
+
+  return lines.join("\n").trim();
+};
+
+const copyToClipboard = async (value) => {
+  if (!value) {
+    return false;
+  }
+
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(value);
+    return true;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = value;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "absolute";
+  textarea.style.left = "-9999px";
+  document.body.appendChild(textarea);
+  textarea.select();
+  const copied = document.execCommand("copy");
+  document.body.removeChild(textarea);
+  return copied;
+};
+
 export default function AdminDeliveryRoutePlanner({
   initialWindows = [],
   initialPreorders = [],
 }) {
+  const [copiedBatchKey, setCopiedBatchKey] = useState("");
+
   const activeDeliveryBatches = useMemo(() => {
     const orderCounts = new Map();
 
@@ -44,6 +126,18 @@ export default function AdminDeliveryRoutePlanner({
   if (activeDeliveryBatches.length === 0) {
     return null;
   }
+
+  const handleCopyWhatsAppText = async (batch, routePlan) => {
+    const batchKey = `${batch.id}`;
+    const copied = await copyToClipboard(formatWhatsAppRouteMessage(batch, routePlan));
+
+    if (copied) {
+      setCopiedBatchKey(batchKey);
+      window.setTimeout(() => {
+        setCopiedBatchKey((current) => (current === batchKey ? "" : current));
+      }, 1800);
+    }
+  };
 
   return (
     <section className="rounded-2xl bg-base-100 p-5 shadow-md">
@@ -76,6 +170,15 @@ export default function AdminDeliveryRoutePlanner({
                     Last updated: {routePlan?.generatedAt ? formatDateOnly(routePlan.generatedAt) : "-"}
                   </div>
                 </div>
+                {routePlan && routePlan.status === "ready" && routePlan.stops.length > 0 && (
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    onClick={() => handleCopyWhatsAppText(batch, routePlan)}
+                  >
+                    {copiedBatchKey === `${batch.id}` ? "Copied" : "Copy whole route text"}
+                  </button>
+                )}
               </div>
 
               {routePlan && routePlan.status === "ready" && (
