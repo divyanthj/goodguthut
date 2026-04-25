@@ -22,7 +22,6 @@ import {
 import { getSkuMap } from "@/libs/sku-catalog";
 import { getDefaultSubscriptionStartDate } from "@/libs/subscription-schedule";
 import { MAX_TOTAL_QTY, ONE_TIME_MIN_TOTAL_QTY } from "@/libs/order-quantity";
-import { verifySignedRecurringRolloutToken } from "@/libs/subscription-rollout";
 
 const buildOneTimeRequest = async (body = {}) => {
   const name = normalizeName(body.name || "");
@@ -201,14 +200,6 @@ export const buildOrderPlanRequest = async (body = {}) => {
   const mode = String(body.mode || "one_time").trim().toLowerCase();
 
   if (mode === "recurring") {
-    const recurringAccess = verifySignedRecurringRolloutToken(
-      String(body.rolloutAccessToken || "").trim()
-    );
-
-    if (!recurringAccess.isValid) {
-      throw new Error("Recurring subscription access is not enabled for this link.");
-    }
-
     const recurringRequest = await buildSubscriptionRequest(body);
     return {
       ...recurringRequest,

@@ -275,8 +275,6 @@ export default function SubscriptionForm({
   availableStartDates = [],
   defaultStartDate = "",
   currency = "INR",
-  allowRecurringRollout = false,
-  rolloutAccessToken = "",
   initialValues,
   initialSelectionMode = "combo",
   mode = "create",
@@ -561,7 +559,6 @@ export default function SubscriptionForm({
   );
   const canOfferRecurringToggle =
     mode === "create" &&
-    allowRecurringRollout &&
     selectedItems.length > 0 &&
     recurringEligibility.isEligible;
   const effectiveStartDate = startDate || fallbackStartDate;
@@ -658,18 +655,11 @@ export default function SubscriptionForm({
       return;
     }
 
-    if (!allowRecurringRollout && wantsRecurring) {
-      setWantsRecurring(false);
-      setRecurringNotice("");
-      return;
-    }
-
     if (wantsRecurring && !canOfferRecurringToggle) {
       setWantsRecurring(false);
       setRecurringNotice(recurringEligibility.reason);
     }
   }, [
-    allowRecurringRollout,
     canOfferRecurringToggle,
     mode,
     recurringEligibility.reason,
@@ -958,11 +948,6 @@ export default function SubscriptionForm({
       return;
     }
 
-    if (isRecurringMode && !allowRecurringRollout && mode === "create") {
-      setError("Recurring subscription access is not enabled for this link.");
-      return;
-    }
-
     if (selectedItems.length === 0) {
       setError("Choose a set or add a few bottles before continuing.");
       return;
@@ -1032,7 +1017,6 @@ export default function SubscriptionForm({
             comboId: submissionComboId,
             items: selectedItems,
             mode: isOneTimeMode ? "one_time" : "recurring",
-            rolloutAccessToken: isOneTimeMode ? "" : rolloutAccessToken,
             token,
           }),
         }
@@ -1554,7 +1538,6 @@ export default function SubscriptionForm({
       )}
 
       {mode === "create" &&
-        allowRecurringRollout &&
         (canOfferRecurringToggle || recurringNotice || recurringToggleProgress.message) && (
           <section className="rounded-2xl border border-[#d8cdbb] bg-[#fffaf1] p-4 text-sm text-[#53675d]">
             {canOfferRecurringToggle ? (

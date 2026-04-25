@@ -293,7 +293,6 @@ export async function POST(req) {
     console.error(error);
     if (
       error.message?.startsWith("SKU ") ||
-      error.message === "Recurring subscription access is not enabled for this link." ||
       error.message === "Select a valid order mode." ||
       error.message === "Enter a valid name." ||
       error.message === "Enter a valid phone number." ||

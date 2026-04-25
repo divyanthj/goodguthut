@@ -187,6 +187,25 @@ const orderPlanNotificationsSchema = mongoose.Schema(
   { _id: false }
 );
 
+const orderPlanShipmentSchema = mongoose.Schema(
+  {
+    trackingLink: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    shippedAt: {
+      type: Date,
+      default: null,
+    },
+    estimatedArrivalAt: {
+      type: Date,
+      default: null,
+    },
+  },
+  { _id: false }
+);
+
 const orderPlanSchema = mongoose.Schema(
   {
     mode: {
@@ -327,12 +346,30 @@ const orderPlanSchema = mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["new", "payment_pending", "active", "paused", "cancelled", "fulfilled", "failed"],
+      enum: [
+        "new",
+        "payment_pending",
+        "active",
+        "paused",
+        "confirmed",
+        "shipped",
+        "cancelled",
+        "fulfilled",
+        "failed",
+      ],
       default: "new",
+    },
+    deliveredAt: {
+      type: Date,
+      default: null,
     },
     lastContactedAt: {
       type: Date,
       default: null,
+    },
+    shipment: {
+      type: orderPlanShipmentSchema,
+      default: () => ({}),
     },
     payment: {
       type: orderPlanPaymentSchema,

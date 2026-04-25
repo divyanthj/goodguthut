@@ -139,6 +139,19 @@ export default function AdminPreordersList({ initialPreorders }) {
   const [deletingId, setDeletingId] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [showFulfilledPreorders, setShowFulfilledPreorders] = useState(false);
+  const fulfilledPreorderCount = useMemo(
+    () => preorders.filter((preorder) => preorder.status === "fulfilled").length,
+    [preorders]
+  );
+  const visiblePreorders = useMemo(
+    () =>
+      preorders.filter(
+        (preorder) =>
+          preorder.status !== "fulfilled" || showFulfilledPreorders
+      ),
+    [preorders, showFulfilledPreorders]
+  );
   const confirmedProductionSummary = useMemo(() => {
     const batches = new Map();
 
@@ -426,7 +439,26 @@ export default function AdminPreordersList({ initialPreorders }) {
         </section>
       )}
 
-      {preorders.map((preorder) => (
+      {fulfilledPreorderCount > 0 && (
+        <section className="rounded-2xl bg-base-100 p-4 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="text-sm opacity-70">
+              {fulfilledPreorderCount} fulfilled preorder(s) are hidden to keep this list focused.
+            </div>
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              onClick={() => setShowFulfilledPreorders((current) => !current)}
+            >
+              {showFulfilledPreorders
+                ? `Hide fulfilled (${fulfilledPreorderCount})`
+                : `Show fulfilled (${fulfilledPreorderCount})`}
+            </button>
+          </div>
+        </section>
+      )}
+
+      {visiblePreorders.map((preorder) => (
         <article key={preorder.id} className="rounded-2xl bg-base-100 p-5 shadow-md">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>

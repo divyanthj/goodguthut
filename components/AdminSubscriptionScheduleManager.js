@@ -24,12 +24,6 @@ export default function AdminSubscriptionScheduleManager({
   const [recurringMinTotalQuantity, setRecurringMinTotalQuantity] = useState(
     sanitizeRecurringMinTotalQuantity(initialRecurringMinTotalQuantity)
   );
-  const [rolloutExpiryHours, setRolloutExpiryHours] = useState(24 * 7);
-  const [rolloutLink, setRolloutLink] = useState("");
-  const [rolloutExpiresAt, setRolloutExpiresAt] = useState("");
-  const [isGeneratingRolloutLink, setIsGeneratingRolloutLink] = useState(false);
-  const [rolloutError, setRolloutError] = useState("");
-  const [rolloutMessage, setRolloutMessage] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -76,50 +70,6 @@ export default function AdminSubscriptionScheduleManager({
       setError(saveError.message || "Could not save subscription schedule settings.");
     } finally {
       setIsSaving(false);
-    }
-  };
-
-  const generateRolloutLink = async () => {
-    setRolloutError("");
-    setRolloutMessage("");
-    setIsGeneratingRolloutLink(true);
-
-    try {
-      const response = await fetch("/api/admin/subscription-rollout-link", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          expiresInHours: rolloutExpiryHours,
-        }),
-      });
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Could not generate rollout link.");
-      }
-
-      setRolloutLink(data.url || "");
-      setRolloutExpiresAt(data.expiresAt || "");
-      setRolloutMessage("Recurring access link generated.");
-    } catch (linkError) {
-      setRolloutError(linkError.message || "Could not generate rollout link.");
-    } finally {
-      setIsGeneratingRolloutLink(false);
-    }
-  };
-
-  const copyRolloutLink = async () => {
-    if (!rolloutLink || typeof navigator === "undefined" || !navigator.clipboard) {
-      return;
-    }
-
-    try {
-      await navigator.clipboard.writeText(rolloutLink);
-      setRolloutMessage("Recurring access link copied.");
-    } catch (_error) {
-      setRolloutError("Could not copy the rollout link.");
     }
   };
 
@@ -224,66 +174,6 @@ export default function AdminSubscriptionScheduleManager({
         )}
       </form>
 
-      <div className="mt-8 rounded-2xl border border-base-300 bg-base-200 p-4">
-        <h3 className="text-base font-semibold">Recurring rollout magic links</h3>
-        <p className="mt-2 text-sm opacity-75">
-          Generate expiring links to reveal recurring checkout only for selected customers.
-        </p>
-        <div className="mt-4 flex flex-wrap items-end gap-3">
-          <label className="form-control max-w-xs">
-            <div className="label">
-              <span className="label-text">Expiry (hours)</span>
-            </div>
-            <input
-              type="number"
-              min="1"
-              max="2160"
-              className="input input-bordered"
-              value={rolloutExpiryHours}
-              onChange={(event) =>
-                setRolloutExpiryHours(Math.max(1, Math.min(2160, Number(event.target.value || 1))))
-              }
-            />
-          </label>
-          <button
-            type="button"
-            className="btn btn-primary"
-            disabled={isGeneratingRolloutLink}
-            onClick={generateRolloutLink}
-          >
-            {isGeneratingRolloutLink ? "Generating..." : "Generate link"}
-          </button>
-          {rolloutLink && (
-            <button type="button" className="btn btn-outline" onClick={copyRolloutLink}>
-              Copy link
-            </button>
-          )}
-        </div>
-
-        {rolloutLink && (
-          <div className="mt-4 rounded-xl border border-base-300 bg-base-100 p-3">
-            <div className="text-xs opacity-70">Link</div>
-            <div className="mt-1 break-all text-sm">{rolloutLink}</div>
-            {rolloutExpiresAt && (
-              <div className="mt-2 text-xs opacity-70">
-                Expires: {new Date(rolloutExpiresAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}
-              </div>
-            )}
-          </div>
-        )}
-
-        {rolloutMessage && (
-          <div className="alert alert-success mt-4">
-            <span>{rolloutMessage}</span>
-          </div>
-        )}
-
-        {rolloutError && (
-          <div className="alert alert-error mt-4">
-            <span>{rolloutError}</span>
-          </div>
-        )}
-      </div>
     </section>
   );
 }

@@ -15,7 +15,6 @@ import {
   getRazorpayPublicConfig,
   isRazorpayConfigured,
 } from "@/libs/razorpay";
-import { verifySignedRecurringRolloutToken } from "@/libs/subscription-rollout";
 import { recalculateSubscriptionRouteSnapshots } from "@/libs/subscription-route-planner";
 import { RECURRING_SEASONAL_FULL_PERIOD_ERROR } from "@/libs/recurring-seasonal-policy";
 import {
@@ -84,14 +83,6 @@ export async function POST(req) {
   }
 
   try {
-    const recurringAccess = verifySignedRecurringRolloutToken(
-      String(body.rolloutAccessToken || "").trim()
-    );
-
-    if (!recurringAccess.isValid) {
-      throw new Error("Recurring subscription access is not enabled for this link.");
-    }
-
     const subscriptionRequest = await buildSubscriptionRequest(body);
     await connectMongo();
 
@@ -246,8 +237,7 @@ export async function POST(req) {
       error.message === RECURRING_SEASONAL_FULL_PERIOD_ERROR ||
       error.message === "Subscriptions are not available until delivery days are configured." ||
       error.message === "There are no delivery dates available in the next 30 days." ||
-      error.message === "Choose a valid first delivery date within the next 30 days." ||
-      error.message === "Recurring subscription access is not enabled for this link."
+      error.message === "Choose a valid first delivery date within the next 30 days."
     ) {
       logAbuseEvent("subscription-invalid-request", req, { message: error.message });
       return jsonError(error.message, 400);

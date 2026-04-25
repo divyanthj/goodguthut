@@ -15,8 +15,6 @@ export default function UnifiedOrderCheckout({
   availableStartDates = [],
   defaultStartDate = "",
   currency = "INR",
-  allowRecurringRollout = false,
-  rolloutAccessToken = "",
 }) {
   return (
     <div>
@@ -34,8 +32,6 @@ export default function UnifiedOrderCheckout({
         defaultStartDate={defaultStartDate}
         currency={currency}
         initialSelectionMode="combo"
-        allowRecurringRollout={allowRecurringRollout}
-        rolloutAccessToken={rolloutAccessToken}
       />
     </div>
   );

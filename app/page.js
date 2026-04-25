@@ -1,19 +1,8 @@
 import Image from "next/image";
 import UnifiedOrderCheckout from "@/components/UnifiedOrderCheckout";
 import { getSubscriptionSetupContext } from "@/libs/subscription-request";
-import {
-  RECURRING_ROLLOUT_QUERY_PARAM,
-  verifySignedRecurringRolloutToken,
-} from "@/libs/subscription-rollout";
 
-export default async function HomePage({ searchParams }) {
-  const rawRolloutAccessToken = searchParams?.[RECURRING_ROLLOUT_QUERY_PARAM];
-  const rolloutAccessToken = String(
-    Array.isArray(rawRolloutAccessToken)
-      ? rawRolloutAccessToken[0] || ""
-      : rawRolloutAccessToken || ""
-  ).trim();
-  const rolloutAccess = verifySignedRecurringRolloutToken(rolloutAccessToken);
+export default async function HomePage() {
   const {
     skuCatalog,
     comboCatalog,
@@ -93,8 +82,6 @@ export default async function HomePage({ searchParams }) {
           availableStartDates={availableStartDates}
           defaultStartDate={defaultStartDate}
           currency={currency}
-          allowRecurringRollout={rolloutAccess.isValid}
-          rolloutAccessToken={rolloutAccess.isValid ? rolloutAccessToken : ""}
         />
       </section>
     </main>
