@@ -71,6 +71,7 @@ const buildOneTimeRequest = async (body = {}) => {
     comboCatalog,
     pickupAddress,
     deliveryBands,
+    freeDeliveryThreshold,
     deliveryDaysOfWeek,
     minimumLeadDays,
     currency,
@@ -155,6 +156,7 @@ const buildOneTimeRequest = async (body = {}) => {
       address,
       placeDetails,
       orderSubtotal: subtotal,
+      freeDeliveryThreshold,
     });
 
     if (!deliveryQuote.isDeliverable) {

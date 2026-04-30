@@ -1187,73 +1187,73 @@ export default function SubscriptionForm({
       {pendingCheckout && (
         <dialog className="modal modal-open">
           <div className="modal-box max-w-2xl rounded-[28px] border border-[#d6c6ae] bg-[#fbf7f0] p-0 shadow-2xl">
-            <div className="border-b border-[#e1d6c7] bg-gradient-to-br from-[#f7f1e6] via-[#f3edde] to-[#eaf1ea] px-6 py-6 md:px-8">
+            <div className="border-b border-[#e1d6c7] bg-[#f7f1e6] px-6 py-6 md:px-8">
               <div className="text-xs font-semibold uppercase tracking-[0.24em] text-[#6b7d74]">
-                Before You Continue
+                Secure Checkout
               </div>
               <h3 className="mt-3 text-2xl font-semibold text-[#2f4a3e]">
                 {isOneTimeMode
-                  ? "Confirm your one-time payment"
-                  : "This sets up your UPI AutoPay mandate"}
+                  ? "Ready to confirm your order?"
+                  : "Ready to start your weekly plan?"}
               </h3>
               <p className="mt-3 max-w-xl text-sm leading-7 text-[#53675d]">
                 {isOneTimeMode
-                  ? "You will be charged now to confirm this order. Once payment succeeds, your delivery is locked in."
-                  : "Razorpay may show a small one-time verification amount, often `1` or `5`, to register your mandate. That is not your weekly delivery charge."}
+                  ? "We will open secure payment with Razorpay. Once payment succeeds, your Good Gut Hut delivery is locked in."
+                  : "We will open secure UPI AutoPay setup with Razorpay. Once approved, your weekly Good Gut Hut plan is confirmed."}
               </p>
             </div>
 
             <div className="grid gap-4 px-6 py-6 md:grid-cols-3 md:px-8">
               <div className="rounded-2xl border border-[#ddcfb6] bg-[#fffdf8] p-4">
                 <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[#6b7d74]">
-                  {isOneTimeMode ? "Charge now" : "Regular charge"}
+                  {isOneTimeMode ? "You will pay today" : "Per delivery"}
                 </div>
                 <div className="mt-2 text-2xl font-semibold text-[#2f4a3e]">
                   {currency} {total.toFixed(2)}
                 </div>
                 <div className="mt-2 text-sm text-[#53675d]">
                   {isOneTimeMode
-                    ? "This is the full one-time amount for this order."
-                    : "This is what each scheduled delivery will be charged at."}
+                    ? "This is the full one-time amount for your order."
+                    : "This is your regular charge for each scheduled delivery."}
                 </div>
               </div>
               <div className="rounded-2xl border border-[#ddcfb6] bg-[#fffdf8] p-4">
                 <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[#6b7d74]">
-                  {isOneTimeMode ? "Delivery date" : "First charge date"}
+                  {isOneTimeMode ? "Delivery date" : "First delivery"}
                 </div>
                 <div className="mt-2 text-lg font-semibold text-[#2f4a3e]">
                   {formatSubscriptionDate(effectiveStartDate)}
                 </div>
                 <div className="mt-2 text-sm text-[#53675d]">
                   {isOneTimeMode
-                    ? "We auto-assign the next available delivery date."
-                    : "You will not be charged immediately unless you approve the mandate and that date arrives."}
+                    ? "We have assigned the next available delivery date for you."
+                    : "Your first recurring charge happens on your first delivery date."}
                 </div>
               </div>
               <div className="rounded-2xl border border-[#ddcfb6] bg-[#fffdf8] p-4">
                 <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[#6b7d74]">
-                  {isOneTimeMode ? "Checkout mode" : "What Razorpay may show now"}
+                  What happens next
                 </div>
                 <div className="mt-2 text-lg font-semibold text-[#2f4a3e]">
-                  {isOneTimeMode ? "One-time payment" : "Small verification amount"}
+                  {isOneTimeMode ? "Order confirmed" : "Plan activated"}
                 </div>
                 <div className="mt-2 text-sm text-[#53675d]">
                   {isOneTimeMode
-                    ? `No mandate setup is required. You pay ${currency} ${total.toFixed(2)} now.`
-                    : `This temporary amount is only for mandate setup. Your actual subscription amount remains ${currency} ${total.toFixed(2)}.`}
+                    ? "After payment, we will confirm your order and prepare it for delivery."
+                    : `Razorpay may show a small verification amount. Your plan amount remains ${currency} ${total.toFixed(2)} per delivery.`}
                 </div>
               </div>
             </div>
 
             <div className="px-6 pb-2 md:px-8">
-              <div className="rounded-2xl border border-[#d8cdbb] bg-[#fff8ec] p-4 text-sm leading-7 text-[#53675d]">
+              <div className="rounded-2xl border border-[#d8cdbb] bg-[#fffdf8] p-4 text-sm leading-7 text-[#53675d]">
                 {isOneTimeMode
-                  ? "Closing checkout without completing payment means your order remains pending."
-                  : "Closing the Razorpay window without approving means the mandate is not completed. Your plan will stay pending until you finish the setup."}
+                  ? "You can still review your order before paying. If the payment window is closed before completion, your order will not be confirmed yet."
+                  : "You can still review your plan before setup. If the Razorpay window is closed before approval, your plan will stay pending until you finish setup."}
               </div>
             </div>
 
-            <div className="modal-action mt-0 flex-row justify-between gap-3 border-t border-[#e1d6c7] px-6 py-5 md:px-8">
+            <div className="modal-action mt-0 flex-row flex-wrap justify-between gap-3 border-t border-[#e1d6c7] px-6 py-5 md:px-8">
               <button
                 type="button"
                 className="btn btn-ghost text-[#52655b]"
@@ -1262,7 +1262,7 @@ export default function SubscriptionForm({
                   setIsSubmitting(false);
                 }}
               >
-                Not now
+                Review order
               </button>
               <button
                 type="button"
@@ -1277,7 +1277,7 @@ export default function SubscriptionForm({
                   }
                 }}
               >
-                Continue to Razorpay
+                {isOneTimeMode ? "Confirm my order" : "Start my plan"}
               </button>
             </div>
           </div>
