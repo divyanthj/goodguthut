@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import connectMongo from "@/libs/mongoose";
 import { buildOrderPlanRequest } from "@/libs/order-plan-request";
 import { sendOrderPlanConfirmationEmail } from "@/libs/order-plan-notifications";
+import { recalculateSubscriptionRouteSnapshots } from "@/libs/subscription-route-planner";
 import {
   createRazorpayOrder,
   createRazorpayPlan,
@@ -29,6 +30,14 @@ const buildLineupSummary = (items = []) =>
   items.map((item) => `${item.productName} x ${item.quantity}`).join(", ");
 
 const serializeOrderPlan = (orderPlan) => JSON.parse(JSON.stringify(orderPlan));
+
+const refreshRouteSnapshots = async () => {
+  try {
+    await recalculateSubscriptionRouteSnapshots();
+  } catch (routeError) {
+    console.error("Failed to refresh delivery route snapshots", routeError);
+  }
+};
 
 const buildOrderPlanCheckoutPayload = ({ orderPlan, mode, razorpayOrder, razorpaySubscription }) => {
   if (mode === "one_time" && razorpayOrder) {
@@ -262,6 +271,7 @@ export async function POST(req) {
       };
       orderPlan.status = "active";
       await orderPlan.save();
+      await refreshRouteSnapshots();
     }
 
     if (!checkoutPayload) {

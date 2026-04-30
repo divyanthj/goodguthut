@@ -1,15 +1,11 @@
 import AdminLoginButton from "@/components/AdminLoginButton";
-import AdminDeliveryRoutePlanner from "@/components/AdminDeliveryRoutePlanner";
 import AdminNav from "@/components/AdminNav";
 import AdminOrderPlansList from "@/components/AdminOrderPlansList";
 import AdminPreordersList from "@/components/AdminPreordersList";
-import AdminSubscriptionRoutePlanner from "@/components/AdminSubscriptionRoutePlanner";
 import { getAdminSessionState } from "@/libs/admin-auth";
 import connectMongo from "@/libs/mongoose";
-import { getSubscriptionSettings } from "@/libs/subscription-settings";
 import OrderPlan from "@/models/OrderPlan";
 import Preorder from "@/models/Preorder";
-import PreorderWindow from "@/models/PreorderWindow";
 
 export default async function AdminOrdersPage() {
   const { session, isAdmin } = await getAdminSessionState();
@@ -47,21 +43,12 @@ export default async function AdminOrdersPage() {
   }
 
   await connectMongo();
-  const [orderPlanDocs, legacyPreorderDocs, preorderWindowDocs, subscriptionSettings] = await Promise.all([
+  const [orderPlanDocs, legacyPreorderDocs] = await Promise.all([
     OrderPlan.find({}).sort({ createdAt: -1 }).limit(300),
     Preorder.find({}).sort({ createdAt: -1 }).limit(200),
-    PreorderWindow.find({})
-      .sort({ status: 1, deliveryDate: -1, updatedAt: -1, createdAt: -1 })
-      .limit(50),
-    getSubscriptionSettings(),
   ]);
   const orderPlans = JSON.parse(JSON.stringify(orderPlanDocs));
   const legacyPreorders = JSON.parse(JSON.stringify(legacyPreorderDocs));
-  const preorderWindows = JSON.parse(JSON.stringify(preorderWindowDocs));
-  const deliveryRouteSnapshots = JSON.parse(
-    JSON.stringify(subscriptionSettings?.deliveryRouteSnapshots || [])
-  );
-  const currency = subscriptionSettings?.currency || "INR";
 
   return (
     <main className="min-h-screen bg-base-200 px-4 py-10 md:px-6">
@@ -77,16 +64,6 @@ export default async function AdminOrdersPage() {
         </div>
 
         <AdminOrderPlansList initialOrderPlans={orderPlans} />
-
-        <AdminDeliveryRoutePlanner
-          initialWindows={preorderWindows}
-          initialPreorders={legacyPreorders}
-        />
-
-        <AdminSubscriptionRoutePlanner
-          initialRouteSnapshots={deliveryRouteSnapshots}
-          currency={currency}
-        />
 
         <section className="space-y-4">
           <div className="rounded-2xl bg-base-100 p-5 shadow-md">

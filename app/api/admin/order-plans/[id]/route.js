@@ -6,6 +6,7 @@ import {
   getOrderPlanDisplayStatus,
   normalizeOneTimeOrderPlanStatus,
 } from "@/libs/order-plans";
+import { recalculateSubscriptionRouteSnapshots } from "@/libs/subscription-route-planner";
 import OrderPlan from "@/models/OrderPlan";
 
 const ensureAdmin = async () => {
@@ -20,6 +21,14 @@ const ensureAdmin = async () => {
   }
 
   return null;
+};
+
+const refreshRouteSnapshots = async () => {
+  try {
+    await recalculateSubscriptionRouteSnapshots();
+  } catch (routeError) {
+    console.error("Failed to refresh delivery route snapshots", routeError);
+  }
 };
 
 const ensureOneTimeFulfillmentStatus = (orderPlan) => {
@@ -107,6 +116,7 @@ export async function PATCH(req, { params }) {
     }
 
     await orderPlan.save();
+    await refreshRouteSnapshots();
 
     return NextResponse.json({ orderPlan: JSON.parse(JSON.stringify(orderPlan)) });
   } catch (error) {
@@ -134,6 +144,8 @@ export async function DELETE(_req, { params }) {
     if (!orderPlan) {
       return NextResponse.json({ error: "Order not found." }, { status: 404 });
     }
+
+    await refreshRouteSnapshots();
 
     return NextResponse.json({ ok: true });
   } catch (error) {

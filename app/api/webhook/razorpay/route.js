@@ -24,6 +24,14 @@ const getRazorpaySubscriptionIdFromEvent = (event) =>
 
 const TERMINAL_BILLING_STATUSES = new Set(["cancelled", "completed", "expired"]);
 
+const refreshRouteSnapshots = async () => {
+  try {
+    await recalculateSubscriptionRouteSnapshots();
+  } catch (routeError) {
+    console.error("Failed to refresh delivery route snapshots", routeError);
+  }
+};
+
 const applyRecurringNaturalEnd = ({
   planDoc,
   paymentField = "payment",
@@ -183,6 +191,7 @@ export async function POST(req) {
         }
 
         await orderPlan.save();
+        await refreshRouteSnapshots();
       }
 
       const subscription = await Subscription.findOne({
@@ -287,11 +296,7 @@ export async function POST(req) {
 
         await subscription.save();
 
-        try {
-          await recalculateSubscriptionRouteSnapshots();
-        } catch (routeError) {
-          console.error("Failed to refresh subscription delivery route snapshots", routeError);
-        }
+        await refreshRouteSnapshots();
       }
     }
 
@@ -328,6 +333,7 @@ export async function POST(req) {
               : new Date(),
           };
           await orderPlan.save();
+          await refreshRouteSnapshots();
 
           if (shouldSendConfirmationEmail) {
             try {
@@ -356,6 +362,7 @@ export async function POST(req) {
             orderPlan.status = "failed";
           }
           await orderPlan.save();
+          await refreshRouteSnapshots();
           break;
         }
         default:

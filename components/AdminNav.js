@@ -5,6 +5,7 @@ export default function AdminNav({ active = "settings" }) {
   const discountsClass = active === "discounts" ? "btn btn-primary" : "btn btn-ghost";
   const ordersClass = active === "orders" ? "btn btn-primary" : "btn btn-ghost";
   const productionClass = active === "production" ? "btn btn-primary" : "btn btn-ghost";
+  const routePlannerClass = active === "route-planner" ? "btn btn-primary" : "btn btn-ghost";
 
   return (
     <div className="flex flex-wrap gap-2">
@@ -13,6 +14,9 @@ export default function AdminNav({ active = "settings" }) {
       </Link>
       <Link href="/admin/orders" className={ordersClass}>
         Orders
+      </Link>
+      <Link href="/admin/route-planner" className={routePlannerClass}>
+        Route planner
       </Link>
       <Link href="/admin/production" className={productionClass}>
         Production

@@ -123,10 +123,6 @@ export default function AdminDeliveryRoutePlanner({
     return initialWindows.filter((windowData) => Number(orderCounts.get(windowData.id) || 0) > 0);
   }, [initialPreorders, initialWindows]);
 
-  if (activeDeliveryBatches.length === 0) {
-    return null;
-  }
-
   const handleCopyWhatsAppText = async (batch, routePlan) => {
     const batchKey = `${batch.id}`;
     const copied = await copyToClipboard(formatWhatsAppRouteMessage(batch, routePlan));
@@ -152,6 +148,12 @@ export default function AdminDeliveryRoutePlanner({
       </div>
 
       <div className="mt-4 space-y-4">
+        {activeDeliveryBatches.length === 0 && (
+          <div className="rounded-xl bg-base-200 p-4 text-sm opacity-70">
+            No active delivery batches have confirmed delivery orders yet.
+          </div>
+        )}
+
         {activeDeliveryBatches.map((batch) => {
           const routePlan = batch.deliveryRouteSnapshot || null;
 

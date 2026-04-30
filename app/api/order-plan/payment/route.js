@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import connectMongo from "@/libs/mongoose";
 import { sendOrderPlanConfirmationEmail } from "@/libs/order-plan-notifications";
+import { recalculateSubscriptionRouteSnapshots } from "@/libs/subscription-route-planner";
 import Sku from "@/models/Sku";
 import {
   extractRazorpayPaymentResult,
@@ -19,6 +20,14 @@ import { buildSeasonalCutoffMapFromCatalog, getValidRecurringDeliveryCount } fro
 import OrderPlan from "@/models/OrderPlan";
 
 const sanitizeOrderPlan = (orderPlan) => JSON.parse(JSON.stringify(orderPlan));
+
+const refreshRouteSnapshots = async () => {
+  try {
+    await recalculateSubscriptionRouteSnapshots();
+  } catch (routeError) {
+    console.error("Failed to refresh delivery route snapshots", routeError);
+  }
+};
 
 const syncRecurringOrderPlanPayment = async ({
   orderPlan,
@@ -208,6 +217,7 @@ export async function PATCH(req) {
         paidAt: new Date(),
       };
       await orderPlan.save();
+      await refreshRouteSnapshots();
 
       if (!orderPlan.notifications?.confirmationEmailSentAt) {
         try {
@@ -296,6 +306,7 @@ export async function PATCH(req) {
       paymentId,
     });
     await orderPlan.save();
+    await refreshRouteSnapshots();
 
     if (!orderPlan.notifications?.confirmationEmailSentAt) {
       try {

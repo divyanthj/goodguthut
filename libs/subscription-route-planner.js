@@ -1,7 +1,9 @@
 import { buildDeliveryRoutePlan } from "@/libs/delivery-route";
 import connectMongo from "@/libs/mongoose";
+import { normalizeOneTimeOrderPlanStatus } from "@/libs/order-plans";
 import { formatPickupAddress, getActiveWindowFilter } from "@/libs/preorder-windows";
 import { getSubscriptionSettings } from "@/libs/subscription-settings";
+import OrderPlan from "@/models/OrderPlan";
 import PreorderWindow from "@/models/PreorderWindow";
 import Subscription from "@/models/Subscription";
 
@@ -80,6 +82,75 @@ const isRouteEligibleSubscription = (subscription) => {
   );
 };
 
+const isRouteEligibleOrderPlan = (orderPlan) => {
+  if (!orderPlan?.nextDeliveryDate && !orderPlan?.firstDeliveryDate && !orderPlan?.startDate) {
+    return false;
+  }
+
+  if (!(orderPlan.normalizedDeliveryAddress || orderPlan.address)) {
+    return false;
+  }
+
+  if (orderPlan.mode === "one_time") {
+    return ["confirmed", "shipped"].includes(normalizeOneTimeOrderPlanStatus(orderPlan.status));
+  }
+
+  if (orderPlan.mode === "recurring") {
+    return (
+      orderPlan.status === "active" ||
+      CONFIRMED_BILLING_STATUSES.has(orderPlan.payment?.status || "")
+    );
+  }
+
+  return false;
+};
+
+const getOrderPlanDeliveryDate = (orderPlan) =>
+  String(orderPlan?.nextDeliveryDate || orderPlan?.firstDeliveryDate || orderPlan?.startDate || "").trim();
+
+const mapSubscriptionToRouteStopInput = (subscription) => ({
+  id: subscription.id,
+  routeSource: "subscription",
+  fulfillmentMethod: "delivery",
+  customerName: subscription.name,
+  phone: subscription.phone,
+  email: subscription.email || "",
+  address: subscription.address,
+  normalizedDeliveryAddress: subscription.normalizedDeliveryAddress || subscription.address,
+  totalQuantity: Number(subscription.totalQuantity || 0),
+  total: Number(subscription.total || subscription.subtotal || 0),
+  status: subscription.status,
+  items: (subscription.items || []).map((item) => ({
+    sku: item.sku,
+    productName: item.productName,
+    quantity: Number(item.quantity || 0),
+  })),
+});
+
+const mapOrderPlanToRouteStopInput = (orderPlan) => ({
+  id: orderPlan.id,
+  routeSource: "order_plan",
+  mode: orderPlan.mode || "",
+  fulfillmentMethod: "delivery",
+  customerName: orderPlan.name,
+  phone: orderPlan.phone,
+  email: orderPlan.email || "",
+  address: orderPlan.address,
+  normalizedDeliveryAddress: orderPlan.normalizedDeliveryAddress || orderPlan.address,
+  totalQuantity: Number(orderPlan.totalQuantity || 0),
+  total: Number(orderPlan.total || orderPlan.subtotal || 0),
+  status:
+    orderPlan.mode === "one_time"
+      ? normalizeOneTimeOrderPlanStatus(orderPlan.status)
+      : orderPlan.status,
+  deliveredAt: orderPlan.deliveredAt || null,
+  items: (orderPlan.items || []).map((item) => ({
+    sku: item.sku,
+    productName: item.productName,
+    quantity: Number(item.quantity || 0),
+  })),
+});
+
 const sortSnapshotsByDate = (snapshots = []) =>
   [...snapshots].sort((left, right) =>
     String(left.deliveryDate || "").localeCompare(String(right.deliveryDate || ""))
@@ -88,16 +159,18 @@ const sortSnapshotsByDate = (snapshots = []) =>
 export const recalculateSubscriptionRouteSnapshots = async () => {
   await connectMongo();
 
-  const [settings, subscriptions, routeSettings] = await Promise.all([
+  const [settings, subscriptions, orderPlans, routeSettings] = await Promise.all([
     getSubscriptionSettings(),
     Subscription.find({}).sort({ nextDeliveryDate: 1, createdAt: 1 }),
+    OrderPlan.find({}).sort({ nextDeliveryDate: 1, createdAt: 1 }),
     getSubscriptionRoutePickupAddress(),
   ]);
   const pickupAddress = routeSettings.pickupAddress || "";
   const payoutPerKm = Number(routeSettings.payoutPerKm || 0);
   const eligibleSubscriptions = subscriptions.filter(isRouteEligibleSubscription);
+  const eligibleOrderPlans = orderPlans.filter(isRouteEligibleOrderPlan);
 
-  if (eligibleSubscriptions.length === 0) {
+  if (eligibleSubscriptions.length === 0 && eligibleOrderPlans.length === 0) {
     settings.deliveryRouteSnapshots = [];
     await settings.save();
     return settings.deliveryRouteSnapshots;
@@ -116,9 +189,21 @@ export const recalculateSubscriptionRouteSnapshots = async () => {
     return groups;
   }, new Map());
 
+  eligibleOrderPlans.forEach((orderPlan) => {
+    const deliveryDate = getOrderPlanDeliveryDate(orderPlan);
+
+    if (!deliveryDate) {
+      return;
+    }
+
+    const currentGroup = groupedByDate.get(deliveryDate) || [];
+    currentGroup.push(orderPlan);
+    groupedByDate.set(deliveryDate, currentGroup);
+  });
+
   const snapshots = [];
 
-  for (const [deliveryDate, groupedSubscriptions] of groupedByDate.entries()) {
+  for (const [deliveryDate, groupedEntries] of groupedByDate.entries()) {
     if (!pickupAddress) {
       snapshots.push(
         buildEmptyRouteSnapshot({
@@ -133,26 +218,14 @@ export const recalculateSubscriptionRouteSnapshots = async () => {
     }
 
     try {
+      const routeInputs = groupedEntries.map((entry) =>
+        entry.constructor?.modelName === "OrderPlan"
+          ? mapOrderPlanToRouteStopInput(entry)
+          : mapSubscriptionToRouteStopInput(entry)
+      );
       const routePlan = await buildDeliveryRoutePlan({
         pickupAddress,
-        preorders: groupedSubscriptions.map((subscription) => ({
-          id: subscription.id,
-          fulfillmentMethod: "delivery",
-          customerName: subscription.name,
-          phone: subscription.phone,
-          email: subscription.email || "",
-          address: subscription.address,
-          normalizedDeliveryAddress:
-            subscription.normalizedDeliveryAddress || subscription.address,
-          totalQuantity: Number(subscription.totalQuantity || 0),
-          total: Number(subscription.total || subscription.subtotal || 0),
-          status: subscription.status,
-          items: (subscription.items || []).map((item) => ({
-            sku: item.sku,
-            productName: item.productName,
-            quantity: Number(item.quantity || 0),
-          })),
-        })),
+        preorders: routeInputs,
         driverPayoutPerKm: payoutPerKm,
       });
 
@@ -167,23 +240,38 @@ export const recalculateSubscriptionRouteSnapshots = async () => {
         payoutPerKm: routePlan.payoutPerKm,
         error: "",
         stops: routePlan.stops.map((stop) => {
-          const subscription = groupedSubscriptions.find(
+          const sourceInput = routeInputs.find(
             (entry) => String(entry.id) === String(stop.preorderId)
           );
+          const sourceEntry = groupedEntries.find(
+            (entry) => String(entry.id) === String(stop.preorderId)
+          );
+          const isOrderPlan = sourceInput?.routeSource === "order_plan";
 
           return {
             stopNumber: stop.stopNumber,
-            subscriptionId: stop.preorderId,
+            subscriptionId: isOrderPlan ? "" : stop.preorderId,
+            orderPlanId: isOrderPlan ? stop.preorderId : "",
+            routeSource: sourceInput?.routeSource || "subscription",
+            mode: sourceInput?.mode || "",
             customerName: stop.customerName,
             phone: stop.phone,
             email: stop.email,
             address: stop.address,
             totalQuantity: stop.totalQuantity,
             total: stop.total,
-            cadence: subscription?.cadence || "",
-            status: subscription?.status || stop.status || "",
-            billingStatus: subscription?.billing?.status || "",
-            nextDeliveryDate: subscription?.nextDeliveryDate || deliveryDate,
+            cadence: sourceEntry?.cadence || "",
+            status:
+              isOrderPlan && sourceEntry?.mode === "one_time"
+                ? normalizeOneTimeOrderPlanStatus(sourceEntry?.status)
+                : sourceEntry?.status || stop.status || "",
+            billingStatus:
+              sourceEntry?.billing?.status || sourceEntry?.payment?.status || "",
+            nextDeliveryDate:
+              sourceEntry?.nextDeliveryDate ||
+              sourceEntry?.firstDeliveryDate ||
+              sourceEntry?.startDate ||
+              deliveryDate,
             legDistanceKm: stop.legDistanceKm,
             cumulativeDistanceKm: stop.cumulativeDistanceKm,
             mapsUrl: stop.mapsUrl,

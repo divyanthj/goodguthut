@@ -22,6 +22,40 @@ const formatDateTime = (value) => {
   });
 };
 
+const toDateKey = (value) => {
+  if (!value) {
+    return "";
+  }
+
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}/.test(value)) {
+    return value.slice(0, 10);
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-");
+};
+
+const todayDateKey = () => toDateKey(new Date());
+
+const formatRouteRunTitle = (deliveryDate) => {
+  const dateKey = toDateKey(deliveryDate);
+
+  if (dateKey && dateKey === todayDateKey()) {
+    return "Deliveries for today";
+  }
+
+  return `Deliveries for ${formatSubscriptionDate(deliveryDate) || deliveryDate}`;
+};
+
 const buildGoogleMapsRouteLink = (originAddress, stops = []) => {
   const cleanedOrigin = String(originAddress || "").trim();
   const stopAddresses = (Array.isArray(stops) ? stops : [])
@@ -62,7 +96,7 @@ const formatPhoneForMessage = (value) => {
 const formatWhatsAppRouteMessage = (routePlan) => {
   const routeMapLink = buildGoogleMapsRouteLink(routePlan.originAddress, routePlan.stops);
   const lines = [
-    `*Subscription Delivery Route: ${formatSubscriptionDate(routePlan.deliveryDate) || routePlan.deliveryDate}*`,
+    `*Delivery Route: ${formatSubscriptionDate(routePlan.deliveryDate) || routePlan.deliveryDate}*`,
     `*Total Stops:* ${routePlan.totalStops || routePlan.stops.length || 0}`,
     `*Route Map:* ${routeMapLink || "-"}`,
     "",
@@ -77,6 +111,14 @@ const formatWhatsAppRouteMessage = (routePlan) => {
   });
 
   return lines.join("\n").trim();
+};
+
+const getRouteStopTypeLabel = (stop = {}) => {
+  if (stop.routeSource === "order_plan") {
+    return stop.mode === "recurring" ? "Recurring order" : "One-time order";
+  }
+
+  return "Subscription";
 };
 
 const copyToClipboard = async (value) => {
@@ -107,10 +149,6 @@ export default function AdminSubscriptionRoutePlanner({
 }) {
   const [copiedRouteKey, setCopiedRouteKey] = useState("");
 
-  if (!initialRouteSnapshots.length) {
-    return null;
-  }
-
   const handleCopyWhatsAppText = async (routePlan) => {
     const routeKey = `${routePlan.deliveryDate}`;
     const copied = await copyToClipboard(formatWhatsAppRouteMessage(routePlan));
@@ -127,17 +165,23 @@ export default function AdminSubscriptionRoutePlanner({
     <section className="rounded-2xl bg-base-100 p-5 shadow-md">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold">Subscription delivery routes</h2>
+          <h2 className="text-lg font-semibold">Next delivery run</h2>
           <p className="text-sm opacity-70">
-            Upcoming subscription runs are recalculated automatically whenever a subscriber changes state, address, or next delivery date.
+            The nearest committed delivery run is recalculated automatically when deliveries change.
           </p>
         </div>
         <div className="badge badge-outline">
-          {initialRouteSnapshots.length} upcoming run{initialRouteSnapshots.length === 1 ? "" : "s"}
+          {initialRouteSnapshots.length ? "1 run" : "0 runs"}
         </div>
       </div>
 
       <div className="mt-4 space-y-4">
+        {initialRouteSnapshots.length === 0 && (
+          <div className="rounded-xl bg-base-200 p-4 text-sm opacity-70">
+            No upcoming route runs have been generated yet.
+          </div>
+        )}
+
         {initialRouteSnapshots.map((routePlan) => (
           <article
             key={`subscription-route-${routePlan.deliveryDate}`}
@@ -146,7 +190,7 @@ export default function AdminSubscriptionRoutePlanner({
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <div className="text-lg font-semibold">
-                  Delivery run for {formatSubscriptionDate(routePlan.deliveryDate) || routePlan.deliveryDate}
+                  {formatRouteRunTitle(routePlan.deliveryDate)}
                 </div>
                 <div className="mt-1 text-sm opacity-70">
                   Driver payout: {formatCurrency(currency, routePlan.payoutPerKm || 0)} / km
@@ -197,7 +241,7 @@ export default function AdminSubscriptionRoutePlanner({
                       <thead>
                         <tr>
                           <th>Stop</th>
-                          <th>Subscriber</th>
+                          <th>Customer</th>
                           <th>Phone</th>
                           <th>Address</th>
                           <th>Cadence</th>
@@ -209,12 +253,16 @@ export default function AdminSubscriptionRoutePlanner({
                       </thead>
                       <tbody>
                         {routePlan.stops.map((stop) => (
-                          <tr key={`${routePlan.deliveryDate}-${stop.subscriptionId}`}>
+                          <tr key={`${routePlan.deliveryDate}-${stop.subscriptionId || stop.orderPlanId}`}>
                             <td className="font-medium">{stop.stopNumber}</td>
                             <td>
                               <div className="font-medium">{stop.customerName}</div>
                               <div className="text-xs opacity-60">
-                                {formatCurrency(currency, stop.total || 0)} • billing {stop.billingStatus || "-"}
+                                {getRouteStopTypeLabel(stop)}
+                                {stop.billingStatus ? ` - payment ${stop.billingStatus}` : ""}
+                              </div>
+                              <div className="text-xs opacity-60">
+                                {formatCurrency(currency, stop.total || 0)}
                               </div>
                             </td>
                             <td>{stop.phone}</td>
@@ -242,7 +290,7 @@ export default function AdminSubscriptionRoutePlanner({
                   </div>
                 ) : (
                   <div className="rounded-xl bg-base-100 p-4 text-sm opacity-70">
-                    No subscribers are queued for this delivery run.
+                    No customers are queued for this delivery run.
                   </div>
                 )}
               </div>
@@ -250,7 +298,7 @@ export default function AdminSubscriptionRoutePlanner({
 
             {routePlan.status === "error" && (
               <div className="alert alert-error mt-4">
-                <span>{routePlan.error || "Could not calculate subscription delivery route."}</span>
+                <span>{routePlan.error || "Could not calculate this delivery route."}</span>
               </div>
             )}
           </article>
@@ -259,3 +307,4 @@ export default function AdminSubscriptionRoutePlanner({
     </section>
   );
 }
+
