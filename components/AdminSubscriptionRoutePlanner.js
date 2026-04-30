@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { formatSubscriptionCadence } from "@/libs/subscriptions";
 import { formatSubscriptionDate } from "@/libs/subscription-schedule";
 
@@ -114,11 +114,30 @@ const formatWhatsAppRouteMessage = (routePlan) => {
 };
 
 const getRouteStopTypeLabel = (stop = {}) => {
+  if (stop.routeSource === "additional") {
+    return "Additional stop";
+  }
+
   if (stop.routeSource === "order_plan") {
     return stop.mode === "recurring" ? "Recurring order" : "One-time order";
   }
 
   return "Subscription";
+};
+
+const emptyAdditionalStopForm = {
+  name: "",
+  phone: "",
+  email: "",
+  address: "",
+};
+
+const createSessionToken = () => {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 };
 
 const copyToClipboard = async (value) => {
@@ -147,7 +166,190 @@ export default function AdminSubscriptionRoutePlanner({
   initialRouteSnapshots = [],
   currency = "INR",
 }) {
+  const [routeSnapshots, setRouteSnapshots] = useState(initialRouteSnapshots);
+  const [additionalStops, setAdditionalStops] = useState([]);
+  const [additionalStopForm, setAdditionalStopForm] = useState(emptyAdditionalStopForm);
+  const [selectedAdditionalPlace, setSelectedAdditionalPlace] = useState(null);
+  const [addressSessionToken, setAddressSessionToken] = useState(() => createSessionToken());
+  const [addressSuggestions, setAddressSuggestions] = useState([]);
+  const [isLoadingAddressSuggestions, setIsLoadingAddressSuggestions] = useState(false);
+  const [addressLookupError, setAddressLookupError] = useState("");
   const [copiedRouteKey, setCopiedRouteKey] = useState("");
+  const [previewError, setPreviewError] = useState("");
+  const [isPreviewing, setIsPreviewing] = useState(false);
+  const currentRoute = routeSnapshots[0] || null;
+
+  useEffect(() => {
+    const input = additionalStopForm.address.trim();
+
+    if (input.length < 3) {
+      setAddressSuggestions([]);
+      setIsLoadingAddressSuggestions(false);
+      setAddressLookupError("");
+      return undefined;
+    }
+
+    if (selectedAdditionalPlace && selectedAdditionalPlace.formattedAddress === additionalStopForm.address) {
+      setAddressSuggestions([]);
+      return undefined;
+    }
+
+    const timeoutId = setTimeout(async () => {
+      setIsLoadingAddressSuggestions(true);
+      setAddressLookupError("");
+
+      try {
+        const response = await fetch("/api/preorder/address-autocomplete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            input,
+            sessionToken: addressSessionToken,
+          }),
+        });
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data?.error || "Could not load address suggestions.");
+        }
+
+        setAddressSuggestions(data.suggestions || []);
+      } catch (error) {
+        setAddressSuggestions([]);
+        setAddressLookupError(error.message || "Could not load address suggestions.");
+      } finally {
+        setIsLoadingAddressSuggestions(false);
+      }
+    }, 250);
+
+    return () => clearTimeout(timeoutId);
+  }, [additionalStopForm.address, addressSessionToken, selectedAdditionalPlace]);
+
+  const previewRoute = async (nextAdditionalStops) => {
+    if (!currentRoute?.deliveryDate) {
+      setPreviewError("No delivery run is available yet.");
+      return false;
+    }
+
+    setIsPreviewing(true);
+    setPreviewError("");
+
+    try {
+      const response = await fetch("/api/admin/route-planner/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          deliveryDate: toDateKey(currentRoute.deliveryDate),
+          additionalStops: nextAdditionalStops,
+        }),
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Could not preview this route.");
+      }
+
+      if (data.routeSnapshot) {
+        setRouteSnapshots([data.routeSnapshot]);
+      }
+
+      setAdditionalStops(nextAdditionalStops);
+      return true;
+    } catch (error) {
+      setPreviewError(error.message || "Could not preview this route.");
+      return false;
+    } finally {
+      setIsPreviewing(false);
+    }
+  };
+
+  const handleAdditionalStopChange = (field, value) => {
+    setAdditionalStopForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+
+    if (field === "address") {
+      if (selectedAdditionalPlace) {
+        setAddressSessionToken(createSessionToken());
+      }
+
+      setSelectedAdditionalPlace(null);
+      setAddressLookupError("");
+      setPreviewError("");
+    }
+  };
+
+  const handleAdditionalSuggestionSelect = async (suggestion) => {
+    setIsLoadingAddressSuggestions(true);
+    setAddressLookupError("");
+    setPreviewError("");
+
+    try {
+      const response = await fetch("/api/preorder/address-place", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          placeId: suggestion.placeId,
+          sessionToken: addressSessionToken,
+        }),
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || "Could not verify that address.");
+      }
+
+      setSelectedAdditionalPlace(data.place);
+      setAdditionalStopForm((current) => ({
+        ...current,
+        address: data.place.formattedAddress,
+      }));
+      setAddressSuggestions([]);
+    } catch (error) {
+      setAddressLookupError(error.message || "Could not verify that address.");
+    } finally {
+      setIsLoadingAddressSuggestions(false);
+    }
+  };
+
+  const handleAddAdditionalStop = async (event) => {
+    event.preventDefault();
+
+    const nextStop = {
+      id: `additional-${Date.now()}`,
+      name: additionalStopForm.name.trim(),
+      phone: additionalStopForm.phone.trim(),
+      email: additionalStopForm.email.trim(),
+      address: additionalStopForm.address.trim(),
+    };
+
+    if (!nextStop.name || !nextStop.phone || !nextStop.email || !nextStop.address) {
+      setPreviewError("Enter name, phone, email, and address for the additional stop.");
+      return;
+    }
+
+    if (!selectedAdditionalPlace?.placeId) {
+      setPreviewError("Choose the additional stop address from the suggestions.");
+      return;
+    }
+
+    nextStop.address = selectedAdditionalPlace.formattedAddress || nextStop.address;
+
+    const didPreview = await previewRoute([...additionalStops, nextStop]);
+
+    if (didPreview) {
+      setAdditionalStopForm(emptyAdditionalStopForm);
+      setSelectedAdditionalPlace(null);
+      setAddressSessionToken(createSessionToken());
+      setAddressSuggestions([]);
+      setAddressLookupError("");
+    }
+  };
+
+  const handleRemoveAdditionalStop = async (additionalStopId) => {
+    await previewRoute(additionalStops.filter((stop) => stop.id !== additionalStopId));
+  };
 
   const handleCopyWhatsAppText = async (routePlan) => {
     const routeKey = `${routePlan.deliveryDate}`;
@@ -171,18 +373,18 @@ export default function AdminSubscriptionRoutePlanner({
           </p>
         </div>
         <div className="badge badge-outline">
-          {initialRouteSnapshots.length ? "1 run" : "0 runs"}
+          {routeSnapshots.length ? "1 run" : "0 runs"}
         </div>
       </div>
 
       <div className="mt-4 space-y-4">
-        {initialRouteSnapshots.length === 0 && (
+        {routeSnapshots.length === 0 && (
           <div className="rounded-xl bg-base-200 p-4 text-sm opacity-70">
             No upcoming route runs have been generated yet.
           </div>
         )}
 
-        {initialRouteSnapshots.map((routePlan) => (
+        {routeSnapshots.map((routePlan) => (
           <article
             key={`subscription-route-${routePlan.deliveryDate}`}
             className="rounded-xl bg-base-200 p-4"
@@ -209,6 +411,90 @@ export default function AdminSubscriptionRoutePlanner({
                 </button>
               )}
             </div>
+
+            <form className="mt-4 rounded-xl bg-base-100 p-4" onSubmit={handleAddAdditionalStop}>
+              <div className="grid gap-3 lg:grid-cols-[minmax(140px,0.8fr)_minmax(120px,0.7fr)_minmax(160px,0.9fr)_minmax(220px,1.4fr)_auto]">
+                <label className="form-control">
+                  <div className="label py-0">
+                    <span className="label-text">Name</span>
+                  </div>
+                  <input
+                    type="text"
+                    className="input input-bordered input-sm"
+                    value={additionalStopForm.name}
+                    onChange={(event) => handleAdditionalStopChange("name", event.target.value)}
+                  />
+                </label>
+                <label className="form-control">
+                  <div className="label py-0">
+                    <span className="label-text">Phone</span>
+                  </div>
+                  <input
+                    type="tel"
+                    className="input input-bordered input-sm"
+                    value={additionalStopForm.phone}
+                    onChange={(event) => handleAdditionalStopChange("phone", event.target.value)}
+                  />
+                </label>
+                <label className="form-control">
+                  <div className="label py-0">
+                    <span className="label-text">Email</span>
+                  </div>
+                  <input
+                    type="email"
+                    className="input input-bordered input-sm"
+                    value={additionalStopForm.email}
+                    onChange={(event) => handleAdditionalStopChange("email", event.target.value)}
+                  />
+                </label>
+                <label className="form-control">
+                  <div className="label py-0">
+                    <span className="label-text">Address</span>
+                  </div>
+                  <input
+                    type="text"
+                    className="input input-bordered input-sm"
+                    value={additionalStopForm.address}
+                    onChange={(event) => handleAdditionalStopChange("address", event.target.value)}
+                    autoComplete="off"
+                    placeholder="Start typing and choose a match"
+                  />
+                  {addressSuggestions.length > 0 && (
+                    <div className="mt-2 rounded-2xl border border-base-300 bg-base-100 shadow-lg">
+                      <ul className="max-h-72 overflow-y-auto py-2">
+                        {addressSuggestions.map((suggestion) => (
+                          <li key={suggestion.placeId}>
+                            <button
+                              type="button"
+                              className="w-full px-4 py-3 text-left hover:bg-base-200"
+                              onClick={() => handleAdditionalSuggestionSelect(suggestion)}
+                            >
+                              <div className="font-medium">{suggestion.primaryText}</div>
+                              {suggestion.secondaryText && (
+                                <div className="text-sm opacity-70">{suggestion.secondaryText}</div>
+                              )}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {isLoadingAddressSuggestions && additionalStopForm.address.trim().length >= 3 && (
+                    <div className="mt-2 text-xs opacity-70">Looking up addresses...</div>
+                  )}
+                  {selectedAdditionalPlace?.formattedAddress && (
+                    <div className="mt-2 text-xs text-success">Address selected from Google Maps.</div>
+                  )}
+                  {addressLookupError && (
+                    <div className="mt-2 text-sm text-error">{addressLookupError}</div>
+                  )}
+                </label>
+                <button type="submit" className="btn btn-primary btn-sm self-end" disabled={isPreviewing}>
+                  {isPreviewing ? "Calculating..." : "Add stop"}
+                </button>
+              </div>
+              {previewError && <div className="mt-3 text-sm text-error">{previewError}</div>}
+            </form>
 
             {routePlan.status === "ready" && (
               <div className="mt-4 space-y-4">
@@ -253,26 +539,44 @@ export default function AdminSubscriptionRoutePlanner({
                       </thead>
                       <tbody>
                         {routePlan.stops.map((stop) => (
-                          <tr key={`${routePlan.deliveryDate}-${stop.subscriptionId || stop.orderPlanId}`}>
+                          <tr
+                            key={`${routePlan.deliveryDate}-${
+                              stop.subscriptionId || stop.orderPlanId || stop.additionalStopId
+                            }`}
+                          >
                             <td className="font-medium">{stop.stopNumber}</td>
                             <td>
                               <div className="font-medium">{stop.customerName}</div>
                               <div className="text-xs opacity-60">
                                 {getRouteStopTypeLabel(stop)}
-                                {stop.billingStatus ? ` - payment ${stop.billingStatus}` : ""}
+                                {stop.routeSource !== "additional" && stop.billingStatus
+                                  ? ` - payment ${stop.billingStatus}`
+                                  : ""}
                               </div>
-                              <div className="text-xs opacity-60">
-                                {formatCurrency(currency, stop.total || 0)}
-                              </div>
+                              {stop.routeSource !== "additional" && (
+                                <div className="text-xs opacity-60">
+                                  {formatCurrency(currency, stop.total || 0)}
+                                </div>
+                              )}
+                              {stop.routeSource === "additional" && (
+                                <button
+                                  type="button"
+                                  className="btn btn-ghost btn-xs mt-1 text-error"
+                                  disabled={isPreviewing}
+                                  onClick={() => handleRemoveAdditionalStop(stop.additionalStopId)}
+                                >
+                                  Remove
+                                </button>
+                              )}
                             </td>
                             <td>{stop.phone}</td>
                             <td className="min-w-[260px]">{stop.address}</td>
-                            <td>{formatSubscriptionCadence(stop.cadence)}</td>
+                            <td>{stop.routeSource === "additional" ? "-" : formatSubscriptionCadence(stop.cadence)}</td>
                             <td className="text-right">{Number(stop.legDistanceKm || 0).toFixed(1)}</td>
                             <td className="text-right">
                               {Number(stop.cumulativeDistanceKm || 0).toFixed(1)}
                             </td>
-                            <td className="text-right">{stop.totalQuantity}</td>
+                            <td className="text-right">{stop.routeSource === "additional" ? "-" : stop.totalQuantity}</td>
                             <td>
                               <a
                                 className="link link-primary"

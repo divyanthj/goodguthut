@@ -76,6 +76,7 @@ const subscriptionSettingsSchema = mongoose.Schema(
                 stopNumber: Number,
                 subscriptionId: String,
                 orderPlanId: String,
+                additionalStopId: String,
                 routeSource: String,
                 mode: String,
                 customerName: String,

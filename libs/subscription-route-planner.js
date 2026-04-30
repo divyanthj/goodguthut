@@ -120,6 +120,9 @@ const mapSubscriptionToRouteStopInput = (subscription) => ({
   totalQuantity: Number(subscription.totalQuantity || 0),
   total: Number(subscription.total || subscription.subtotal || 0),
   status: subscription.status,
+  billingStatus: subscription.billing?.status || "",
+  cadence: subscription.cadence || "",
+  nextDeliveryDate: subscription.nextDeliveryDate || "",
   items: (subscription.items || []).map((item) => ({
     sku: item.sku,
     productName: item.productName,
@@ -143,6 +146,11 @@ const mapOrderPlanToRouteStopInput = (orderPlan) => ({
     orderPlan.mode === "one_time"
       ? normalizeOneTimeOrderPlanStatus(orderPlan.status)
       : orderPlan.status,
+  billingStatus: orderPlan.payment?.status || "",
+  cadence: orderPlan.cadence || "",
+  nextDeliveryDate: orderPlan.nextDeliveryDate || "",
+  firstDeliveryDate: orderPlan.firstDeliveryDate || "",
+  startDate: orderPlan.startDate || "",
   deliveredAt: orderPlan.deliveredAt || null,
   items: (orderPlan.items || []).map((item) => ({
     sku: item.sku,
@@ -151,16 +159,48 @@ const mapOrderPlanToRouteStopInput = (orderPlan) => ({
   })),
 });
 
+const mapAdditionalStopToRouteStopInput = (stop, deliveryDate) => ({
+  id: stop.id,
+  additionalStopId: stop.id,
+  routeSource: "additional",
+  fulfillmentMethod: "delivery",
+  customerName: stop.name,
+  phone: stop.phone,
+  email: stop.email,
+  address: stop.address,
+  normalizedDeliveryAddress: stop.address,
+  totalQuantity: 0,
+  total: 0,
+  status: "additional",
+  billingStatus: "",
+  cadence: "",
+  nextDeliveryDate: deliveryDate,
+  items: [],
+});
+
+const sanitizeAdditionalStops = (additionalStops = []) =>
+  (Array.isArray(additionalStops) ? additionalStops : [])
+    .map((stop, index) => ({
+      id: String(stop?.id || `additional-${index + 1}`).trim(),
+      name: String(stop?.name || "").trim(),
+      phone: String(stop?.phone || "").trim(),
+      email: String(stop?.email || "").trim(),
+      address: String(stop?.address || "").trim(),
+    }))
+    .filter((stop) => stop.id && stop.name && stop.phone && stop.email && stop.address);
+
 const sortSnapshotsByDate = (snapshots = []) =>
   [...snapshots].sort((left, right) =>
     String(left.deliveryDate || "").localeCompare(String(right.deliveryDate || ""))
   );
 
-export const recalculateSubscriptionRouteSnapshots = async () => {
+export const buildSubscriptionRouteSnapshots = async ({
+  deliveryDate = "",
+  additionalStops = [],
+} = {}) => {
   await connectMongo();
 
-  const [settings, subscriptions, orderPlans, routeSettings] = await Promise.all([
-    getSubscriptionSettings(),
+  const [subscriptions, orderPlans, routeSettings] = await Promise.all([
     Subscription.find({}).sort({ nextDeliveryDate: 1, createdAt: 1 }),
     OrderPlan.find({}).sort({ nextDeliveryDate: 1, createdAt: 1 }),
     getSubscriptionRoutePickupAddress(),
@@ -169,11 +209,15 @@ export const recalculateSubscriptionRouteSnapshots = async () => {
   const payoutPerKm = Number(routeSettings.payoutPerKm || 0);
   const eligibleSubscriptions = subscriptions.filter(isRouteEligibleSubscription);
   const eligibleOrderPlans = orderPlans.filter(isRouteEligibleOrderPlan);
+  const requestedDeliveryDate = String(deliveryDate || "").trim();
+  const cleanedAdditionalStops = sanitizeAdditionalStops(additionalStops);
 
-  if (eligibleSubscriptions.length === 0 && eligibleOrderPlans.length === 0) {
-    settings.deliveryRouteSnapshots = [];
-    await settings.save();
-    return settings.deliveryRouteSnapshots;
+  if (
+    eligibleSubscriptions.length === 0 &&
+    eligibleOrderPlans.length === 0 &&
+    (!requestedDeliveryDate || cleanedAdditionalStops.length === 0)
+  ) {
+    return [];
   }
 
   const groupedByDate = eligibleSubscriptions.reduce((groups, subscription) => {
@@ -184,7 +228,7 @@ export const recalculateSubscriptionRouteSnapshots = async () => {
     }
 
     const currentGroup = groups.get(deliveryDate) || [];
-    currentGroup.push(subscription);
+    currentGroup.push(mapSubscriptionToRouteStopInput(subscription));
     groups.set(deliveryDate, currentGroup);
     return groups;
   }, new Map());
@@ -197,13 +241,25 @@ export const recalculateSubscriptionRouteSnapshots = async () => {
     }
 
     const currentGroup = groupedByDate.get(deliveryDate) || [];
-    currentGroup.push(orderPlan);
+    currentGroup.push(mapOrderPlanToRouteStopInput(orderPlan));
     groupedByDate.set(deliveryDate, currentGroup);
   });
 
+  if (requestedDeliveryDate && cleanedAdditionalStops.length > 0) {
+    const currentGroup = groupedByDate.get(requestedDeliveryDate) || [];
+    cleanedAdditionalStops.forEach((stop) => {
+      currentGroup.push(mapAdditionalStopToRouteStopInput(stop, requestedDeliveryDate));
+    });
+    groupedByDate.set(requestedDeliveryDate, currentGroup);
+  }
+
   const snapshots = [];
 
-  for (const [deliveryDate, groupedEntries] of groupedByDate.entries()) {
+  for (const [deliveryDate, routeInputs] of groupedByDate.entries()) {
+    if (requestedDeliveryDate && deliveryDate !== requestedDeliveryDate) {
+      continue;
+    }
+
     if (!pickupAddress) {
       snapshots.push(
         buildEmptyRouteSnapshot({
@@ -218,11 +274,6 @@ export const recalculateSubscriptionRouteSnapshots = async () => {
     }
 
     try {
-      const routeInputs = groupedEntries.map((entry) =>
-        entry.constructor?.modelName === "OrderPlan"
-          ? mapOrderPlanToRouteStopInput(entry)
-          : mapSubscriptionToRouteStopInput(entry)
-      );
       const routePlan = await buildDeliveryRoutePlan({
         pickupAddress,
         preorders: routeInputs,
@@ -243,15 +294,14 @@ export const recalculateSubscriptionRouteSnapshots = async () => {
           const sourceInput = routeInputs.find(
             (entry) => String(entry.id) === String(stop.preorderId)
           );
-          const sourceEntry = groupedEntries.find(
-            (entry) => String(entry.id) === String(stop.preorderId)
-          );
           const isOrderPlan = sourceInput?.routeSource === "order_plan";
+          const isAdditional = sourceInput?.routeSource === "additional";
 
           return {
             stopNumber: stop.stopNumber,
-            subscriptionId: isOrderPlan ? "" : stop.preorderId,
+            subscriptionId: !isOrderPlan && !isAdditional ? stop.preorderId : "",
             orderPlanId: isOrderPlan ? stop.preorderId : "",
+            additionalStopId: isAdditional ? stop.preorderId : "",
             routeSource: sourceInput?.routeSource || "subscription",
             mode: sourceInput?.mode || "",
             customerName: stop.customerName,
@@ -260,17 +310,13 @@ export const recalculateSubscriptionRouteSnapshots = async () => {
             address: stop.address,
             totalQuantity: stop.totalQuantity,
             total: stop.total,
-            cadence: sourceEntry?.cadence || "",
-            status:
-              isOrderPlan && sourceEntry?.mode === "one_time"
-                ? normalizeOneTimeOrderPlanStatus(sourceEntry?.status)
-                : sourceEntry?.status || stop.status || "",
-            billingStatus:
-              sourceEntry?.billing?.status || sourceEntry?.payment?.status || "",
+            cadence: sourceInput?.cadence || "",
+            status: sourceInput?.status || stop.status || "",
+            billingStatus: sourceInput?.billingStatus || "",
             nextDeliveryDate:
-              sourceEntry?.nextDeliveryDate ||
-              sourceEntry?.firstDeliveryDate ||
-              sourceEntry?.startDate ||
+              sourceInput?.nextDeliveryDate ||
+              sourceInput?.firstDeliveryDate ||
+              sourceInput?.startDate ||
               deliveryDate,
             legDistanceKm: stop.legDistanceKm,
             cumulativeDistanceKm: stop.cumulativeDistanceKm,
@@ -292,7 +338,16 @@ export const recalculateSubscriptionRouteSnapshots = async () => {
     }
   }
 
-  settings.deliveryRouteSnapshots = sortSnapshotsByDate(snapshots);
+  return sortSnapshotsByDate(snapshots);
+};
+
+export const recalculateSubscriptionRouteSnapshots = async () => {
+  await connectMongo();
+
+  const settings = await getSubscriptionSettings();
+  const snapshots = await buildSubscriptionRouteSnapshots();
+
+  settings.deliveryRouteSnapshots = snapshots;
   await settings.save();
 
   return settings.deliveryRouteSnapshots;
