@@ -352,8 +352,18 @@ export default function SubscriptionForm({
     )
   );
   const [recurringNotice, setRecurringNotice] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({});
   const initialEmailRef = useRef(initialValues?.email || "");
   const isCompletingPaymentRef = useRef(false);
+  const selectionSectionRef = useRef(null);
+  const customSelectionRef = useRef(null);
+  const durationRef = useRef(null);
+  const deliveryDateRef = useRef(null);
+  const nameInputRef = useRef(null);
+  const emailInputRef = useRef(null);
+  const phoneInputRef = useRef(null);
+  const addressInputRef = useRef(null);
+  const orderSummaryRef = useRef(null);
   const loadRazorpay = useRazorpayCheckout();
   const effectiveStartDateOptions = useMemo(() => {
     if (Array.isArray(availableStartDates) && availableStartDates.length > 0) {
@@ -631,24 +641,123 @@ export default function SubscriptionForm({
       return [];
     }
   }, [cadence, durationIsValid, durationWeeks, effectiveStartDate]);
-  const canSubmit = Boolean(
-    !billingLocked &&
-      !isCancelled &&
-      !isSubmitting &&
-      customer.name.trim() &&
-      customer.email.trim() &&
-      customer.phone.trim() &&
-      customer.address.trim() &&
-      (isOneTimeMode || cadence) &&
-      durationIsValid &&
-      selectedItems.length > 0 &&
-      totalQuantity >= minimumQuantityForMode &&
-      totalQuantity <= MAX_TOTAL_QTY &&
-      effectiveStartDate &&
-      !isQuotingDelivery &&
-      !deliveryError &&
-      !needsAddressSelection
-  );
+  const canAttemptSubmit = !billingLocked && !isCancelled && !isSubmitting;
+  const fieldErrorClass = "mt-2 text-sm font-medium text-error";
+  const inputErrorClass = "border-error focus:border-error";
+
+  const clearFieldErrors = (...keys) => {
+    setFieldErrors((current) => {
+      const next = { ...current };
+      let changed = false;
+
+      keys.forEach((key) => {
+        if (next[key]) {
+          delete next[key];
+          changed = true;
+        }
+      });
+
+      return changed ? next : current;
+    });
+  };
+
+  const scrollToCheckoutIssue = (target) => {
+    const targetMap = {
+      selection: selectionSectionRef,
+      quantity: effectiveSelectionMode === "custom" ? customSelectionRef : selectionSectionRef,
+      duration: durationRef,
+      deliveryDate: deliveryDateRef,
+      name: nameInputRef,
+      email: emailInputRef,
+      phone: phoneInputRef,
+      address: addressInputRef,
+      addressSelection: addressInputRef,
+      delivery: addressInputRef,
+    };
+    const ref = targetMap[target] || orderSummaryRef;
+    const node = ref?.current;
+
+    if (!node) {
+      return;
+    }
+
+    node.scrollIntoView({ behavior: "smooth", block: "center" });
+
+    if (typeof node.focus === "function") {
+      window.setTimeout(() => node.focus({ preventScroll: true }), 350);
+    }
+  };
+
+  const validateCheckoutBeforeSubmit = () => {
+    const nextErrors = {};
+    let firstTarget = "";
+
+    const addError = (target, message) => {
+      nextErrors[target] = message;
+      if (!firstTarget) {
+        firstTarget = target;
+      }
+    };
+
+    if (effectiveSelectionMode === "combo" && selectedComboBreakdown.length === 0) {
+      addError("selection", "Please add at least one ready-to-go set.");
+    } else if (selectedItems.length === 0) {
+      addError("selection", "Choose a set or add a few bottles before continuing.");
+    }
+
+    if (selectedItems.length > 0 && totalQuantity < minimumQuantityForMode) {
+      addError(
+        "quantity",
+        `Please choose at least ${minimumQuantityForMode} bottle${minimumQuantityForMode === 1 ? "" : "s"}.`
+      );
+    } else if (totalQuantity > MAX_TOTAL_QTY) {
+      addError("quantity", `Please bring this down to ${MAX_TOTAL_QTY} bottles or fewer.`);
+    }
+
+    if (isRecurringMode && !recurringEligibility.isEligible) {
+      addError(
+        "quantity",
+        recurringEligibility.reason || "This selection is not eligible for recurring."
+      );
+    }
+
+    if (!isOneTimeMode && !durationIsValid) {
+      addError("duration", "Please choose how long you'd like this plan to run.");
+    }
+
+    if (!effectiveStartDate) {
+      addError("deliveryDate", "We don't have a delivery date available in the next 30 days yet.");
+    }
+
+    if (!customer.name.trim()) {
+      addError("name", "Please enter your name.");
+    }
+
+    if (!customer.email.trim()) {
+      addError("email", "Please enter your email address.");
+    }
+
+    if (!customer.phone.trim()) {
+      addError("phone", "Please enter your phone number.");
+    }
+
+    if (!customer.address.trim()) {
+      addError("address", "Please enter your delivery address.");
+    } else if (isQuotingDelivery) {
+      addError("delivery", "Please wait while we confirm delivery.");
+    } else if (deliveryError) {
+      addError("delivery", deliveryError);
+    } else if (deliveryConfigured && !storedPlaceId && !selectedPlace?.placeId) {
+      addError(
+        "addressSelection",
+        "Please choose your address from the suggestions so we can confirm delivery."
+      );
+    } else if (needsAddressSelection) {
+      addError("addressSelection", "Please choose one of the suggested addresses to continue.");
+    }
+
+    return { errors: nextErrors, firstTarget };
+  };
 
   useEffect(() => {
     if (mode !== "create") {
@@ -665,6 +774,58 @@ export default function SubscriptionForm({
     recurringEligibility.reason,
     selectedItems.length,
     wantsRecurring,
+  ]);
+
+  useEffect(() => {
+    setFieldErrors((current) => {
+      const next = { ...current };
+      let changed = false;
+      const remove = (key, shouldRemove) => {
+        if (shouldRemove && next[key]) {
+          delete next[key];
+          changed = true;
+        }
+      };
+
+      remove("selection", selectedItems.length > 0);
+      remove(
+        "quantity",
+        totalQuantity >= minimumQuantityForMode &&
+          totalQuantity <= MAX_TOTAL_QTY &&
+          (!isRecurringMode || recurringEligibility.isEligible)
+      );
+      remove("duration", isOneTimeMode || durationIsValid);
+      remove("deliveryDate", Boolean(effectiveStartDate));
+      remove("name", Boolean(customer.name.trim()));
+      remove("email", Boolean(customer.email.trim()));
+      remove("phone", Boolean(customer.phone.trim()));
+      remove("address", Boolean(customer.address.trim()));
+      remove(
+        "addressSelection",
+        !deliveryConfigured || Boolean(storedPlaceId || selectedPlace?.placeId)
+      );
+      remove("delivery", !isQuotingDelivery && !deliveryError);
+
+      return changed ? next : current;
+    });
+  }, [
+    customer.address,
+    customer.email,
+    customer.name,
+    customer.phone,
+    deliveryConfigured,
+    deliveryError,
+    durationIsValid,
+    effectiveStartDate,
+    isOneTimeMode,
+    isQuotingDelivery,
+    isRecurringMode,
+    minimumQuantityForMode,
+    recurringEligibility.isEligible,
+    selectedItems.length,
+    selectedPlace,
+    storedPlaceId,
+    totalQuantity,
   ]);
 
   useEffect(() => {
@@ -800,6 +961,7 @@ export default function SubscriptionForm({
 
     const boundedQty = Math.max(0, Math.min(MAX_QTY, nextQty));
     setCart((prev) => ({ ...prev, [sku]: boundedQty }));
+    clearFieldErrors("selection", "quantity");
   };
 
   const updateComboQty = (comboId, nextQty) => {
@@ -821,6 +983,7 @@ export default function SubscriptionForm({
         [comboId]: normalizedQty,
       };
     });
+    clearFieldErrors("selection", "quantity");
   };
 
   const handleAddressInputChange = (value) => {
@@ -863,6 +1026,7 @@ export default function SubscriptionForm({
       setHasVerifiedAddress(true);
       setCustomer((prev) => ({ ...prev, address: data.place.formattedAddress }));
       setAddressSuggestions([]);
+      clearFieldErrors("address", "addressSelection", "delivery");
     } catch (selectionError) {
       setAddressLookupError(selectionError.message || "Could not verify that address.");
     } finally {
@@ -889,6 +1053,7 @@ export default function SubscriptionForm({
     setShowStartDateOptions(false);
     setWantsRecurring(false);
     setRecurringNotice("");
+    setFieldErrors({});
   };
 
   const applySubscriptionState = (nextSubscription) => {
@@ -943,47 +1108,15 @@ export default function SubscriptionForm({
     setError("");
     setSuccessMessage("");
 
-    if (effectiveSelectionMode === "combo" && selectedComboBreakdown.length === 0) {
-      setError("Please add at least one ready-to-go set before continuing.");
+    const validation = validateCheckoutBeforeSubmit();
+
+    if (validation.firstTarget) {
+      setFieldErrors(validation.errors);
+      window.setTimeout(() => scrollToCheckoutIssue(validation.firstTarget), 0);
       return;
     }
 
-    if (selectedItems.length === 0) {
-      setError("Choose a set or add a few bottles before continuing.");
-      return;
-    }
-
-    if (totalQuantity < minimumQuantityForMode || totalQuantity > MAX_TOTAL_QTY) {
-      setError(
-        `Please choose between ${minimumQuantityForMode} and ${MAX_TOTAL_QTY} bottles.`
-      );
-      return;
-    }
-
-    if (isRecurringMode && !recurringEligibility.isEligible) {
-      setError(recurringEligibility.reason || "This selection is not eligible for recurring.");
-      return;
-    }
-
-    if (!isOneTimeMode && !durationIsValid) {
-      setError("Please choose how long you'd like this plan to run.");
-      return;
-    }
-
-    if (!effectiveStartDate) {
-      setError("We don't have a delivery date available in the next 30 days yet.");
-      return;
-    }
-
-    if (!customer.name.trim() || !customer.email.trim() || !customer.phone.trim() || !customer.address.trim()) {
-      setError("Please fill in name, email, phone number, and address.");
-      return;
-    }
-
-    if (deliveryConfigured && !storedPlaceId && !selectedPlace?.placeId) {
-      setError("Please choose your address from the suggestions so we can confirm delivery.");
-      return;
-    }
+    setFieldErrors({});
 
     const singleComboSelection =
       effectiveSelectionMode === "combo" &&
@@ -1295,7 +1428,10 @@ export default function SubscriptionForm({
         </dialog>
       )}
 
-      <section className="rounded-[28px] border border-[#d6c6ae] bg-[#fbf7f0]/96 p-6 shadow-xl md:p-8">
+      <section
+        ref={selectionSectionRef}
+        className="rounded-[28px] border border-[#d6c6ae] bg-[#fbf7f0]/96 p-6 shadow-xl md:p-8"
+      >
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <div>
             <div className="text-xs font-semibold uppercase tracking-[0.24em] text-[#6b7d74]">
@@ -1319,7 +1455,10 @@ export default function SubscriptionForm({
                 : "border-[#d8cdbb] bg-[#fffaf1]"
             }`}
             disabled={billingLocked || comboOptions.length === 0}
-            onClick={() => setSelectionMode("combo")}
+            onClick={() => {
+              setSelectionMode("combo");
+              clearFieldErrors("selection", "quantity");
+            }}
           >
             <div className="text-lg font-semibold text-[#2f4a3e]">Ready-to-go sets</div>
             <p className="mt-2 text-sm leading-7 text-[#53675d]">
@@ -1334,7 +1473,10 @@ export default function SubscriptionForm({
                 : "border-[#d8cdbb] bg-[#fffaf1]"
             }`}
             disabled={billingLocked}
-            onClick={() => setSelectionMode("custom")}
+            onClick={() => {
+              setSelectionMode("custom");
+              clearFieldErrors("selection", "quantity");
+            }}
           >
             <div className="text-lg font-semibold text-[#2f4a3e]">Build your own set</div>
             <p className="mt-2 text-sm leading-7 text-[#53675d]">
@@ -1342,6 +1484,10 @@ export default function SubscriptionForm({
             </p>
           </button>
         </div>
+
+        {fieldErrors.selection && (
+          <div className={fieldErrorClass}>{fieldErrors.selection}</div>
+        )}
 
         {effectiveSelectionMode === "combo" && comboOptions.length > 0 && (
           <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -1460,10 +1606,16 @@ export default function SubscriptionForm({
             We don’t have any ready-to-go sets live right now, so you can build your own below.
           </div>
         )}
+        {effectiveSelectionMode === "combo" && fieldErrors.quantity && (
+          <div className={fieldErrorClass}>{fieldErrors.quantity}</div>
+        )}
       </section>
 
       {effectiveSelectionMode === "custom" && (
-        <section className="rounded-[28px] border border-[#d6c6ae] bg-[#fbf7f0]/96 p-6 shadow-xl md:p-8">
+        <section
+          ref={customSelectionRef}
+          className="rounded-[28px] border border-[#d6c6ae] bg-[#fbf7f0]/96 p-6 shadow-xl md:p-8"
+        >
           <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
             <div>
               <div className="text-xs font-semibold uppercase tracking-[0.24em] text-[#6b7d74]">
@@ -1534,6 +1686,9 @@ export default function SubscriptionForm({
               );
             })}
           </div>
+          {fieldErrors.quantity && (
+            <div className={fieldErrorClass}>{fieldErrors.quantity}</div>
+          )}
         </section>
       )}
 
@@ -1571,6 +1726,7 @@ export default function SubscriptionForm({
 
       <form
         onSubmit={onSubmit}
+        noValidate
         className="rounded-[28px] border border-[#d6c6ae] bg-[#fbf7f0]/96 p-6 shadow-xl md:p-8"
       >
         <div className="grid gap-6">
@@ -1597,7 +1753,7 @@ export default function SubscriptionForm({
               </div>
             )}
             {isRecurringMode && (
-              <div>
+              <div ref={durationRef}>
                 <div className="label">
                   <span className="label-text text-[#365244]">How Long</span>
                 </div>
@@ -1615,7 +1771,10 @@ export default function SubscriptionForm({
                             ? "border-[#2f5d49] bg-[#355a45] text-[#f7f1e6] shadow-md"
                             : "border-[#d1c4b0] bg-[#fffaf1] text-[#365244] hover:border-[#a98f6f]"
                         }`}
-                        onClick={() => setDurationWeeks(option)}
+                        onClick={() => {
+                          setDurationWeeks(option);
+                          clearFieldErrors("duration");
+                        }}
                       >
                         {formatSubscriptionDuration(option)}
                       </button>
@@ -1628,9 +1787,15 @@ export default function SubscriptionForm({
                 <div className="mt-2 text-xs text-[#6b7d74]">
                   Deliveries go out on {formatDeliveryDaysOfWeek(deliveryDaysOfWeek)}.
                 </div>
+                {fieldErrors.duration && (
+                  <div className={fieldErrorClass}>{fieldErrors.duration}</div>
+                )}
               </div>
             )}
-            <div className="md:col-span-2 rounded-2xl border border-[#ddcfb6] bg-[#fffdf8] p-4 text-sm text-[#365244]">
+            <div
+              ref={deliveryDateRef}
+              className="md:col-span-2 rounded-2xl border border-[#ddcfb6] bg-[#fffdf8] p-4 text-sm text-[#365244]"
+            >
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <div className="font-medium text-[#2f4a3e]">
@@ -1672,7 +1837,10 @@ export default function SubscriptionForm({
                   <select
                     className="select select-bordered bg-[#fffdf8]"
                     value={effectiveStartDate}
-                    onChange={(event) => setStartDate(event.target.value)}
+                    onChange={(event) => {
+                      setStartDate(event.target.value);
+                      clearFieldErrors("deliveryDate");
+                    }}
                   >
                     {effectiveStartDateOptions.map((option) => (
                       <option key={option.value} value={option.value}>
@@ -1682,43 +1850,67 @@ export default function SubscriptionForm({
                   </select>
                 </label>
               )}
+              {fieldErrors.deliveryDate && (
+                <div className={fieldErrorClass}>{fieldErrors.deliveryDate}</div>
+              )}
             </div>
             <label className="form-control">
               <div className="label">
                 <span className="label-text text-[#365244]">Name *</span>
               </div>
               <input
-                className="input input-bordered bg-[#fffdf8]"
+                ref={nameInputRef}
+                className={`input input-bordered bg-[#fffdf8] ${fieldErrors.name ? inputErrorClass : ""}`}
                 value={customer.name}
-                onChange={(event) => setCustomer((prev) => ({ ...prev, name: event.target.value }))}
+                onChange={(event) => {
+                  setCustomer((prev) => ({ ...prev, name: event.target.value }));
+                  clearFieldErrors("name");
+                }}
                 required
                 disabled={billingLocked}
               />
+              {fieldErrors.name && (
+                <div className={fieldErrorClass}>{fieldErrors.name}</div>
+              )}
             </label>
             <label className="form-control">
               <div className="label">
                 <span className="label-text text-[#365244]">Email *</span>
               </div>
               <input
+                ref={emailInputRef}
                 type="email"
-                className="input input-bordered bg-[#fffdf8]"
+                className={`input input-bordered bg-[#fffdf8] ${fieldErrors.email ? inputErrorClass : ""}`}
                 value={customer.email}
-                onChange={(event) => setCustomer((prev) => ({ ...prev, email: event.target.value }))}
+                onChange={(event) => {
+                  setCustomer((prev) => ({ ...prev, email: event.target.value }));
+                  clearFieldErrors("email");
+                }}
                 required
                 disabled={billingLocked}
               />
+              {fieldErrors.email && (
+                <div className={fieldErrorClass}>{fieldErrors.email}</div>
+              )}
             </label>
             <label className="form-control">
               <div className="label">
                 <span className="label-text text-[#365244]">Phone number *</span>
               </div>
               <input
-                className="input input-bordered bg-[#fffdf8]"
+                ref={phoneInputRef}
+                className={`input input-bordered bg-[#fffdf8] ${fieldErrors.phone ? inputErrorClass : ""}`}
                 value={customer.phone}
-                onChange={(event) => setCustomer((prev) => ({ ...prev, phone: event.target.value }))}
+                onChange={(event) => {
+                  setCustomer((prev) => ({ ...prev, phone: event.target.value }));
+                  clearFieldErrors("phone");
+                }}
                 required
                 disabled={billingLocked}
               />
+              {fieldErrors.phone && (
+                <div className={fieldErrorClass}>{fieldErrors.phone}</div>
+              )}
             </label>
             <label className="form-control">
               <div className="label">
@@ -1739,9 +1931,17 @@ export default function SubscriptionForm({
                 <span className="label-text text-[#365244]">Address *</span>
               </div>
               <input
-                className="input input-bordered bg-[#fffdf8]"
+                ref={addressInputRef}
+                className={`input input-bordered bg-[#fffdf8] ${
+                  fieldErrors.address || fieldErrors.addressSelection || fieldErrors.delivery
+                    ? inputErrorClass
+                    : ""
+                }`}
                 value={customer.address}
-                onChange={(event) => handleAddressInputChange(event.target.value)}
+                onChange={(event) => {
+                  handleAddressInputChange(event.target.value);
+                  clearFieldErrors("address", "addressSelection", "delivery");
+                }}
                 placeholder="Start typing your address and choose the best match"
                 autoComplete="off"
                 required
@@ -1776,6 +1976,15 @@ export default function SubscriptionForm({
               {addressLookupError && (
                 <div className="mt-2 text-sm text-error">{addressLookupError}</div>
               )}
+              {fieldErrors.address && (
+                <div className={fieldErrorClass}>{fieldErrors.address}</div>
+              )}
+              {fieldErrors.addressSelection && (
+                <div className={fieldErrorClass}>{fieldErrors.addressSelection}</div>
+              )}
+              {fieldErrors.delivery && (
+                <div className={fieldErrorClass}>{fieldErrors.delivery}</div>
+              )}
             </div>
             {hasVerifiedAddress && fullAddress && (
               <div className="md:col-span-2 rounded-2xl border border-base-300 bg-base-200 p-4 text-sm">
@@ -1798,7 +2007,10 @@ export default function SubscriptionForm({
             )}
           </div>
 
-          <div className="rounded-2xl border border-[#ddcfb6] bg-[#fffdf8] p-5">
+          <div
+            ref={orderSummaryRef}
+            className="rounded-2xl border border-[#ddcfb6] bg-[#fffdf8] p-5"
+          >
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <div className="text-sm font-semibold uppercase tracking-[0.2em] text-[#5f7068]">
@@ -2008,7 +2220,7 @@ export default function SubscriptionForm({
                   {isCancelling ? "Cancelling..." : "Cancel plan"}
                 </button>
               )}
-              <button type="submit" disabled={!canSubmit} className="btn btn-primary min-w-[220px]">
+              <button type="submit" disabled={!canAttemptSubmit} className="btn btn-primary min-w-[220px]">
                 {isSubmitting
                   ? mode === "edit"
                     ? "Saving..."
