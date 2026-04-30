@@ -3,6 +3,24 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 const formatQty = (value, decimals = 2) => Number(value || 0).toFixed(decimals);
+const formatBottleCount = (value) =>
+  new Intl.NumberFormat("en-IN", {
+    maximumFractionDigits: 2,
+  }).format(Number(value || 0));
+const formatDeliveryDate = (dateKey = "") => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dateKey || "").trim())) {
+    return dateKey || "-";
+  }
+
+  const [year, month, day] = dateKey.split("-").map((part) => Number(part));
+  const date = new Date(Date.UTC(year, month - 1, day));
+  const weekday = new Intl.DateTimeFormat("en-IN", {
+    weekday: "long",
+    timeZone: "UTC",
+  }).format(date);
+
+  return `${dateKey} (${weekday})`;
+};
 const RECIPE_UNIT_OPTIONS = ["g", "kg", "ml", "litre", "tsp", "tbsp", "pinch", "piece"];
 
 const createEmptyIngredient = () => ({
@@ -85,6 +103,7 @@ export default function AdminProductionConsole() {
   const [isImportingSop, setIsImportingSop] = useState(false);
   const [approvingRecipeId, setApprovingRecipeId] = useState("");
   const [isEditingApprovedVersion, setIsEditingApprovedVersion] = useState(false);
+  const [showConsolidatedIngredients, setShowConsolidatedIngredients] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
@@ -404,11 +423,11 @@ export default function AdminProductionConsole() {
 
         {sheet && (
           <>
-            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <div className="mt-4 grid gap-3 md:grid-cols-3">
               <div className="rounded-xl bg-base-200 p-4 text-sm">
                 <div className="text-xs uppercase tracking-[0.16em] opacity-60">Next delivery date</div>
                 <div className="mt-2 text-lg font-semibold">
-                  {sheet.deliveryDate || "-"}
+                  {formatDeliveryDate(sheet.deliveryDate)}
                 </div>
               </div>
               <div className="rounded-xl bg-base-200 p-4 text-sm">
@@ -418,16 +437,7 @@ export default function AdminProductionConsole() {
               <div className="rounded-xl bg-base-200 p-4 text-sm">
                 <div className="text-xs uppercase tracking-[0.16em] opacity-60">Total bottles to produce</div>
                 <div className="mt-2 text-2xl font-semibold">
-                  {formatQty(sheet.summary?.totalBottles, 2)}
-                </div>
-              </div>
-              <div className="rounded-xl bg-base-200 p-4 text-sm">
-                <div className="text-xs uppercase tracking-[0.16em] opacity-60">Order source mix</div>
-                <div className="mt-2 text-2xl font-semibold">
-                  S {sheet.summary?.subscriptionCount || 0} / R {sheet.summary?.recurringOrderPlanCount || 0}
-                </div>
-                <div className="text-xs opacity-70">
-                  O {sheet.summary?.oneTimeOrderPlanCount || 0} / P {sheet.summary?.preorderCount || 0}
+                  {formatBottleCount(sheet.summary?.totalBottles)}
                 </div>
               </div>
             </div>
@@ -465,39 +475,51 @@ export default function AdminProductionConsole() {
           </div>
         )}
 
-        <div className="mt-4 overflow-x-auto">
-          <div className="mb-2 text-sm font-medium">Consolidated ingredients</div>
-          <table className="table table-sm">
-            <thead>
-              <tr>
-                <th>Ingredient</th>
-                <th>Unit</th>
-                <th className="text-right">Quantity</th>
-                <th>Tolerance</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(sheet?.consolidatedIngredients || []).length > 0 ? (
-                sheet.consolidatedIngredients.map((ingredient, index) => (
-                  <tr key={`consolidated-${ingredient.name}-${index}`}>
-                    <td>{ingredient.name}</td>
-                    <td>{ingredient.unit}</td>
-                    <td className="text-right font-medium">{formatQty(ingredient.quantity, 2)}</td>
-                    <td>{formatTolerance(ingredient)}</td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={4} className="py-6 text-center opacity-70">
-                    No consolidated ingredients yet.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+        <div className="mt-4 flex justify-end">
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => setShowConsolidatedIngredients((current) => !current)}
+          >
+            {showConsolidatedIngredients ? "Hide consolidated ingredients" : "Show consolidated ingredients"}
+          </button>
         </div>
 
-        <div className="mt-5 grid gap-4 xl:grid-cols-2">
+        {showConsolidatedIngredients && (
+          <div className="mt-4 overflow-x-auto">
+            <div className="mb-2 text-sm font-medium">Consolidated ingredients</div>
+            <table className="table table-sm">
+              <thead>
+                <tr>
+                  <th>Ingredient</th>
+                  <th>Unit</th>
+                  <th className="text-right">Quantity</th>
+                  <th>Tolerance</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(sheet?.consolidatedIngredients || []).length > 0 ? (
+                  sheet.consolidatedIngredients.map((ingredient, index) => (
+                    <tr key={`consolidated-${ingredient.name}-${index}`}>
+                      <td>{ingredient.name}</td>
+                      <td>{ingredient.unit}</td>
+                      <td className="text-right font-medium">{formatQty(ingredient.quantity, 2)}</td>
+                      <td>{formatTolerance(ingredient)}</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={4} className="py-6 text-center opacity-70">
+                      No consolidated ingredients yet.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <div className="mt-4 grid gap-4 xl:grid-cols-2">
           {(sheet?.ingredientsBySku || []).map((skuEntry) => (
             <div key={`sku-sheet-${skuEntry.sku}`} className="rounded-xl bg-base-200 p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -506,7 +528,7 @@ export default function AdminProductionConsole() {
                   <div className="text-xs uppercase tracking-[0.16em] opacity-60">{skuEntry.sku}</div>
                 </div>
                 <div className="text-right text-sm">
-                  <div>{formatQty(skuEntry.weeklyEquivalentBottles, 2)} bottles (next delivery)</div>
+                  <div>{formatBottleCount(skuEntry.weeklyEquivalentBottles)} bottles (next delivery)</div>
                   <div>Demand: {formatQty(skuEntry.targetLitres, 2)} L</div>
                   <div>Planned: {formatQty(skuEntry.plannedLitres, 2)} L</div>
                   <div>Wastage buffer: {formatQty(skuEntry.wastageLitres, 2)} L</div>
