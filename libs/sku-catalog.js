@@ -86,6 +86,8 @@ export const getSkuMap = (skuCatalog = []) =>
         name: item.name,
         notes: item.notes || "",
         unitPrice: Number(item.unitPrice || 0),
+        hsnCode: String(item.hsnCode || "").trim(),
+        gstRate: Number(item.gstRate || 0),
         status: item.status || "active",
         skuType:
           item.isSeasonal === true || item.skuType === "seasonal"
@@ -111,6 +113,8 @@ export const hydrateAllowedItems = (allowedItems = [], skuMap) =>
         name: item.sku,
         notes: "",
         unitPrice: 0,
+        hsnCode: "",
+        gstRate: 0,
         status: "active",
         skuType: "perennial",
         isSeasonal: false,

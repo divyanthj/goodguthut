@@ -4,20 +4,46 @@ import config from "@/config";
 
 const DEV_ORIGINS = new Set([
   "http://localhost:3000",
+  "http://localhost:3001",
   "http://127.0.0.1:3000",
+  "http://127.0.0.1:3001",
 ]);
 
 const SAME_SITE_VALUES = new Set(["same-origin", "same-site", "none"]);
 
 const getAllowedOrigins = () => {
   const origins = new Set(DEV_ORIGINS);
+  const configuredOrigins = String(process.env.ALLOWED_BROWSER_ORIGINS || "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
 
   if (config.domainName) {
     origins.add(`https://${config.domainName}`);
     origins.add(`https://www.${config.domainName}`);
   }
 
+  configuredOrigins.forEach((origin) => origins.add(origin));
+
   return origins;
+};
+
+const isAllowedDevelopmentOrigin = (origin = "") => {
+  if (process.env.NODE_ENV !== "development") {
+    return false;
+  }
+
+  try {
+    const url = new URL(origin);
+    return (
+      ["http:", "https:"].includes(url.protocol) &&
+      (url.hostname === "localhost" ||
+        url.hostname === "127.0.0.1" ||
+        url.hostname === "::1")
+    );
+  } catch (_error) {
+    return false;
+  }
 };
 
 export const getClientIp = (req) => {
@@ -65,7 +91,7 @@ export const enforceBrowserOrigin = (req) => {
     return null;
   }
 
-  if (!getAllowedOrigins().has(origin)) {
+  if (!getAllowedOrigins().has(origin) && !isAllowedDevelopmentOrigin(origin)) {
     logAbuseEvent("invalid-origin", req, { origin, secFetchSite: secFetchSite || "" });
     return jsonError("Cross-site requests are not allowed.", 403);
   }

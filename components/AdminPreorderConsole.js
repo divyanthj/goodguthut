@@ -128,6 +128,8 @@ const createEmptySkuForm = () => ({
   name: "",
   notes: "",
   unitPrice: 0,
+  hsnCode: "",
+  gstRate: 0,
   status: "active",
   isSeasonal: false,
 });
@@ -342,6 +344,8 @@ export default function AdminPreorderConsole({
           name: nextSku.name,
           notes: nextSku.notes || "",
           unitPrice: Number(nextSku.unitPrice || 0),
+          hsnCode: nextSku.hsnCode || "",
+          gstRate: Number(nextSku.gstRate || 0),
           status: nextSku.status || "active",
           isSeasonal:
             nextSku.isSeasonal === true || nextSku.skuType === "seasonal",
@@ -656,6 +660,8 @@ export default function AdminPreorderConsole({
                         name: skuItem.name,
                         notes: skuItem.notes || "",
                         unitPrice: Number(skuItem.unitPrice || 0),
+                        hsnCode: skuItem.hsnCode || "",
+                        gstRate: Number(skuItem.gstRate || 0),
                         status: skuItem.status || "active",
                         isSeasonal:
                           skuItem.isSeasonal === true || skuItem.skuType === "seasonal",
@@ -678,6 +684,9 @@ export default function AdminPreorderConsole({
                     </div>
                     <div className="mt-2 text-sm opacity-75">{skuItem.notes || "No description yet."}</div>
                     <div className="mt-3 text-sm font-medium">INR {Number(skuItem.unitPrice || 0).toFixed(2)}</div>
+                    <div className="mt-1 text-xs opacity-70">
+                      HSN {skuItem.hsnCode || "-"} · GST {Number(skuItem.gstRate || 0)}%
+                    </div>
                   </button>
                 ))}
               </div>
@@ -735,6 +744,26 @@ export default function AdminPreorderConsole({
                       className="input input-bordered"
                       value={skuForm.unitPrice}
                       onChange={(event) => setSkuForm((current) => ({ ...current, unitPrice: Number(event.target.value || 0) }))}
+                    />
+                  </label>
+                  <label className="form-control w-full">
+                    <div className="label"><span className="label-text">HSN code</span></div>
+                    <input
+                      className="input input-bordered"
+                      value={skuForm.hsnCode}
+                      onChange={(event) => setSkuForm((current) => ({ ...current, hsnCode: event.target.value }))}
+                    />
+                  </label>
+                  <label className="form-control w-full">
+                    <div className="label"><span className="label-text">GST rate (%)</span></div>
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.01"
+                      className="input input-bordered"
+                      value={skuForm.gstRate}
+                      onChange={(event) => setSkuForm((current) => ({ ...current, gstRate: Number(event.target.value || 0) }))}
                     />
                   </label>
                   <label className="form-control w-full md:col-span-2">

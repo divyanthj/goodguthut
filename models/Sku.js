@@ -25,6 +25,17 @@ const skuSchema = mongoose.Schema(
       min: 0,
       default: 0,
     },
+    hsnCode: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    gstRate: {
+      type: Number,
+      min: 0,
+      max: 100,
+      default: 0,
+    },
     status: {
       type: String,
       enum: ["active", "archived"],

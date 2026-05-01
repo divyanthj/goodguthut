@@ -173,6 +173,8 @@ export default function AdminSubscriptionRoutePlanner({
   const [copiedRouteKey, setCopiedRouteKey] = useState("");
   const [previewError, setPreviewError] = useState("");
   const [isPreviewing, setIsPreviewing] = useState(false);
+  const [invoicingStopKey, setInvoicingStopKey] = useState("");
+  const [invoiceMessages, setInvoiceMessages] = useState({});
   const currentRoute = routeSnapshots[0] || null;
 
   useEffect(() => {
@@ -356,6 +358,60 @@ export default function AdminSubscriptionRoutePlanner({
       window.setTimeout(() => {
         setCopiedRouteKey((current) => (current === routeKey ? "" : current));
       }, 1800);
+    }
+  };
+
+  const handleMarkDelivered = async ({ routePlan, stop }) => {
+    const sourceType = stop.routeSource === "subscription" ? "subscription" : "order_plan";
+    const sourceId = stop.subscriptionId || stop.orderPlanId;
+    const stopKey = `${routePlan.deliveryDate}-${sourceType}-${sourceId}`;
+
+    if (!sourceId) {
+      setInvoiceMessages((current) => ({
+        ...current,
+        [stopKey]: { type: "error", text: "Could not find the source order for this stop." },
+      }));
+      return;
+    }
+
+    setInvoicingStopKey(stopKey);
+    setInvoiceMessages((current) => ({ ...current, [stopKey]: null }));
+
+    try {
+      const response = await fetch("/api/admin/invoices/deliveries", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourceType,
+          sourceId,
+          deliveryDate: toDateKey(routePlan.deliveryDate),
+          deliveredAt: new Date().toISOString(),
+        }),
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Could not send invoice.");
+      }
+
+      const emailStatus = data.emailDelivery?.status || data.invoice?.emailStatus || "recorded";
+      setInvoiceMessages((current) => ({
+        ...current,
+        [stopKey]: {
+          type: emailStatus === "failed" ? "error" : "success",
+          text:
+            emailStatus === "already_created"
+              ? `Invoice ${data.invoice?.invoiceNumber || ""} already exists.`
+              : `Invoice ${data.invoice?.invoiceNumber || ""} ${emailStatus}.`,
+        },
+      }));
+    } catch (error) {
+      setInvoiceMessages((current) => ({
+        ...current,
+        [stopKey]: { type: "error", text: error.message || "Could not send invoice." },
+      }));
+    } finally {
+      setInvoicingStopKey("");
     }
   };
 
@@ -545,6 +601,17 @@ export default function AdminSubscriptionRoutePlanner({
                           >
                             <td className="font-medium">{stop.stopNumber}</td>
                             <td>
+                              {(() => {
+                                const sourceId = stop.subscriptionId || stop.orderPlanId;
+                                const sourceType = stop.routeSource === "subscription" ? "subscription" : "order_plan";
+                                const stopKey = `${routePlan.deliveryDate}-${sourceType}-${sourceId}`;
+                                const canInvoice =
+                                  stop.routeSource === "subscription" ||
+                                  (stop.routeSource === "order_plan" && stop.mode === "recurring");
+                                const invoiceMessage = invoiceMessages[stopKey];
+
+                                return (
+                                  <>
                               <div className="font-medium">{stop.customerName}</div>
                               <div className="text-xs opacity-60">
                                 {getRouteStopTypeLabel(stop)}
@@ -567,6 +634,28 @@ export default function AdminSubscriptionRoutePlanner({
                                   Remove
                                 </button>
                               )}
+                              {canInvoice && (
+                                <button
+                                  type="button"
+                                  className="btn btn-primary btn-xs mt-2"
+                                  disabled={invoicingStopKey === stopKey}
+                                  onClick={() => handleMarkDelivered({ routePlan, stop })}
+                                >
+                                  {invoicingStopKey === stopKey ? "Sending..." : "Mark delivered / invoice"}
+                                </button>
+                              )}
+                              {invoiceMessage?.text && (
+                                <div
+                                  className={`mt-1 text-xs ${
+                                    invoiceMessage.type === "error" ? "text-error" : "text-success"
+                                  }`}
+                                >
+                                  {invoiceMessage.text}
+                                </div>
+                              )}
+                                  </>
+                                );
+                              })()}
                             </td>
                             <td>{stop.phone}</td>
                             <td className="min-w-[260px]">{stop.address}</td>

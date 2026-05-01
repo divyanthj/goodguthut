@@ -6,6 +6,7 @@ import Preorder from "@/models/Preorder";
 import {
   preparePreorderShippedNotifications,
 } from "@/libs/shipment-notifications";
+import { createAndSendPreorderInvoice } from "@/libs/invoices";
 
 export async function PATCH(req, { params }) {
   const { session, isAdmin } = await getAdminSessionState();
@@ -86,6 +87,8 @@ export async function PATCH(req, { params }) {
 
       if (nextStatus !== "fulfilled") {
         preorder.deliveredAt = body.keepDeliveredAt ? preorder.deliveredAt : null;
+      } else if (!preorder.deliveredAt) {
+        preorder.deliveredAt = body.deliveredAt ? new Date(body.deliveredAt) : new Date();
       }
 
       await preorder.save();
@@ -98,6 +101,19 @@ export async function PATCH(req, { params }) {
         } catch (routeError) {
           console.error("Failed to refresh preorder delivery route snapshot", routeError);
         }
+      }
+
+      if (nextStatus === "fulfilled") {
+        const invoiceDelivery = await createAndSendPreorderInvoice({ preorder });
+
+        return NextResponse.json({
+          preorder,
+          invoiceDelivery: {
+            invoice: invoiceDelivery.invoice,
+            created: invoiceDelivery.created,
+            emailDelivery: invoiceDelivery.emailDelivery,
+          },
+        });
       }
 
       return NextResponse.json({ preorder });
@@ -129,7 +145,16 @@ export async function PATCH(req, { params }) {
       }
     }
 
-    return NextResponse.json({ preorder });
+    const invoiceDelivery = await createAndSendPreorderInvoice({ preorder });
+
+    return NextResponse.json({
+      preorder,
+      invoiceDelivery: {
+        invoice: invoiceDelivery.invoice,
+        created: invoiceDelivery.created,
+        emailDelivery: invoiceDelivery.emailDelivery,
+      },
+    });
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: e.message }, { status: 500 });

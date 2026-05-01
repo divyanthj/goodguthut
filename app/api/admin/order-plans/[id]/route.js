@@ -7,6 +7,7 @@ import {
   normalizeOneTimeOrderPlanStatus,
 } from "@/libs/order-plans";
 import { recalculateSubscriptionRouteSnapshots } from "@/libs/subscription-route-planner";
+import { createAndSendOrderPlanInvoice } from "@/libs/invoices";
 import OrderPlan from "@/models/OrderPlan";
 
 const ensureAdmin = async () => {
@@ -50,6 +51,7 @@ export async function PATCH(req, { params }) {
 
   try {
     const body = await req.json();
+    let shouldGenerateInvoice = false;
 
     await connectMongo();
     const orderPlan = await OrderPlan.findById(params.id);
@@ -100,6 +102,7 @@ export async function PATCH(req, { params }) {
 
         orderPlan.deliveredAt = deliveredAt;
         orderPlan.status = "fulfilled";
+        shouldGenerateInvoice = true;
       } else {
         const nextStatus = String(body?.status || "").trim();
         const normalizedStatus = getOrderPlanDisplayStatus({
@@ -117,6 +120,19 @@ export async function PATCH(req, { params }) {
 
     await orderPlan.save();
     await refreshRouteSnapshots();
+
+    if (shouldGenerateInvoice) {
+      const invoiceDelivery = await createAndSendOrderPlanInvoice({ orderPlan });
+
+      return NextResponse.json({
+        orderPlan: JSON.parse(JSON.stringify(orderPlan)),
+        invoiceDelivery: {
+          invoice: invoiceDelivery.invoice,
+          created: invoiceDelivery.created,
+          emailDelivery: invoiceDelivery.emailDelivery,
+        },
+      });
+    }
 
     return NextResponse.json({ orderPlan: JSON.parse(JSON.stringify(orderPlan)) });
   } catch (error) {

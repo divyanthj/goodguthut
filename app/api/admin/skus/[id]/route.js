@@ -11,6 +11,11 @@ const normalizeRecurringCutoffDate = (value = "") => {
   return /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized : "";
 };
 
+const normalizeGstRate = (value = 0) => {
+  const rate = Number(value || 0);
+  return Number.isFinite(rate) ? Math.max(0, Math.min(100, rate)) : 0;
+};
+
 const getAdminSession = async () => {
   const session = await getServerSession(authOptions);
 
@@ -29,6 +34,8 @@ const normalizeSkuUpdatePayload = (body = {}) => ({
   name: (body.name || "").trim(),
   notes: (body.notes || "").trim(),
   unitPrice: Math.max(0, Number(body.unitPrice || 0)),
+  hsnCode: String(body.hsnCode || "").trim(),
+  gstRate: normalizeGstRate(body.gstRate),
   status: body.status === "archived" ? "archived" : "active",
   skuType:
     body.isSeasonal === true || body.skuType === "seasonal"
