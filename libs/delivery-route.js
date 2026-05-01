@@ -100,11 +100,15 @@ export const getDrivingDistanceMatrixKm = async (addresses = []) => {
   return matrix;
 };
 
-const calculateRouteDistance = (sequence = [], matrix = []) => {
+const calculateRouteDistance = (sequence = [], matrix = [], { returnToOrigin = false } = {}) => {
   let total = 0;
 
   for (let index = 0; index < sequence.length - 1; index += 1) {
     total += Number(matrix[sequence[index]]?.[sequence[index + 1]] || 0);
+  }
+
+  if (returnToOrigin && sequence.length > 1) {
+    total += Number(matrix[sequence[sequence.length - 1]]?.[sequence[0]] || 0);
   }
 
   return total;
@@ -159,7 +163,10 @@ const optimizeRouteWithTwoOpt = (route = [], matrix = []) => {
           ...bestRoute.slice(right + 1),
         ];
 
-        if (calculateRouteDistance(candidate, matrix) < calculateRouteDistance(bestRoute, matrix)) {
+        if (
+          calculateRouteDistance(candidate, matrix, { returnToOrigin: true }) <
+          calculateRouteDistance(bestRoute, matrix, { returnToOrigin: true })
+        ) {
           bestRoute = candidate;
           improved = true;
         }
@@ -191,6 +198,7 @@ export const buildDeliveryRoutePlan = async ({
       originAddress,
       totalStops: 0,
       totalDistanceKm: 0,
+      returnDistanceKm: 0,
       driverPayout: 0,
       payoutPerKm: Number(driverPayoutPerKm || 0),
       stops: [],
@@ -235,13 +243,16 @@ export const buildDeliveryRoutePlan = async ({
     };
   });
 
-  const totalDistanceKm = Number(cumulativeDistanceKm.toFixed(2));
+  const lastAddressIndex = route[route.length - 1];
+  const returnDistanceKm = Number((matrix[lastAddressIndex]?.[0] || 0).toFixed(2));
+  const totalDistanceKm = Number((cumulativeDistanceKm + returnDistanceKm).toFixed(2));
   const payoutPerKm = Math.max(0, Number(driverPayoutPerKm || 0));
 
   return {
     originAddress,
     totalStops: stops.length,
     totalDistanceKm,
+    returnDistanceKm,
     driverPayout: Number((totalDistanceKm * payoutPerKm).toFixed(2)),
     payoutPerKm,
     stops,

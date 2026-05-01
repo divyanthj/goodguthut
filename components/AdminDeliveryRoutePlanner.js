@@ -29,18 +29,14 @@ const buildGoogleMapsRouteLink = (originAddress, stops = []) => {
     return "";
   }
 
-  const destination = stopAddresses[stopAddresses.length - 1];
-  const waypoints = stopAddresses.slice(0, -1);
   const query = new URLSearchParams({
     api: "1",
     origin: cleanedOrigin,
-    destination,
+    destination: cleanedOrigin,
     travelmode: "driving",
   });
 
-  if (waypoints.length > 0) {
-    query.set("waypoints", waypoints.join("|"));
-  }
+  query.set("waypoints", stopAddresses.join("|"));
 
   return `https://www.google.com/maps/dir/?${query.toString()}`;
 };
@@ -197,6 +193,9 @@ export default function AdminDeliveryRoutePlanner({
                     <div className="rounded-xl bg-base-100 p-4 text-sm">
                       <div className="text-xs uppercase tracking-[0.16em] opacity-60">Route distance</div>
                       <div className="mt-2 text-2xl font-semibold">{Number(routePlan.totalDistanceKm || 0).toFixed(1)} km</div>
+                      <div className="mt-1 text-xs opacity-60">
+                        Includes {Number(routePlan.returnDistanceKm || 0).toFixed(1)} km return
+                      </div>
                     </div>
                     <div className="rounded-xl bg-base-100 p-4 text-sm">
                       <div className="text-xs uppercase tracking-[0.16em] opacity-60">Driver payout</div>
@@ -246,6 +245,25 @@ export default function AdminDeliveryRoutePlanner({
                               </td>
                             </tr>
                           ))}
+                          {Number(routePlan.returnDistanceKm || 0) > 0 && (
+                            <tr key={`${batch.id}-return`}>
+                              <td className="font-medium">Return</td>
+                              <td>
+                                <div className="font-medium">Pickup point</div>
+                                <div className="text-xs opacity-60">Compensated return leg</div>
+                              </td>
+                              <td>-</td>
+                              <td className="min-w-[260px]">{routePlan.originAddress}</td>
+                              <td className="text-right">
+                                {Number(routePlan.returnDistanceKm || 0).toFixed(1)}
+                              </td>
+                              <td className="text-right">
+                                {Number(routePlan.totalDistanceKm || 0).toFixed(1)}
+                              </td>
+                              <td className="text-right">-</td>
+                              <td>-</td>
+                            </tr>
+                          )}
                         </tbody>
                       </table>
                     </div>

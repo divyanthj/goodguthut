@@ -138,6 +138,11 @@ const preorderWindowSchema = mongoose.Schema(
           min: 0,
           default: 0,
         },
+        returnDistanceKm: {
+          type: Number,
+          min: 0,
+          default: 0,
+        },
         driverPayout: {
           type: Number,
           min: 0,
