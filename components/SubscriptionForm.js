@@ -312,7 +312,6 @@ export default function SubscriptionForm({
       comboOptions,
     })
   );
-  const [pendingCheckout, setPendingCheckout] = useState(null);
   const [cart, setCart] = useState(() =>
     buildCartFromCatalog(catalogItems, initialValues?.items || [])
   );
@@ -1169,7 +1168,7 @@ export default function SubscriptionForm({
       const data = await response.json();
 
       if (data.razorpay?.isConfigured && data.checkoutToken) {
-        setPendingCheckout({
+        await openRazorpayCheckout({
           checkoutToken: data.checkoutToken,
           razorpay: data.razorpay,
         });
@@ -1194,20 +1193,19 @@ export default function SubscriptionForm({
     }
   };
 
-  const openRazorpayCheckout = async () => {
-    if (!pendingCheckout?.checkoutToken || !pendingCheckout?.razorpay) {
+  const openRazorpayCheckout = async (checkoutData) => {
+    if (!checkoutData?.checkoutToken || !checkoutData?.razorpay) {
       return;
     }
 
     const Razorpay = await loadRazorpay();
 
     if (!Razorpay) {
-      setPendingCheckout(null);
       throw new Error("Razorpay checkout is unavailable right now.");
     }
 
     const checkout = new Razorpay({
-      ...pendingCheckout.razorpay,
+      ...checkoutData.razorpay,
       handler: async (paymentResult) => {
         isCompletingPaymentRef.current = true;
 
@@ -1224,7 +1222,7 @@ export default function SubscriptionForm({
             },
             body: JSON.stringify({
               ...serializedPaymentResult,
-              checkoutToken: pendingCheckout.checkoutToken,
+              checkoutToken: checkoutData.checkoutToken,
             }),
           });
           const verifyData = await verifyResponse.json();
@@ -1235,7 +1233,6 @@ export default function SubscriptionForm({
             );
           }
 
-          setPendingCheckout(null);
           setError("");
           setSuccessMessage(
             verifyData.confirmationMessage ||
@@ -1266,7 +1263,6 @@ export default function SubscriptionForm({
             return;
           }
 
-          setPendingCheckout(null);
           setError(
             isOneTimeMode
               ? "Payment was not completed, so your order is still waiting for confirmation."
@@ -1317,117 +1313,6 @@ export default function SubscriptionForm({
 
   return (
     <div className="space-y-6">
-      {pendingCheckout && (
-        <dialog className="modal modal-open">
-          <div className="modal-box max-w-2xl rounded-[28px] border border-[#d6c6ae] bg-[#fbf7f0] p-0 shadow-2xl">
-            <div className="border-b border-[#e1d6c7] bg-[#f7f1e6] px-6 py-6 md:px-8">
-              <div className="text-xs font-semibold uppercase tracking-[0.24em] text-[#6b7d74]">
-                Secure Checkout
-              </div>
-              <h3 className="mt-3 text-2xl font-semibold text-[#2f4a3e]">
-                {isOneTimeMode
-                  ? "Ready to confirm your order?"
-                  : "Ready to start your weekly plan?"}
-              </h3>
-              <p className="mt-3 max-w-xl text-sm leading-7 text-[#53675d]">
-                {isOneTimeMode
-                  ? "We will open secure payment with Razorpay. Once payment succeeds, your Good Gut Hut delivery is locked in."
-                  : "We will open secure UPI AutoPay setup with Razorpay. Once approved, your weekly Good Gut Hut plan is confirmed."}
-              </p>
-            </div>
-
-            <div className="grid gap-4 px-6 py-6 md:grid-cols-3 md:px-8">
-              <div className="rounded-2xl border border-[#ddcfb6] bg-[#fffdf8] p-4">
-                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[#6b7d74]">
-                  {isOneTimeMode ? "You will pay today" : "Per delivery"}
-                </div>
-                <div className="mt-2 text-2xl font-semibold text-[#2f4a3e]">
-                  {currency} {total.toFixed(2)}
-                </div>
-                <div className="mt-2 text-sm text-[#53675d]">
-                  {isOneTimeMode
-                    ? "This is the full one-time amount for your order."
-                    : "This is your regular charge for each scheduled delivery."}
-                </div>
-              </div>
-              <div className="rounded-2xl border border-[#ddcfb6] bg-[#fffdf8] p-4">
-                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[#6b7d74]">
-                  {isOneTimeMode ? "Delivery date" : "First delivery"}
-                </div>
-                <div className="mt-2 text-lg font-semibold text-[#2f4a3e]">
-                  {formatSubscriptionDate(effectiveStartDate)}
-                </div>
-                <div className="mt-2 text-sm text-[#53675d]">
-                  {isOneTimeMode
-                    ? "We have assigned the next available delivery date for you."
-                    : "Your first recurring charge happens on your first delivery date."}
-                </div>
-              </div>
-              <div className="rounded-2xl border border-[#ddcfb6] bg-[#fffdf8] p-4">
-                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[#6b7d74]">
-                  What happens next
-                </div>
-                <div className="mt-2 text-lg font-semibold text-[#2f4a3e]">
-                  {isOneTimeMode ? "Order confirmed" : "Plan activated"}
-                </div>
-                <div className="mt-2 text-sm text-[#53675d]">
-                  {isOneTimeMode
-                    ? "After payment, we will confirm your order and prepare it for delivery."
-                    : `Razorpay may show a small verification amount. Your plan amount remains ${currency} ${total.toFixed(2)} per delivery.`}
-                </div>
-              </div>
-            </div>
-
-            <div className="px-6 pb-2 md:px-8">
-              <div className="rounded-2xl border border-[#d8cdbb] bg-[#fffdf8] p-4 text-sm leading-7 text-[#53675d]">
-                {isOneTimeMode
-                  ? "You can still review your order before paying. If the payment window is closed before completion, your order will not be confirmed yet."
-                  : "You can still review your plan before setup. If the Razorpay window is closed before approval, your plan will stay pending until you finish setup."}
-              </div>
-            </div>
-
-            <div className="modal-action mt-0 flex-row flex-wrap justify-between gap-3 border-t border-[#e1d6c7] px-6 py-5 md:px-8">
-              <button
-                type="button"
-                className="btn btn-ghost text-[#52655b]"
-                onClick={() => {
-                  setPendingCheckout(null);
-                  setIsSubmitting(false);
-                }}
-              >
-                Review order
-              </button>
-              <button
-                type="button"
-                className="btn btn-primary min-w-[220px]"
-                onClick={async () => {
-                  setError("");
-                  try {
-                    await openRazorpayCheckout();
-                  } catch (checkoutError) {
-                    setError(checkoutError.message || "Could not open Razorpay checkout.");
-                    setIsSubmitting(false);
-                  }
-                }}
-              >
-                {isOneTimeMode ? "Confirm my order" : "Start my plan"}
-              </button>
-            </div>
-          </div>
-          <form method="dialog" className="modal-backdrop">
-            <button
-              type="button"
-              onClick={() => {
-                setPendingCheckout(null);
-                setIsSubmitting(false);
-              }}
-            >
-              close
-            </button>
-          </form>
-        </dialog>
-      )}
-
       <section
         ref={selectionSectionRef}
         className="rounded-[28px] border border-[#d6c6ae] bg-[#fbf7f0]/96 p-6 shadow-xl md:p-8"
