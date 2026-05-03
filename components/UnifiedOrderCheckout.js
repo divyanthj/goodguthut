@@ -31,7 +31,7 @@ export default function UnifiedOrderCheckout({
         availableStartDates={availableStartDates}
         defaultStartDate={defaultStartDate}
         currency={currency}
-        initialSelectionMode="combo"
+        initialSelectionMode="custom"
       />
     </div>
   );

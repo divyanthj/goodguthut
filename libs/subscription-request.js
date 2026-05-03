@@ -72,7 +72,10 @@ export const getSubscriptionSetupContext = async () => {
         createdAt: -1,
       });
   const deliveryWindow = activeWindow || fallbackWindow;
-  const serializedSkuCatalog = JSON.parse(JSON.stringify(skuCatalog));
+  const customOrderCatalog = skuCatalog.filter(
+    (item) => item?.sku && item.status !== "archived"
+  );
+  const serializedSkuCatalog = JSON.parse(JSON.stringify(customOrderCatalog));
   const serializedDeliveryWindow = deliveryWindow
     ? JSON.parse(JSON.stringify(deliveryWindow))
     : null;

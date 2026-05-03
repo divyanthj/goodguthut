@@ -6,9 +6,9 @@ import logo from "@/app/logo.jpg";
 const Footer = () => {
   return (
     <footer className="border-t border-base-300 bg-base-200 text-base-content">
-      <div className="mx-auto grid max-w-6xl gap-12 px-6 py-14 md:grid-cols-[1.3fr_1fr_1fr_1fr] md:px-8">
-        <div className="max-w-xs">
-          <Link href="/" aria-current="page" className="flex items-center gap-3">
+      <div className="mx-auto grid max-w-6xl gap-12 px-6 py-14 text-center md:grid-cols-[1.3fr_1fr_1fr_1fr] md:px-8 md:text-left">
+        <div className="mx-auto max-w-xs md:mx-0">
+          <Link href="/" aria-current="page" className="flex items-center justify-center gap-3 md:justify-start">
             <Image
               src={logo}
               alt={`${config.appName} logo`}
@@ -34,7 +34,7 @@ const Footer = () => {
           <div className="text-xs font-semibold uppercase tracking-[0.24em] text-base-content/60">
             Links
           </div>
-          <div className="mt-4 flex flex-col gap-3 text-sm">
+          <div className="mt-4 flex flex-col items-center gap-3 text-sm md:items-start">
             <Link href="/#lineup" className="transition hover:text-primary">
               Lineup
             </Link>
@@ -56,7 +56,7 @@ const Footer = () => {
           <div className="text-xs font-semibold uppercase tracking-[0.24em] text-base-content/60">
             Legal
           </div>
-          <div className="mt-4 flex flex-col gap-3 text-sm">
+          <div className="mt-4 flex flex-col items-center gap-3 text-sm md:items-start">
             <Link href="/tos" className="transition hover:text-primary">
               Terms and Conditions
             </Link>
@@ -70,7 +70,7 @@ const Footer = () => {
           <div className="text-xs font-semibold uppercase tracking-[0.24em] text-base-content/60">
             Social
           </div>
-          <div className="mt-4 flex flex-col gap-3 text-sm">
+          <div className="mt-4 flex flex-col items-center gap-3 text-sm md:items-start">
             <a
               href="https://instagram.com/goodguthut"
               target="_blank"

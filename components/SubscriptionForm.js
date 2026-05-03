@@ -355,6 +355,7 @@ export default function SubscriptionForm({
   const initialEmailRef = useRef(initialValues?.email || "");
   const isCompletingPaymentRef = useRef(false);
   const selectionSectionRef = useRef(null);
+  const comboSelectionRef = useRef(null);
   const customSelectionRef = useRef(null);
   const durationRef = useRef(null);
   const deliveryDateRef = useRef(null);
@@ -685,6 +686,28 @@ export default function SubscriptionForm({
     if (typeof node.focus === "function") {
       window.setTimeout(() => node.focus({ preventScroll: true }), 350);
     }
+  };
+
+  const selectCustomOrders = () => {
+    setSelectionMode("custom");
+    clearFieldErrors("selection", "quantity");
+    window.setTimeout(() => {
+      customSelectionRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 0);
+  };
+
+  const selectReadyToGoSets = () => {
+    setSelectionMode("combo");
+    clearFieldErrors("selection", "quantity");
+    window.setTimeout(() => {
+      comboSelectionRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 0);
   };
 
   const validateCheckoutBeforeSubmit = () => {
@@ -1320,10 +1343,10 @@ export default function SubscriptionForm({
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <div>
             <div className="text-xs font-semibold uppercase tracking-[0.24em] text-[#6b7d74]">
-              Choose Your Set
+              Our products
             </div>
             <p className="mt-2 max-w-2xl text-sm leading-7 text-[#53675d]">
-              Start with one of our ready-to-go sets, or build your own with the drinks you love.
+              Mix and match from our current selection.
             </p>
           </div>
           <div className="badge border-[#d1c4b0] bg-[#f7f1e6] text-[#2f5d49]">
@@ -1335,37 +1358,31 @@ export default function SubscriptionForm({
           <button
             type="button"
             className={`rounded-2xl border p-5 text-left transition ${
-              effectiveSelectionMode === "combo"
-                ? "border-[#2f5d49] bg-[#eef4ee]"
-                : "border-[#d8cdbb] bg-[#fffaf1]"
-            }`}
-            disabled={billingLocked || comboOptions.length === 0}
-            onClick={() => {
-              setSelectionMode("combo");
-              clearFieldErrors("selection", "quantity");
-            }}
-          >
-            <div className="text-lg font-semibold text-[#2f4a3e]">Ready-to-go sets</div>
-            <p className="mt-2 text-sm leading-7 text-[#53675d]">
-              Easy picks put together by us if you want the quickest way to get started.
-            </p>
-          </button>
-          <button
-            type="button"
-            className={`rounded-2xl border p-5 text-left transition ${
               effectiveSelectionMode === "custom"
                 ? "border-[#2f5d49] bg-[#eef4ee]"
                 : "border-[#d8cdbb] bg-[#fffaf1]"
             }`}
             disabled={billingLocked}
-            onClick={() => {
-              setSelectionMode("custom");
-              clearFieldErrors("selection", "quantity");
-            }}
+            onClick={selectCustomOrders}
           >
-            <div className="text-lg font-semibold text-[#2f4a3e]">Build your own set</div>
+            <div className="text-lg font-semibold text-[#2f4a3e]">Add your drinks</div>
             <p className="mt-2 text-sm leading-7 text-[#53675d]">
-              Mix and match your favourites and choose exactly what goes into each delivery.
+              {`Choose 4 of more bottles from our selection below`}
+            </p>
+          </button>
+          <button
+            type="button"
+            className={`rounded-2xl border p-5 text-left transition ${
+              effectiveSelectionMode === "combo"
+                ? "border-[#2f5d49] bg-[#eef4ee]"
+                : "border-[#d8cdbb] bg-[#fffaf1]"
+            }`}
+            disabled={billingLocked || comboOptions.length === 0}
+            onClick={selectReadyToGoSets}
+          >
+            <div className="text-lg font-semibold text-[#2f4a3e]">Ready-to-go sets</div>
+            <p className="mt-2 text-sm leading-7 text-[#53675d]">
+              Easy picks put together by us if you want the quickest way to get started.
             </p>
           </button>
         </div>
@@ -1375,7 +1392,10 @@ export default function SubscriptionForm({
         )}
 
         {effectiveSelectionMode === "combo" && comboOptions.length > 0 && (
-          <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div
+            ref={comboSelectionRef}
+            className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3"
+          >
             {comboOptions.map((combo) => {
               const comboQty = Math.max(0, Number(comboCart[combo.id] || 0));
               const seasonalIneligibility = (combo.items || []).find((item) => {
@@ -1504,7 +1524,7 @@ export default function SubscriptionForm({
           <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
             <div>
               <div className="text-xs font-semibold uppercase tracking-[0.24em] text-[#6b7d74]">
-                Build Your Own Set
+                Custom Orders
               </div>
               <p className="mt-2 max-w-2xl text-sm leading-7 text-[#53675d]">
                 Choose any mix of drinks you like, with at least 4 bottles and up to {MAX_TOTAL_QTY} bottles in each delivery.
@@ -1906,7 +1926,7 @@ export default function SubscriptionForm({
                     ? selectedComboBreakdown.length > 0
                       ? `You have selected ${selectedComboBreakdown.length} ready-to-go set${selectedComboBreakdown.length === 1 ? "" : "s"}.`
                       : "Choose one or more ready-to-go sets to continue."
-                    : "You are creating your own set from the current menu."}
+                    : "You are creating a custom order from the current menu."}
                 </p>
               </div>
               <div className="badge border-[#d1c4b0] bg-[#f7f1e6] text-[#2f5d49]">
