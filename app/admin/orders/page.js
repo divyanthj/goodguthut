@@ -1,8 +1,12 @@
 import AdminLoginButton from "@/components/AdminLoginButton";
 import AdminNav from "@/components/AdminNav";
-import AdminOrderPlansList from "@/components/AdminOrderPlansList";
-import AdminPreordersList from "@/components/AdminPreordersList";
+import AdminOrdersList from "@/components/AdminOrdersList";
 import { getAdminSessionState } from "@/libs/admin-auth";
+import {
+  normalizeAdminOrderFromLegacyPreorder,
+  normalizeAdminOrderFromOrderPlan,
+  sortAdminOrdersByCreatedAtDesc,
+} from "@/libs/admin-orders";
 import connectMongo from "@/libs/mongoose";
 import OrderPlan from "@/models/OrderPlan";
 import Preorder from "@/models/Preorder";
@@ -47,8 +51,14 @@ export default async function AdminOrdersPage() {
     OrderPlan.find({}).sort({ createdAt: -1 }).limit(300),
     Preorder.find({}).sort({ createdAt: -1 }).limit(200),
   ]);
-  const orderPlans = JSON.parse(JSON.stringify(orderPlanDocs));
-  const legacyPreorders = JSON.parse(JSON.stringify(legacyPreorderDocs));
+  const orders = sortAdminOrdersByCreatedAtDesc([
+    ...JSON.parse(JSON.stringify(orderPlanDocs)).map((orderPlan) =>
+      normalizeAdminOrderFromOrderPlan(orderPlan)
+    ),
+    ...JSON.parse(JSON.stringify(legacyPreorderDocs)).map((preorder) =>
+      normalizeAdminOrderFromLegacyPreorder(preorder)
+    ),
+  ]);
 
   return (
     <main className="min-h-screen bg-base-200 px-4 py-10 md:px-6">
@@ -63,17 +73,7 @@ export default async function AdminOrdersPage() {
           <AdminNav active="orders" />
         </div>
 
-        <AdminOrderPlansList initialOrderPlans={orderPlans} />
-
-        <section className="space-y-4">
-          <div className="rounded-2xl bg-base-100 p-5 shadow-md">
-            <h2 className="text-xl font-semibold">Earlier pre-orders</h2>
-            <p className="mt-2 text-sm opacity-75">
-              These are older pre-orders created before the unified order flow. You can still review and update them here.
-            </p>
-          </div>
-          <AdminPreordersList initialPreorders={legacyPreorders} />
-        </section>
+        <AdminOrdersList initialOrders={orders} />
       </div>
     </main>
   );
