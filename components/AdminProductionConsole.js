@@ -88,8 +88,34 @@ const shiftDateKey = (dateKey = "", deltaDays = 0) => {
   return `${nextYear}-${nextMonth}-${nextDay}`;
 };
 
+const getPrintSkuCards = (sheet) => {
+  const skuItems = sheet?.ingredientsBySku || [];
+  const pageSize = 6;
+  const orderedForPriority = [...skuItems].sort((left, right) => {
+    const rightVolume = Number(right.plannedLitres || right.targetLitres || 0);
+    const leftVolume = Number(left.plannedLitres || left.targetLitres || 0);
+
+    if (rightVolume !== leftVolume) {
+      return rightVolume - leftVolume;
+    }
+
+    return Number(right.weeklyEquivalentBottles || 0) - Number(left.weeklyEquivalentBottles || 0);
+  });
+  const cards = orderedForPriority.slice(0, pageSize);
+
+  if (cards.length > 0 && cards.length < pageSize) {
+    const needed = pageSize - cards.length;
+
+    for (let index = 0; index < needed; index += 1) {
+      cards.push(orderedForPriority[index % orderedForPriority.length]);
+    }
+  }
+
+  return cards;
+};
+
 export default function AdminProductionConsole() {
-  const [sheet, setSheet] = useState(null);
+  const [sheets, setSheets] = useState([]);
   const [recipes, setRecipes] = useState([]);
   const [skuCatalog, setSkuCatalog] = useState([]);
   const [manualRecipe, setManualRecipe] = useState(createEmptyManualRecipe);
@@ -119,7 +145,7 @@ export default function AdminProductionConsole() {
         throw new Error(data.error || "Could not load ingredient sheet.");
       }
 
-      setSheet(data);
+      setSheets(Array.isArray(data.snapshots) ? data.snapshots : []);
     } catch (loadError) {
       setError(loadError.message || "Could not load ingredient sheet.");
     } finally {
@@ -176,37 +202,7 @@ export default function AdminProductionConsole() {
     loadSkuCatalog();
   }, [loadSkuCatalog]);
 
-  const printSkuCards = useMemo(() => {
-    const skuItems = sheet?.ingredientsBySku || [];
-    const pageSize = 6;
-    const orderedForPriority = [...skuItems].sort((left, right) => {
-      const rightVolume = Number(right.plannedLitres || right.targetLitres || 0);
-      const leftVolume = Number(left.plannedLitres || left.targetLitres || 0);
-
-      if (rightVolume !== leftVolume) {
-        return rightVolume - leftVolume;
-      }
-
-      return Number(right.weeklyEquivalentBottles || 0) - Number(left.weeklyEquivalentBottles || 0);
-    });
-    const cards = orderedForPriority.slice(0, pageSize);
-
-    if (cards.length > 0 && cards.length < pageSize) {
-      const needed = pageSize - cards.length;
-
-      for (let index = 0; index < needed; index += 1) {
-        cards.push(orderedForPriority[index % orderedForPriority.length]);
-      }
-    }
-
-    return cards;
-  }, [sheet]);
-  const sharedBatchNumber = useMemo(() => buildSharedBatchNumber(sheet), [sheet]);
-  const printStartDate = useMemo(() => {
-    const deliveryDate = String(sheet?.deliveryDate || "").trim();
-    const minimumLeadDays = Math.max(0, Number(sheet?.summary?.minimumLeadDays || 0));
-    return shiftDateKey(deliveryDate, -minimumLeadDays);
-  }, [sheet]);
+  const primarySheet = sheets[0] || null;
 
   const groupedRecipes = useMemo(() => {
     const groups = new Map();
@@ -384,7 +380,7 @@ export default function AdminProductionConsole() {
   };
 
   const handleExportPdf = () => {
-    if (!sheet?.ingredientsBySku?.length) {
+    if (!sheets.some((entry) => (entry?.ingredientsBySku || []).length > 0)) {
       setError("No SKU sheets available to export yet.");
       return;
     }
@@ -411,9 +407,9 @@ export default function AdminProductionConsole() {
       <section className="rounded-2xl bg-base-100 p-5 shadow-md">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h2 className="text-xl font-semibold">Next delivery production snapshot</h2>
+            <h2 className="text-xl font-semibold">Upcoming production snapshots</h2>
             <p className="mt-1 text-sm opacity-75">
-              Auto-calculated from all committed orders for the next delivery date. Bottle size fixed at 200 ml.
+              Auto-calculated from all committed orders for the next delivery dates. Bottle size fixed at 200 ml.
             </p>
           </div>
           <button type="button" className="btn btn-primary" onClick={loadIngredientSheet} disabled={isLoadingSheet}>
@@ -421,145 +417,153 @@ export default function AdminProductionConsole() {
           </button>
         </div>
 
-        {sheet && (
-          <>
-            <div className="mt-4 grid gap-3 md:grid-cols-3">
-              <div className="rounded-xl bg-base-200 p-4 text-sm">
-                <div className="text-xs uppercase tracking-[0.16em] opacity-60">Next delivery date</div>
-                <div className="mt-2 text-lg font-semibold">
-                  {formatDeliveryDate(sheet.deliveryDate)}
+        {sheets.length === 0 ? (
+          <div className="mt-4 rounded-xl bg-base-200 p-4 text-sm opacity-70">
+            No committed delivery snapshots are available yet.
+          </div>
+        ) : (
+          <div className="mt-4 space-y-6">
+            {sheets.map((currentSheet, sheetIndex) => (
+              <div key={`snapshot-${currentSheet.deliveryDate || sheetIndex}`} className="rounded-xl border border-base-300 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-lg font-semibold">
+                      {sheetIndex === 0 ? "Next delivery production snapshot" : "Following delivery production snapshot"}
+                    </h3>
+                    <p className="mt-1 text-sm opacity-75">
+                      Consolidated totals and per-SKU requirements for {formatDeliveryDate(currentSheet.deliveryDate)}.
+                    </p>
+                  </div>
+                  <div className="flex flex-col items-end gap-1">
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={handleExportPdf}
+                      disabled={!primarySheet?.ingredientsBySku?.length}
+                    >
+                      Export snapshots as PDF
+                    </button>
+                    <div className="text-xs opacity-70">Use Save as PDF in the print dialog.</div>
+                  </div>
                 </div>
-              </div>
-              <div className="rounded-xl bg-base-200 p-4 text-sm">
-                <div className="text-xs uppercase tracking-[0.16em] opacity-60">Committed orders</div>
-                <div className="mt-2 text-2xl font-semibold">{sheet.summary?.committedOrderCount || 0}</div>
-              </div>
-              <div className="rounded-xl bg-base-200 p-4 text-sm">
-                <div className="text-xs uppercase tracking-[0.16em] opacity-60">Total bottles to produce</div>
-                <div className="mt-2 text-2xl font-semibold">
-                  {formatBottleCount(sheet.summary?.totalBottles)}
+
+                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                  <div className="rounded-xl bg-base-200 p-4 text-sm">
+                    <div className="text-xs uppercase tracking-[0.16em] opacity-60">Delivery date</div>
+                    <div className="mt-2 text-lg font-semibold">
+                      {formatDeliveryDate(currentSheet.deliveryDate)}
+                    </div>
+                  </div>
+                  <div className="rounded-xl bg-base-200 p-4 text-sm">
+                    <div className="text-xs uppercase tracking-[0.16em] opacity-60">Committed orders</div>
+                    <div className="mt-2 text-2xl font-semibold">{currentSheet.summary?.committedOrderCount || 0}</div>
+                  </div>
+                  <div className="rounded-xl bg-base-200 p-4 text-sm">
+                    <div className="text-xs uppercase tracking-[0.16em] opacity-60">Total bottles to produce</div>
+                    <div className="mt-2 text-2xl font-semibold">
+                      {formatBottleCount(currentSheet.summary?.totalBottles)}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
-          </>
-        )}
-      </section>
 
-      <section className="rounded-2xl bg-base-100 p-5 shadow-md">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 className="text-xl font-semibold">Ingredient sheet</h2>
-            <p className="mt-1 text-sm opacity-75">
-              Consolidated totals and per-SKU requirements for production.
-            </p>
-          </div>
-          <div className="flex flex-col items-end gap-1">
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={handleExportPdf}
-              disabled={!sheet?.ingredientsBySku?.length}
-            >
-              Export as PDF
-            </button>
-            <div className="text-xs opacity-70">Use Save as PDF in the print dialog.</div>
-          </div>
-        </div>
-
-        {sheet?.missingRecipes?.length > 0 && (
-          <div className="alert alert-warning mt-4">
-            <span>
-              Missing approved recipes for:{" "}
-              {sheet.missingRecipes.map((item) => `${item.productName} (${item.sku})`).join(", ")}
-            </span>
-          </div>
-        )}
-
-        <div className="mt-4 flex justify-end">
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm"
-            onClick={() => setShowConsolidatedIngredients((current) => !current)}
-          >
-            {showConsolidatedIngredients ? "Hide consolidated ingredients" : "Show consolidated ingredients"}
-          </button>
-        </div>
-
-        {showConsolidatedIngredients && (
-          <div className="mt-4 overflow-x-auto">
-            <div className="mb-2 text-sm font-medium">Consolidated ingredients</div>
-            <table className="table table-sm">
-              <thead>
-                <tr>
-                  <th>Ingredient</th>
-                  <th>Unit</th>
-                  <th className="text-right">Quantity</th>
-                  <th>Tolerance</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(sheet?.consolidatedIngredients || []).length > 0 ? (
-                  sheet.consolidatedIngredients.map((ingredient, index) => (
-                    <tr key={`consolidated-${ingredient.name}-${index}`}>
-                      <td>{ingredient.name}</td>
-                      <td>{ingredient.unit}</td>
-                      <td className="text-right font-medium">{formatQty(ingredient.quantity, 2)}</td>
-                      <td>{formatTolerance(ingredient)}</td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan={4} className="py-6 text-center opacity-70">
-                      No consolidated ingredients yet.
-                    </td>
-                  </tr>
+                {currentSheet.missingRecipes?.length > 0 && (
+                  <div className="alert alert-warning mt-4">
+                    <span>
+                      Missing approved recipes for:{" "}
+                      {currentSheet.missingRecipes.map((item) => `${item.productName} (${item.sku})`).join(", ")}
+                    </span>
+                  </div>
                 )}
-              </tbody>
-            </table>
+
+                <div className="mt-4 flex justify-end">
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => setShowConsolidatedIngredients((current) => !current)}
+                  >
+                    {showConsolidatedIngredients ? "Hide consolidated ingredients" : "Show consolidated ingredients"}
+                  </button>
+                </div>
+
+                {showConsolidatedIngredients && (
+                  <div className="mt-4 overflow-x-auto">
+                    <div className="mb-2 text-sm font-medium">Consolidated ingredients</div>
+                    <table className="table table-sm">
+                      <thead>
+                        <tr>
+                          <th>Ingredient</th>
+                          <th>Unit</th>
+                          <th className="text-right">Quantity</th>
+                          <th>Tolerance</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(currentSheet?.consolidatedIngredients || []).length > 0 ? (
+                          currentSheet.consolidatedIngredients.map((ingredient, index) => (
+                            <tr key={`consolidated-${currentSheet.deliveryDate}-${ingredient.name}-${index}`}>
+                              <td>{ingredient.name}</td>
+                              <td>{ingredient.unit}</td>
+                              <td className="text-right font-medium">{formatQty(ingredient.quantity, 2)}</td>
+                              <td>{formatTolerance(ingredient)}</td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr>
+                            <td colSpan={4} className="py-6 text-center opacity-70">
+                              No consolidated ingredients yet.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                <div className="mt-4 grid gap-4 xl:grid-cols-2">
+                  {(currentSheet?.ingredientsBySku || []).map((skuEntry) => (
+                    <div key={`sku-sheet-${currentSheet.deliveryDate}-${skuEntry.sku}`} className="rounded-xl bg-base-200 p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <div className="font-semibold">{skuEntry.skuName}</div>
+                          <div className="text-xs uppercase tracking-[0.16em] opacity-60">{skuEntry.sku}</div>
+                        </div>
+                        <div className="text-right text-sm">
+                          <div>{formatBottleCount(skuEntry.weeklyEquivalentBottles)} bottles</div>
+                          <div>Demand: {formatQty(skuEntry.targetLitres, 2)} L</div>
+                          <div>Planned: {formatQty(skuEntry.plannedLitres, 2)} L</div>
+                          <div>Wastage buffer: {formatQty(skuEntry.wastageLitres, 2)} L</div>
+                          <div className="opacity-70">recipe v{skuEntry.formulaVersion}</div>
+                        </div>
+                      </div>
+                      <div className="mt-3 overflow-x-auto">
+                        <table className="table table-sm">
+                          <thead>
+                            <tr>
+                              <th>Ingredient</th>
+                              <th>Unit</th>
+                              <th className="text-right">Qty</th>
+                              <th>Tolerance</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {skuEntry.ingredients.map((ingredient, index) => (
+                              <tr key={`${currentSheet.deliveryDate}-${skuEntry.sku}-${ingredient.name}-${index}`}>
+                                <td>{ingredient.name}</td>
+                                <td>{ingredient.unit}</td>
+                                <td className="text-right font-medium">{formatQty(ingredient.quantity, 2)}</td>
+                                <td>{formatTolerance(ingredient)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
         )}
-
-        <div className="mt-4 grid gap-4 xl:grid-cols-2">
-          {(sheet?.ingredientsBySku || []).map((skuEntry) => (
-            <div key={`sku-sheet-${skuEntry.sku}`} className="rounded-xl bg-base-200 p-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <div className="font-semibold">{skuEntry.skuName}</div>
-                  <div className="text-xs uppercase tracking-[0.16em] opacity-60">{skuEntry.sku}</div>
-                </div>
-                <div className="text-right text-sm">
-                  <div>{formatBottleCount(skuEntry.weeklyEquivalentBottles)} bottles (next delivery)</div>
-                  <div>Demand: {formatQty(skuEntry.targetLitres, 2)} L</div>
-                  <div>Planned: {formatQty(skuEntry.plannedLitres, 2)} L</div>
-                  <div>Wastage buffer: {formatQty(skuEntry.wastageLitres, 2)} L</div>
-                  <div className="opacity-70">recipe v{skuEntry.formulaVersion}</div>
-                </div>
-              </div>
-              <div className="mt-3 overflow-x-auto">
-                <table className="table table-sm">
-                  <thead>
-                    <tr>
-                      <th>Ingredient</th>
-                      <th>Unit</th>
-                      <th className="text-right">Qty</th>
-                      <th>Tolerance</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {skuEntry.ingredients.map((ingredient, index) => (
-                      <tr key={`${skuEntry.sku}-${ingredient.name}-${index}`}>
-                        <td>{ingredient.name}</td>
-                        <td>{ingredient.unit}</td>
-                        <td className="text-right font-medium">{formatQty(ingredient.quantity, 2)}</td>
-                        <td>{formatTolerance(ingredient)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ))}
-        </div>
       </section>
 
       <section className="rounded-2xl bg-base-100 p-5 shadow-md">
@@ -862,55 +866,69 @@ export default function AdminProductionConsole() {
       </div>
 
       <div id="production-print-root" className="hidden print:block">
-        <section className="wall-sheet-page wall-sheet-page-grid">
-          {[0, 1, 2, 3, 4, 5].map((slotIndex) => {
-              const skuEntry = printSkuCards[slotIndex];
+        {sheets.map((currentSheet, sheetIndex) => {
+          const printSkuCards = getPrintSkuCards(currentSheet);
+          const sharedBatchNumber = buildSharedBatchNumber(currentSheet);
+          const printStartDate = shiftDateKey(
+            String(currentSheet?.deliveryDate || "").trim(),
+            -Math.max(0, Number(currentSheet?.summary?.minimumLeadDays || 0))
+          );
 
-              if (!skuEntry) {
-                return <article key={`print-empty-${slotIndex}`} className="wall-sheet-sku-card wall-sheet-sku-card-empty" />;
-              }
+          return (
+            <section
+              key={`print-sheet-${currentSheet.deliveryDate || sheetIndex}`}
+              className="wall-sheet-page wall-sheet-page-grid"
+            >
+              {[0, 1, 2, 3, 4, 5].map((slotIndex) => {
+                const skuEntry = printSkuCards[slotIndex];
 
-              return (
-                <article key={`print-sku-${skuEntry.sku}-${slotIndex}`} className="wall-sheet-sku-card">
-                  <header className="wall-sheet-header">
-                    <div className="wall-sheet-brand">
-                      <img src="/images/logo.jpg" alt="GGH logo" className="wall-sheet-logo" />
-                    </div>
-                    <div className="wall-sheet-title">{skuEntry.skuName}</div>
-                    <div className="wall-sheet-subtitle">SKU: {skuEntry.sku}</div>
-                    <div className="wall-sheet-meta-grid">
-                      <div>Start Date: {printStartDate || "_____"}</div>
-                      <div>End Date: _____</div>
-                      <div>Start Time: _____</div>
-                      <div>End Time: _____</div>
-                      <div className="wall-sheet-meta-span-2">
-                        Bottles (ordered/planned): {formatQty(skuEntry.weeklyEquivalentBottles, 0)}/{formatQty((Number(skuEntry.plannedLitres || 0) * 1000) / Number(sheet?.bottleSizeMl || 200), 0)}
+                if (!skuEntry) {
+                  return <article key={`print-empty-${currentSheet.deliveryDate}-${slotIndex}`} className="wall-sheet-sku-card wall-sheet-sku-card-empty" />;
+                }
+
+                return (
+                  <article key={`print-sku-${currentSheet.deliveryDate}-${skuEntry.sku}-${slotIndex}`} className="wall-sheet-sku-card">
+                    <header className="wall-sheet-header">
+                      <div className="wall-sheet-brand">
+                        <img src="/images/logo.jpg" alt="GGH logo" className="wall-sheet-logo" />
                       </div>
-                      <div className="wall-sheet-meta-span-2">
-                        Planned Qty: {formatQty(skuEntry.plannedLitres, 2)} L
-                      </div>
-                      <div className="wall-sheet-meta-span-2">Batch Number: {sharedBatchNumber || "-"}</div>
-                    </div>
-                  </header>
-
-                  <div className="wall-sheet-ingredients">
-                    {skuEntry.ingredients.map((ingredient, index) => (
-                      <div key={`print-ingredient-${skuEntry.sku}-${index}`} className="wall-sheet-ingredient-row">
-                        <div className="wall-sheet-check-box" aria-hidden="true" />
-                        <div className="wall-sheet-ingredient-name">{ingredient.name}</div>
-                        <div className="wall-sheet-ingredient-qty">{formatQty(ingredient.quantity, 2)} {ingredient.unit}</div>
-                        <div className="wall-sheet-ingredient-tolerance">
-                          {ingredient.toleranceType === "plus_minus"
-                            ? `+/- ${formatQty(ingredient.toleranceValue, 2)} ${ingredient.unit}`
-                            : "Exact"}
+                      <div className="wall-sheet-title">{skuEntry.skuName}</div>
+                      <div className="wall-sheet-subtitle">SKU: {skuEntry.sku}</div>
+                      <div className="wall-sheet-meta-grid">
+                        <div>Start Date: {printStartDate || "_____"}</div>
+                        <div>End Date: _____</div>
+                        <div>Start Time: _____</div>
+                        <div>End Time: _____</div>
+                        <div className="wall-sheet-meta-span-2">
+                          Bottles (ordered/planned): {formatQty(skuEntry.weeklyEquivalentBottles, 0)}/{formatQty((Number(skuEntry.plannedLitres || 0) * 1000) / Number(currentSheet?.bottleSizeMl || 200), 0)}
                         </div>
+                        <div className="wall-sheet-meta-span-2">
+                          Planned Qty: {formatQty(skuEntry.plannedLitres, 2)} L
+                        </div>
+                        <div className="wall-sheet-meta-span-2">Batch Number: {sharedBatchNumber || "-"}</div>
                       </div>
-                    ))}
-                  </div>
-                </article>
-              );
-            })}
-        </section>
+                    </header>
+
+                    <div className="wall-sheet-ingredients">
+                      {skuEntry.ingredients.map((ingredient, index) => (
+                        <div key={`print-ingredient-${currentSheet.deliveryDate}-${skuEntry.sku}-${index}`} className="wall-sheet-ingredient-row">
+                          <div className="wall-sheet-check-box" aria-hidden="true" />
+                          <div className="wall-sheet-ingredient-name">{ingredient.name}</div>
+                          <div className="wall-sheet-ingredient-qty">{formatQty(ingredient.quantity, 2)} {ingredient.unit}</div>
+                          <div className="wall-sheet-ingredient-tolerance">
+                            {ingredient.toleranceType === "plus_minus"
+                              ? `+/- ${formatQty(ingredient.toleranceValue, 2)} ${ingredient.unit}`
+                              : "Exact"}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </article>
+                );
+              })}
+            </section>
+          );
+        })}
       </div>
     </div>
   );

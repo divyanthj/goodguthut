@@ -10,7 +10,8 @@ import RecipeFormula from "@/models/RecipeFormula";
 import { getSubscriptionSettings } from "@/libs/subscription-settings";
 import {
   buildIngredientSheet,
-  computeDemandForNextDeliveryDate,
+  computeDemandForDeliveryDate,
+  listUpcomingCommittedDeliveryDateKeys,
 } from "@/libs/production-planner";
 
 const getAdminSession = async () => {
@@ -45,11 +46,15 @@ export async function GET() {
       getSubscriptionSettings(),
     ]);
 
-    const demandSummary = computeDemandForNextDeliveryDate({
-      subscriptions: JSON.parse(JSON.stringify(subscriptions)),
-      orderPlans: JSON.parse(JSON.stringify(orderPlans)),
-      preorders: JSON.parse(JSON.stringify(preorders)),
-      deliveryDaysOfWeek: settings?.deliveryDaysOfWeek || [],
+    const serializedSubscriptions = JSON.parse(JSON.stringify(subscriptions));
+    const serializedOrderPlans = JSON.parse(JSON.stringify(orderPlans));
+    const serializedPreorders = JSON.parse(JSON.stringify(preorders));
+    const deliveryDaysOfWeek = settings?.deliveryDaysOfWeek || [];
+    const deliveryDates = listUpcomingCommittedDeliveryDateKeys({
+      subscriptions: serializedSubscriptions,
+      orderPlans: serializedOrderPlans,
+      preorders: serializedPreorders,
+      limit: 2,
     });
     const recipeMap = new Map(
       approvedRecipes.map((recipeDoc) => {
@@ -57,23 +62,36 @@ export async function GET() {
         return [recipe.sku, recipe];
       })
     );
-    const selectedDate = demandSummary.deliveryDate
-      ? new Date(`${demandSummary.deliveryDate}T00:00:00`)
-      : new Date();
-    const sheet = buildIngredientSheet({
-      weekStart: selectedDate,
-      deliveryDate: demandSummary.deliveryDate,
-      demandBySku: demandSummary.demandBySku,
-      approvedRecipesBySku: recipeMap,
-      bottleSizeMl: 200,
+    const snapshots = deliveryDates.map((deliveryDate) => {
+      const demandSummary = computeDemandForDeliveryDate({
+        subscriptions: serializedSubscriptions,
+        orderPlans: serializedOrderPlans,
+        preorders: serializedPreorders,
+        deliveryDate,
+        deliveryDaysOfWeek,
+      });
+      const selectedDate = demandSummary.deliveryDate
+        ? new Date(`${demandSummary.deliveryDate}T00:00:00`)
+        : new Date();
+      const sheet = buildIngredientSheet({
+        weekStart: selectedDate,
+        deliveryDate: demandSummary.deliveryDate,
+        demandBySku: demandSummary.demandBySku,
+        approvedRecipesBySku: recipeMap,
+        bottleSizeMl: 200,
+      });
+
+      return {
+        ...sheet,
+        summary: {
+          ...demandSummary.summary,
+          minimumLeadDays: Number(settings?.minimumLeadDays || 0),
+        },
+      };
     });
 
     return NextResponse.json({
-      ...sheet,
-      summary: {
-        ...demandSummary.summary,
-        minimumLeadDays: Number(settings?.minimumLeadDays || 0),
-      },
+      snapshots,
     });
   } catch (sheetError) {
     console.error(sheetError);

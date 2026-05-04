@@ -283,30 +283,50 @@ const findNextDeliveryDateKey = ({ subscriptions = [], orderPlans = [], preorder
   return nextUpcoming || uniqueDateKeys[0] || "";
 };
 
-export const computeDemandForNextDeliveryDate = ({
+export const listUpcomingCommittedDeliveryDateKeys = ({
   subscriptions = [],
   orderPlans = [],
   preorders = [],
+  limit = 0,
+}) => {
+  const uniqueDateKeys = getCommittedDeliveryDateKeys({ subscriptions, orderPlans, preorders });
+  const todayKey = todayDateKey();
+  const upcomingDateKeys = uniqueDateKeys.filter((dateKey) => dateKey >= todayKey);
+  const orderedDateKeys = upcomingDateKeys.length > 0 ? upcomingDateKeys : uniqueDateKeys;
+
+  if (Number(limit) > 0) {
+    return orderedDateKeys.slice(0, Number(limit));
+  }
+
+  return orderedDateKeys;
+};
+
+const buildEmptyDeliveryDemandSummary = () => ({
+  deliveryDate: "",
+  demandBySku: [],
+  summary: {
+    committedOrderCount: 0,
+    totalBottles: 0,
+    subscriptionCount: 0,
+    recurringOrderPlanCount: 0,
+    oneTimeOrderPlanCount: 0,
+    preorderCount: 0,
+    batchSequenceInMonth: 0,
+  },
+});
+
+export const computeDemandForDeliveryDate = ({
+  subscriptions = [],
+  orderPlans = [],
+  preorders = [],
+  deliveryDate = "",
   deliveryDaysOfWeek = [],
 }) => {
-  const deliveryDate = findNextDeliveryDateKey({ subscriptions, orderPlans, preorders });
-  const demandMap = new Map();
-
   if (!deliveryDate) {
-    return {
-      deliveryDate: "",
-      demandBySku: [],
-      summary: {
-        committedOrderCount: 0,
-        totalBottles: 0,
-        subscriptionCount: 0,
-        recurringOrderPlanCount: 0,
-        oneTimeOrderPlanCount: 0,
-        preorderCount: 0,
-        batchSequenceInMonth: 0,
-      },
-    };
+    return buildEmptyDeliveryDemandSummary();
   }
+
+  const demandMap = new Map();
 
   let subscriptionCount = 0;
   let recurringOrderPlanCount = 0;
@@ -400,6 +420,23 @@ export const computeDemandForNextDeliveryDate = ({
       batchSequenceInMonth,
     },
   };
+};
+
+export const computeDemandForNextDeliveryDate = ({
+  subscriptions = [],
+  orderPlans = [],
+  preorders = [],
+  deliveryDaysOfWeek = [],
+}) => {
+  const deliveryDate = findNextDeliveryDateKey({ subscriptions, orderPlans, preorders });
+
+  return computeDemandForDeliveryDate({
+    subscriptions,
+    orderPlans,
+    preorders,
+    deliveryDate,
+    deliveryDaysOfWeek,
+  });
 };
 
 export const computeWeeklyDemandFromAllOrders = ({
