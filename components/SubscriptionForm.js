@@ -1947,7 +1947,12 @@ export default function SubscriptionForm({
             </label>
             <div className="form-control md:col-span-2">
               <div className="label">
-                <span className="label-text text-[#365244]">Address *</span>
+                <span className="label-text text-[#365244]">
+                  Address *{" "}
+                  <span className="text-xs italic text-[#6b7d74]">
+                    (select from the dropdown)
+                  </span>
+                </span>
               </div>
               <input
                 ref={addressInputRef}
@@ -1966,9 +1971,6 @@ export default function SubscriptionForm({
                 required
                 disabled={billingLocked}
               />
-              <div className="mt-2 text-xs text-[#6b7d74]">
-                Select your address from the dropdown so we can confirm delivery and calculate charges.
-              </div>
               {addressSuggestions.length > 0 && !billingLocked && (
                 <div className="mt-2 rounded-2xl border border-base-300 bg-base-100 shadow-lg">
                   <ul className="max-h-72 overflow-y-auto py-2">
