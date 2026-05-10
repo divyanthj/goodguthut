@@ -177,6 +177,34 @@ const orderPlanPaymentSchema = mongoose.Schema(
   { _id: false }
 );
 
+const orderPlanDiscountSchema = mongoose.Schema(
+  {
+    code: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      default: "",
+    },
+    amount: {
+      type: Number,
+      min: 0,
+      max: 100,
+      default: 0,
+    },
+    discountAmount: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+    subtotalAfterDiscount: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+  },
+  { _id: false }
+);
+
 const orderPlanNotificationsSchema = mongoose.Schema(
   {
     confirmationEmailSentAt: {
@@ -328,6 +356,10 @@ const orderPlanSchema = mongoose.Schema(
       type: Number,
       min: 0,
       default: 0,
+    },
+    discount: {
+      type: orderPlanDiscountSchema,
+      default: () => ({}),
     },
     deliveryDistanceKm: {
       type: Number,

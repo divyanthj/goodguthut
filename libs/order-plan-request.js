@@ -1,4 +1,5 @@
 import { calculateDeliveryQuote } from "@/libs/delivery";
+import { resolveDiscountCode } from "@/libs/discount-codes";
 import { getPlaceDetails } from "@/libs/places";
 import { MAX_PER_ORDER_LIMIT } from "@/libs/preorder-windows";
 import {
@@ -118,6 +119,10 @@ const buildOneTimeRequest = async (body = {}) => {
 
   const subtotal = items.reduce((sum, item) => sum + item.lineTotal, 0);
   const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
+  const { discount } = await resolveDiscountCode({
+    code: body.discountCode || "",
+    subtotal,
+  });
 
   if (totalQuantity < ONE_TIME_MIN_TOTAL_QTY) {
     throw new Error(`Orders must include at least ${ONE_TIME_MIN_TOTAL_QTY} bottles.`);
@@ -190,9 +195,10 @@ const buildOneTimeRequest = async (body = {}) => {
     items,
     totalQuantity,
     subtotal,
+    discount,
     deliveryFee,
     deliveryDistanceKm,
-    total: subtotal + deliveryFee,
+    total: discount.subtotalAfterDiscount + deliveryFee,
     addressSessionToken: sessionToken,
     deliveryPlaceId: placeId,
   };

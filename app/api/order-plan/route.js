@@ -151,6 +151,7 @@ export async function POST(req) {
       items: orderPlanRequest.items,
       totalQuantity: orderPlanRequest.totalQuantity,
       subtotal: orderPlanRequest.subtotal,
+      discount: orderPlanRequest.discount,
       deliveryFee: orderPlanRequest.deliveryFee,
       deliveryDistanceKm: orderPlanRequest.deliveryDistanceKm,
       total: orderPlanRequest.total,
@@ -328,7 +329,9 @@ export async function POST(req) {
       error.message === "Orders are not available until delivery days are configured." ||
       error.message === "There are no delivery dates available in the next 30 days." ||
       error.message === "Choose a valid first delivery date within the next 30 days." ||
-      error.message === "We do not deliver there yet."
+      error.message === "We do not deliver there yet." ||
+      error.message === "Discount code not found." ||
+      error.message === "This discount code is no longer active."
     ) {
       logAbuseEvent("order-plan-invalid-request", req, { message: error.message });
       return jsonError(error.message, 400);

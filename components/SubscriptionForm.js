@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   canEditSubscriptionBilling,
   getSubscriptionDurationConfig,
@@ -22,6 +22,7 @@ import { MAX_TOTAL_QTY, ONE_TIME_MIN_TOTAL_QTY } from "@/libs/order-quantity";
 
 const MAX_QTY = MAX_TOTAL_QTY;
 const LOCKED_SUBSCRIPTION_CADENCE = "weekly";
+const normalizeDiscountCode = (value = "") => String(value).trim().toUpperCase().replace(/\s+/g, "");
 
 const buildRecurringEligibility = ({
   selectedItems = [],
@@ -352,6 +353,10 @@ export default function SubscriptionForm({
   );
   const [recurringNotice, setRecurringNotice] = useState("");
   const [fieldErrors, setFieldErrors] = useState({});
+  const [discountCodeInput, setDiscountCodeInput] = useState("");
+  const [appliedDiscount, setAppliedDiscount] = useState(null);
+  const [discountError, setDiscountError] = useState("");
+  const [isApplyingDiscount, setIsApplyingDiscount] = useState(false);
   const initialEmailRef = useRef(initialValues?.email || "");
   const isCompletingPaymentRef = useRef(false);
   const selectionSectionRef = useRef(null);
@@ -541,8 +546,10 @@ export default function SubscriptionForm({
 
   const deliveryConfigured = Boolean(pickupAddress && deliveryBands.length > 0);
   const fullAddress = buildFullAddress(customer.addressLine2, customer.address);
+  const discountAmount = isOneTimeMode ? Number(appliedDiscount?.discountAmount || 0) : 0;
+  const discountedSubtotal = Math.max(0, subtotal - discountAmount);
   const effectiveDeliveryFee = isRecurringMode ? 0 : Number(deliveryQuote?.deliveryFee || 0);
-  const total = subtotal + effectiveDeliveryFee;
+  const total = discountedSubtotal + effectiveDeliveryFee;
   const needsAddressSelection =
     deliveryConfigured && customer.address.trim() && !selectedPlace && !hasVerifiedAddress;
   const durationOptions = getSubscriptionDurationOptions(cadence);
@@ -781,6 +788,66 @@ export default function SubscriptionForm({
     return { errors: nextErrors, firstTarget };
   };
 
+  const applyDiscountCode = useCallback(
+    async (codeValue = discountCodeInput, { silent = false } = {}) => {
+      const normalizedCode = normalizeDiscountCode(codeValue);
+
+      if (!normalizedCode) {
+        setAppliedDiscount(null);
+        setDiscountError("");
+        return true;
+      }
+
+      if (!isOneTimeMode) {
+        setAppliedDiscount(null);
+        setDiscountError("");
+        return true;
+      }
+
+      if (selectedItems.length === 0) {
+        setAppliedDiscount(null);
+        setDiscountError("Add at least one item before applying a discount code.");
+        return false;
+      }
+
+      if (!silent) {
+        setIsApplyingDiscount(true);
+      }
+      setDiscountError("");
+
+      try {
+        const response = await fetch("/api/preorder/discount", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            items: selectedItems,
+            discountCode: normalizedCode,
+          }),
+        });
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data?.error || "Could not apply discount code.");
+        }
+
+        setAppliedDiscount(data.discount || null);
+        setDiscountCodeInput(data.discount?.code || normalizedCode);
+        return true;
+      } catch (applyError) {
+        setAppliedDiscount(null);
+        setDiscountError(applyError.message || "Could not apply discount code.");
+        return false;
+      } finally {
+        if (!silent) {
+          setIsApplyingDiscount(false);
+        }
+      }
+    },
+    [discountCodeInput, isOneTimeMode, selectedItems]
+  );
+
   useEffect(() => {
     if (mode !== "create") {
       return;
@@ -797,6 +864,23 @@ export default function SubscriptionForm({
     selectedItems.length,
     wantsRecurring,
   ]);
+
+  useEffect(() => {
+    if (!isOneTimeMode) {
+      setAppliedDiscount(null);
+      setDiscountError("");
+      return;
+    }
+
+    if (!appliedDiscount?.code || selectedItems.length === 0) {
+      if (selectedItems.length === 0) {
+        setAppliedDiscount(null);
+      }
+      return;
+    }
+
+    applyDiscountCode(appliedDiscount.code, { silent: true });
+  }, [appliedDiscount?.code, applyDiscountCode, isOneTimeMode, selectedItems]);
 
   useEffect(() => {
     setFieldErrors((current) => {
@@ -1076,6 +1160,9 @@ export default function SubscriptionForm({
     setWantsRecurring(false);
     setRecurringNotice("");
     setFieldErrors({});
+    setDiscountCodeInput("");
+    setAppliedDiscount(null);
+    setDiscountError("");
   };
 
   const applySubscriptionState = (nextSubscription) => {
@@ -1140,6 +1227,20 @@ export default function SubscriptionForm({
 
     setFieldErrors({});
 
+    const normalizedDiscountCode = normalizeDiscountCode(discountCodeInput);
+
+    if (
+      isOneTimeMode &&
+      normalizedDiscountCode &&
+      normalizedDiscountCode !== appliedDiscount?.code
+    ) {
+      const didApplyDiscount = await applyDiscountCode(normalizedDiscountCode);
+
+      if (!didApplyDiscount) {
+        return;
+      }
+    }
+
     const singleComboSelection =
       effectiveSelectionMode === "combo" &&
       selectedComboBreakdown.length === 1 &&
@@ -1172,6 +1273,7 @@ export default function SubscriptionForm({
             comboId: submissionComboId,
             items: selectedItems,
             mode: isOneTimeMode ? "one_time" : "recurring",
+            discountCode: isOneTimeMode ? normalizedDiscountCode : "",
             token,
           }),
         }
@@ -2024,6 +2126,62 @@ export default function SubscriptionForm({
                 <span>Subtotal</span>
                 <span>{currency} {subtotal.toFixed(2)}</span>
               </div>
+              {isOneTimeMode && (
+                <div className="rounded-xl border border-[#ddcfb6] bg-[#f7f1e6] p-3">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-end">
+                    <label className="form-control flex-1">
+                      <div className="label py-0">
+                        <span className="label-text text-[#365244]">Discount code</span>
+                      </div>
+                      <input
+                        className="input input-bordered bg-[#fffdf8]"
+                        value={discountCodeInput}
+                        onChange={(event) => {
+                          const nextValue = event.target.value;
+                          setDiscountCodeInput(nextValue);
+                          if (normalizeDiscountCode(nextValue) !== appliedDiscount?.code) {
+                            setAppliedDiscount(null);
+                          }
+                          setDiscountError("");
+                        }}
+                        placeholder="SUMMER10"
+                        disabled={billingLocked}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className="btn btn-outline"
+                      disabled={
+                        billingLocked ||
+                        isApplyingDiscount ||
+                        selectedItems.length === 0 ||
+                        !discountCodeInput.trim()
+                      }
+                      onClick={() => applyDiscountCode()}
+                    >
+                      {isApplyingDiscount ? "Applying..." : "Apply code"}
+                    </button>
+                  </div>
+                  {appliedDiscount?.code && (
+                    <div className="mt-3 text-sm text-success">
+                      {appliedDiscount.code} applied for {Number(appliedDiscount.amount || 0)}% off the subtotal.
+                    </div>
+                  )}
+                  {discountError && <div className="mt-2 text-sm text-error">{discountError}</div>}
+                </div>
+              )}
+              {isOneTimeMode && discountAmount > 0 && (
+                <div className="flex justify-between text-success">
+                  <span>Discount</span>
+                  <span>-{currency} {discountAmount.toFixed(2)}</span>
+                </div>
+              )}
+              {isOneTimeMode && discountAmount > 0 && (
+                <div className="flex justify-between">
+                  <span>Subtotal after discount</span>
+                  <span>{currency} {discountedSubtotal.toFixed(2)}</span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span>Delivery</span>
                 <span>
