@@ -548,7 +548,8 @@ export default function SubscriptionForm({
   const fullAddress = buildFullAddress(customer.addressLine2, customer.address);
   const discountAmount = isOneTimeMode ? Number(appliedDiscount?.discountAmount || 0) : 0;
   const discountedSubtotal = Math.max(0, subtotal - discountAmount);
-  const effectiveDeliveryFee = isRecurringMode ? 0 : Number(deliveryQuote?.deliveryFee || 0);
+  const hasDeliveryQuote = Boolean(deliveryQuote && deliveryQuote.isDeliverable !== false);
+  const effectiveDeliveryFee = isRecurringMode || !hasDeliveryQuote ? 0 : Number(deliveryQuote.deliveryFee || 0);
   const total = discountedSubtotal + effectiveDeliveryFee;
   const needsAddressSelection =
     deliveryConfigured && customer.address.trim() && !selectedPlace && !hasVerifiedAddress;
@@ -1008,14 +1009,24 @@ export default function SubscriptionForm({
   useEffect(() => {
     setDeliveryError("");
 
-    if (!deliveryConfigured || !selectedPlace) {
+    if (!deliveryConfigured) {
+      setDeliveryQuote(null);
       setIsQuotingDelivery(false);
       return undefined;
     }
 
-    const timeoutId = setTimeout(async () => {
-      setIsQuotingDelivery(true);
+    if (!selectedPlace) {
+      if (!hasVerifiedAddress) {
+        setDeliveryQuote(null);
+      }
+      setIsQuotingDelivery(false);
+      return undefined;
+    }
 
+    setDeliveryQuote(null);
+    setIsQuotingDelivery(true);
+
+    const timeoutId = setTimeout(async () => {
       try {
         const response = await fetch("/api/preorder/delivery-quote", {
           method: "POST",
@@ -1056,6 +1067,7 @@ export default function SubscriptionForm({
     deliveryConfigured,
     deliveryWindowId,
     fullAddress,
+    hasVerifiedAddress,
     selectedPlace,
     subtotal,
   ]);
@@ -2189,7 +2201,13 @@ export default function SubscriptionForm({
                     ? "Free"
                     : isQuotingDelivery
                     ? "Calculating..."
-                    : `${currency} ${Number(deliveryQuote?.deliveryFee || 0).toFixed(2)}`}
+                    : hasDeliveryQuote
+                    ? `${currency} ${Number(deliveryQuote.deliveryFee || 0).toFixed(2)}`
+                    : deliveryConfigured && customer.address.trim()
+                    ? "Select address"
+                    : deliveryConfigured
+                    ? "Enter address"
+                    : `${currency} 0.00`}
                 </span>
               </div>
               {isRecurringMode && (
