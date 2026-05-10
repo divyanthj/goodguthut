@@ -1967,7 +1967,7 @@ export default function SubscriptionForm({
                 disabled={billingLocked}
               />
               <div className="mt-2 text-xs text-[#6b7d74]">
-                Choose the closest match so we can confirm delivery to your area and calculate charges.
+                Select your address from the dropdown so we can confirm delivery and calculate charges.
               </div>
               {addressSuggestions.length > 0 && !billingLocked && (
                 <div className="mt-2 rounded-2xl border border-base-300 bg-base-100 shadow-lg">
