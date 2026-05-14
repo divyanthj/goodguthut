@@ -30,6 +30,8 @@ const buildLineupSummary = (items = []) =>
   items.map((item) => `${item.productName} x ${item.quantity}`).join(", ");
 
 const serializeOrderPlan = (orderPlan) => JSON.parse(JSON.stringify(orderPlan));
+const isManualOrderWithoutPaymentEnabled =
+  process.env.NEXT_PUBLIC_ENABLE_MANUAL_ORDER_WITHOUT_PAYMENT === "true";
 
 const refreshRouteSnapshots = async () => {
   try {
@@ -128,6 +130,19 @@ export async function POST(req) {
     const orderPlanRequest = await buildOrderPlanRequest(body);
     await connectMongo();
 
+    if (body.manualWithoutPayment === true && !isManualOrderWithoutPaymentEnabled) {
+      return jsonError("Manual order creation without Razorpay is disabled.", 403);
+    }
+
+    if (body.manualWithoutPayment === true && orderPlanRequest.mode !== "one_time") {
+      return jsonError("Manual order creation without Razorpay is only available for one-time orders.", 400);
+    }
+
+    const allowManualWithoutPayment =
+      orderPlanRequest.mode === "one_time" &&
+      body.manualWithoutPayment === true &&
+      isManualOrderWithoutPaymentEnabled;
+
     const orderPlan = await OrderPlan.create({
       mode: orderPlanRequest.mode,
       paymentType: orderPlanRequest.paymentType,
@@ -156,12 +171,24 @@ export async function POST(req) {
       deliveryDistanceKm: orderPlanRequest.deliveryDistanceKm,
       total: orderPlanRequest.total,
       status: "new",
-      source: "landing",
+      source: allowManualWithoutPayment ? "manual" : "landing",
     });
 
     let checkoutPayload = null;
 
-    if (isRazorpayConfigured() && Number(orderPlan.total || 0) > 0) {
+    if (allowManualWithoutPayment) {
+      orderPlan.payment = {
+        provider: "manual",
+        status: "paid",
+        amount: Number(orderPlan.total || 0),
+        currency: orderPlan.currency || "INR",
+        paymentId: `manual_${Date.now()}`,
+        paidAt: new Date(),
+      };
+      orderPlan.status = "confirmed";
+      await orderPlan.save();
+      await refreshRouteSnapshots();
+    } else if (isRazorpayConfigured() && Number(orderPlan.total || 0) > 0) {
       if (orderPlan.mode === "one_time") {
         const razorpayOrder = await createRazorpayOrder({
           amount: Math.round(Number(orderPlan.total) * 100),
@@ -295,7 +322,9 @@ export async function POST(req) {
         orderPlan.mode === "one_time"
           ? checkoutPayload?.checkoutToken
             ? "Order created. Complete payment to confirm your delivery."
-            : "Order created and confirmed."
+            : allowManualWithoutPayment
+              ? "Order created without Razorpay. Payment is marked confirmed for testing."
+              : "Order created and confirmed."
           : checkoutPayload?.checkoutToken
             ? "Plan created. Complete Razorpay setup to activate recurring auto-pay."
             : "Plan created and confirmed.",

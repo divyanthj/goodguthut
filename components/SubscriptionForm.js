@@ -281,6 +281,8 @@ export default function SubscriptionForm({
   mode = "create",
   token = "",
 }) {
+  const manualOrderWithoutPaymentEnabled =
+    process.env.NEXT_PUBLIC_ENABLE_MANUAL_ORDER_WITHOUT_PAYMENT === "true";
   const [wantsRecurring, setWantsRecurring] = useState(mode === "edit");
   const isRecurringMode = mode === "edit" || wantsRecurring;
   const isOneTimeMode = !isRecurringMode;
@@ -317,6 +319,7 @@ export default function SubscriptionForm({
     buildCartFromCatalog(catalogItems, initialValues?.items || [])
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [activeSubmitAction, setActiveSubmitAction] = useState("checkout");
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [didEmailChange, setDidEmailChange] = useState(false);
@@ -579,6 +582,8 @@ export default function SubscriptionForm({
     mode === "create" &&
     selectedItems.length > 0 &&
     recurringEligibility.isEligible;
+  const canCreateManualOrderWithoutPayment =
+    manualOrderWithoutPaymentEnabled && mode === "create" && isOneTimeMode;
   const effectiveStartDate = startDate || fallbackStartDate;
   const selectedStartDateOption = effectiveStartDateOptions.find(
     (option) => option.value === effectiveStartDate
@@ -1228,6 +1233,11 @@ export default function SubscriptionForm({
     event.preventDefault();
     setError("");
     setSuccessMessage("");
+    const nextSubmitAction =
+      event?.nativeEvent?.submitter?.value === "manual_without_payment"
+        ? "manual_without_payment"
+        : "checkout";
+    setActiveSubmitAction(nextSubmitAction);
 
     const validation = validateCheckoutBeforeSubmit();
 
@@ -1286,6 +1296,8 @@ export default function SubscriptionForm({
             items: selectedItems,
             mode: isOneTimeMode ? "one_time" : "recurring",
             discountCode: isOneTimeMode ? normalizedDiscountCode : "",
+            manualWithoutPayment:
+              nextSubmitAction === "manual_without_payment" && canCreateManualOrderWithoutPayment,
             token,
           }),
         }
@@ -1297,7 +1309,9 @@ export default function SubscriptionForm({
             response,
             mode === "edit"
               ? "Could not update subscription."
-              : "Could not create order."
+              : nextSubmitAction === "manual_without_payment"
+                ? "Could not add order without payment."
+                : "Could not create order."
           )
         );
       }
@@ -1327,6 +1341,7 @@ export default function SubscriptionForm({
       setError(submitError.message || "Something went wrong.");
     } finally {
       setIsSubmitting(false);
+      setActiveSubmitAction("checkout");
     }
   };
 
@@ -2303,9 +2318,30 @@ export default function SubscriptionForm({
                   {isCancelling ? "Cancelling..." : "Cancel plan"}
                 </button>
               )}
-              <button type="submit" disabled={!canAttemptSubmit} className="btn btn-primary min-w-[220px]">
+              {canCreateManualOrderWithoutPayment && (
+                <button
+                  type="submit"
+                  value="manual_without_payment"
+                  disabled={!canAttemptSubmit}
+                  className="btn btn-outline min-w-[220px]"
+                  onClick={() => setActiveSubmitAction("manual_without_payment")}
+                >
+                  {isSubmitting && activeSubmitAction === "manual_without_payment"
+                    ? "Adding order..."
+                    : "Add order without payment"}
+                </button>
+              )}
+              <button
+                type="submit"
+                value="checkout"
+                disabled={!canAttemptSubmit}
+                className="btn btn-primary min-w-[220px]"
+                onClick={() => setActiveSubmitAction("checkout")}
+              >
                 {isSubmitting
-                  ? mode === "edit"
+                  ? activeSubmitAction === "manual_without_payment"
+                    ? "Adding order..."
+                    : mode === "edit"
                     ? "Saving..."
                     : "Taking you to payment..."
                   : isCancelled

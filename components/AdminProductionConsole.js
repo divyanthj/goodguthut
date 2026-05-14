@@ -21,6 +21,43 @@ const formatDeliveryDate = (dateKey = "") => {
 
   return `${dateKey} (${weekday})`;
 };
+
+const formatDeliveryTabLabel = (dateKey = "") => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dateKey || "").trim())) {
+    return dateKey || "-";
+  }
+
+  const [year, month, day] = dateKey.split("-").map((part) => Number(part));
+  const date = new Date(Date.UTC(year, month - 1, day));
+  const weekday = new Intl.DateTimeFormat("en-IN", {
+    weekday: "long",
+    timeZone: "UTC",
+  }).format(date);
+  const monthLabel = new Intl.DateTimeFormat("en-IN", {
+    month: "long",
+    timeZone: "UTC",
+  }).format(date);
+  const dayWithOrdinal = (() => {
+    const remainderTen = day % 10;
+    const remainderHundred = day % 100;
+
+    if (remainderTen === 1 && remainderHundred !== 11) {
+      return `${day}st`;
+    }
+
+    if (remainderTen === 2 && remainderHundred !== 12) {
+      return `${day}nd`;
+    }
+
+    if (remainderTen === 3 && remainderHundred !== 13) {
+      return `${day}rd`;
+    }
+
+    return `${day}th`;
+  })();
+
+  return `${weekday} (${dayWithOrdinal} ${monthLabel})`;
+};
 const RECIPE_UNIT_OPTIONS = ["g", "kg", "ml", "litre", "tsp", "tbsp", "pinch", "piece"];
 
 const createEmptyIngredient = () => ({
@@ -116,6 +153,7 @@ const getPrintSkuCards = (sheet) => {
 
 export default function AdminProductionConsole() {
   const [sheets, setSheets] = useState([]);
+  const [activeSheetIndex, setActiveSheetIndex] = useState(0);
   const [recipes, setRecipes] = useState([]);
   const [skuCatalog, setSkuCatalog] = useState([]);
   const [manualRecipe, setManualRecipe] = useState(createEmptyManualRecipe);
@@ -145,7 +183,11 @@ export default function AdminProductionConsole() {
         throw new Error(data.error || "Could not load ingredient sheet.");
       }
 
-      setSheets(Array.isArray(data.snapshots) ? data.snapshots : []);
+      const nextSheets = Array.isArray(data.snapshots) ? data.snapshots : [];
+      setSheets(nextSheets);
+      setActiveSheetIndex((currentIndex) =>
+        nextSheets.length > 0 ? Math.min(currentIndex, nextSheets.length - 1) : 0
+      );
     } catch (loadError) {
       setError(loadError.message || "Could not load ingredient sheet.");
     } finally {
@@ -202,7 +244,8 @@ export default function AdminProductionConsole() {
     loadSkuCatalog();
   }, [loadSkuCatalog]);
 
-  const primarySheet = sheets[0] || null;
+  const activeSheet = sheets[activeSheetIndex] || sheets[0] || null;
+  const activeSheetPosition = activeSheet ? Math.max(0, sheets.indexOf(activeSheet)) : 0;
 
   const groupedRecipes = useMemo(() => {
     const groups = new Map();
@@ -314,6 +357,26 @@ export default function AdminProductionConsole() {
     setError("");
   };
 
+  const jumpToRecipeManagerForSku = (sku = "", skuName = "") => {
+    const selectedSku = skuCatalog.find((item) => item.sku === sku);
+
+    setManualRecipe({
+      ...createEmptyManualRecipe(),
+      sku,
+      skuName: selectedSku?.name || skuName || "",
+    });
+    setIsEditingApprovedVersion(false);
+    setMessage(`Ready to add a recipe for ${sku}.`);
+    setError("");
+
+    if (typeof document !== "undefined") {
+      document.getElementById("recipe-manager")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }
+  };
+
   const approveRecipe = async (id) => {
     setApprovingRecipeId(id);
     setError("");
@@ -380,7 +443,7 @@ export default function AdminProductionConsole() {
   };
 
   const handleExportPdf = () => {
-    if (!sheets.some((entry) => (entry?.ingredientsBySku || []).length > 0)) {
+    if (!activeSheet?.ingredientsBySku?.length) {
       setError("No SKU sheets available to export yet.");
       return;
     }
@@ -409,7 +472,7 @@ export default function AdminProductionConsole() {
           <div>
             <h2 className="text-xl font-semibold">Upcoming production snapshots</h2>
             <p className="mt-1 text-sm opacity-75">
-              Auto-calculated from all committed orders for the next delivery dates. Bottle size fixed at 200 ml.
+              Auto-calculated from all scheduled orders for the next delivery dates. Bottle size fixed at 220 ml.
             </p>
           </div>
           <button type="button" className="btn btn-primary" onClick={loadIngredientSheet} disabled={isLoadingSheet}>
@@ -419,16 +482,42 @@ export default function AdminProductionConsole() {
 
         {sheets.length === 0 ? (
           <div className="mt-4 rounded-xl bg-base-200 p-4 text-sm opacity-70">
-            No committed delivery snapshots are available yet.
+            No scheduled delivery snapshots are available yet.
           </div>
         ) : (
           <div className="mt-4 space-y-6">
-            {sheets.map((currentSheet, sheetIndex) => (
-              <div key={`snapshot-${currentSheet.deliveryDate || sheetIndex}`} className="rounded-xl border border-base-300 p-4">
+            {sheets.length > 1 && (
+              <div className="tabs tabs-boxed" role="tablist" aria-label="Production delivery dates">
+                {sheets.map((sheet, sheetIndex) => {
+                  const isActive = sheetIndex === activeSheetPosition;
+                  const tabLabel = formatDeliveryTabLabel(sheet.deliveryDate);
+
+                  return (
+                    <button
+                      key={`snapshot-tab-${sheet.deliveryDate || sheetIndex}`}
+                      type="button"
+                      role="tab"
+                      aria-selected={isActive}
+                      className={`tab border transition-colors ${
+                        isActive
+                          ? "tab-active border-[#325f4c] bg-[#325f4c] text-[#f7f2e8]"
+                          : "border-[#d8cfbf] bg-[#f5efe3] text-[#42584c] hover:bg-[#ece2d1]"
+                      }`}
+                      onClick={() => setActiveSheetIndex(sheetIndex)}
+                    >
+                      <span className="font-medium leading-tight">{tabLabel}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {[activeSheet].filter(Boolean).map((currentSheet) => (
+              <div key={`snapshot-${currentSheet.deliveryDate || activeSheetPosition}`} className="rounded-xl border border-base-300 p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <h3 className="text-lg font-semibold">
-                      {sheetIndex === 0 ? "Next delivery production snapshot" : "Following delivery production snapshot"}
+                      {activeSheetPosition === 0 ? "Next delivery production snapshot" : "Following delivery production snapshot"}
                     </h3>
                     <p className="mt-1 text-sm opacity-75">
                       Consolidated totals and per-SKU requirements for {formatDeliveryDate(currentSheet.deliveryDate)}.
@@ -439,9 +528,9 @@ export default function AdminProductionConsole() {
                       type="button"
                       className="btn btn-primary"
                       onClick={handleExportPdf}
-                      disabled={!primarySheet?.ingredientsBySku?.length}
+                      disabled={!activeSheet?.ingredientsBySku?.length}
                     >
-                      Export snapshots as PDF
+                      Export snapshot as PDF
                     </button>
                     <div className="text-xs opacity-70">Use Save as PDF in the print dialog.</div>
                   </div>
@@ -455,7 +544,7 @@ export default function AdminProductionConsole() {
                     </div>
                   </div>
                   <div className="rounded-xl bg-base-200 p-4 text-sm">
-                    <div className="text-xs uppercase tracking-[0.16em] opacity-60">Committed orders</div>
+                    <div className="text-xs uppercase tracking-[0.16em] opacity-60">Orders in snapshot</div>
                     <div className="mt-2 text-2xl font-semibold">{currentSheet.summary?.committedOrderCount || 0}</div>
                   </div>
                   <div className="rounded-xl bg-base-200 p-4 text-sm">
@@ -468,10 +557,22 @@ export default function AdminProductionConsole() {
 
                 {currentSheet.missingRecipes?.length > 0 && (
                   <div className="alert alert-warning mt-4">
-                    <span>
+                    <div className="flex w-full flex-wrap items-center justify-between gap-3">
+                      <span>
                       Missing approved recipes for:{" "}
                       {currentSheet.missingRecipes.map((item) => `${item.productName} (${item.sku})`).join(", ")}
-                    </span>
+                      </span>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline"
+                        onClick={() => jumpToRecipeManagerForSku(
+                          currentSheet.missingRecipes?.[0]?.sku || "",
+                          currentSheet.missingRecipes?.[0]?.productName || ""
+                        )}
+                      >
+                        Open recipe manager
+                      </button>
+                    </div>
                   </div>
                 )}
 
@@ -559,6 +660,43 @@ export default function AdminProductionConsole() {
                       </div>
                     </div>
                   ))}
+                  {(currentSheet?.missingRecipes || []).map((missingEntry) => (
+                    <div
+                      key={`missing-recipe-${currentSheet.deliveryDate}-${missingEntry.sku}`}
+                      className="rounded-xl border border-[#efc27a] bg-[#fff6df] p-4"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <div className="font-semibold">{missingEntry.productName}</div>
+                          <div className="text-xs uppercase tracking-[0.16em] opacity-60">
+                            {missingEntry.sku}
+                          </div>
+                        </div>
+                        <div className="text-right text-sm">
+                          <div>{formatBottleCount(missingEntry.weeklyEquivalentBottles)} bottles</div>
+                          <div className="font-medium text-[#8a5a20]">Recipe needs to be added</div>
+                        </div>
+                      </div>
+                      <div className="mt-3 rounded-xl border border-[#efcf97] bg-[#fffaf0] p-4 text-sm text-[#6b4a16]">
+                        No approved recipe is available for this SKU yet, so the production snapshot
+                        cannot calculate ingredients for it.
+                      </div>
+                      <div className="mt-4">
+                        <button
+                          type="button"
+                          className="btn btn-outline btn-sm"
+                          onClick={() =>
+                            jumpToRecipeManagerForSku(
+                              missingEntry.sku,
+                              missingEntry.productName
+                            )
+                          }
+                        >
+                          Add recipe in recipe manager
+                        </button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             ))}
@@ -566,7 +704,7 @@ export default function AdminProductionConsole() {
         )}
       </section>
 
-      <section className="rounded-2xl bg-base-100 p-5 shadow-md">
+      <section id="recipe-manager" className="rounded-2xl bg-base-100 p-5 shadow-md">
         <h2 className="text-xl font-semibold">Recipe manager</h2>
         <p className="mt-1 text-sm opacity-75">Create recipe drafts, track versions, and approve the one used for production.</p>
 
@@ -866,7 +1004,7 @@ export default function AdminProductionConsole() {
       </div>
 
       <div id="production-print-root" className="hidden print:block">
-        {sheets.map((currentSheet, sheetIndex) => {
+        {[activeSheet].filter(Boolean).map((currentSheet) => {
           const printSkuCards = getPrintSkuCards(currentSheet);
           const sharedBatchNumber = buildSharedBatchNumber(currentSheet);
           const printStartDate = shiftDateKey(
@@ -876,7 +1014,7 @@ export default function AdminProductionConsole() {
 
           return (
             <section
-              key={`print-sheet-${currentSheet.deliveryDate || sheetIndex}`}
+              key={`print-sheet-${currentSheet.deliveryDate || activeSheetPosition}`}
               className="wall-sheet-page wall-sheet-page-grid"
             >
               {[0, 1, 2, 3, 4, 5].map((slotIndex) => {
@@ -900,7 +1038,7 @@ export default function AdminProductionConsole() {
                         <div>Start Time: _____</div>
                         <div>End Time: _____</div>
                         <div className="wall-sheet-meta-span-2">
-                          Bottles (ordered/planned): {formatQty(skuEntry.weeklyEquivalentBottles, 0)}/{formatQty((Number(skuEntry.plannedLitres || 0) * 1000) / Number(currentSheet?.bottleSizeMl || 200), 0)}
+                          Bottles (ordered/planned): {formatQty(skuEntry.weeklyEquivalentBottles, 0)}/{formatQty((Number(skuEntry.plannedLitres || 0) * 1000) / Number(currentSheet?.bottleSizeMl || 220), 0)}
                         </div>
                         <div className="wall-sheet-meta-span-2">
                           Planned Qty: {formatQty(skuEntry.plannedLitres, 2)} L

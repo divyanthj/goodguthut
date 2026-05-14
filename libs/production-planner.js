@@ -1,4 +1,4 @@
-const BOTTLE_SIZE_ML = 200;
+const BOTTLE_SIZE_ML = 220;
 
 const CONFIRMED_BILLING_STATUSES = new Set(["authenticated", "active", "pending", "completed"]);
 const EXCLUDED_SUBSCRIPTION_STATUSES = new Set(["cancelled", "paused"]);
@@ -171,6 +171,26 @@ const sortDateKeys = (keys = []) => [...keys].filter(Boolean).sort((left, right)
 
 const isDateKey = (value = "") => /^\d{4}-\d{2}-\d{2}$/.test(String(value || "").trim());
 
+const isProductionRelevantOrderPlan = (plan = {}) => {
+  const status = String(plan.status || "").trim();
+
+  if (!status) {
+    return false;
+  }
+
+  return !["cancelled", "fulfilled"].includes(status);
+};
+
+const isProductionRelevantPreorder = (preorder = {}) => {
+  const status = String(preorder.status || "").trim();
+
+  if (!status) {
+    return false;
+  }
+
+  return !["cancelled", "fulfilled"].includes(status);
+};
+
 const sanitizeDeliveryDaysOfWeek = (days = []) => {
   const seen = new Set();
 
@@ -252,17 +272,23 @@ const getCommittedDeliveryDateKeys = ({ subscriptions = [], orderPlans = [], pre
     .filter(Boolean);
 
   const recurringOrderPlanDates = orderPlans
-    .filter((plan) => String(plan.status || "").trim() === "active" && String(plan.mode || "").trim() === "recurring")
+    .filter(
+      (plan) =>
+        isProductionRelevantOrderPlan(plan) && String(plan.mode || "").trim() === "recurring"
+    )
     .map((plan) => toDateKey(plan.nextDeliveryDate || plan.firstDeliveryDate || plan.startDate))
     .filter(Boolean);
 
   const oneTimeOrderPlanDates = orderPlans
-    .filter((plan) => String(plan.status || "").trim() === "active" && String(plan.mode || "").trim() === "one_time")
+    .filter(
+      (plan) =>
+        isProductionRelevantOrderPlan(plan) && String(plan.mode || "").trim() === "one_time"
+    )
     .map((plan) => toDateKey(plan.nextDeliveryDate || plan.firstDeliveryDate || plan.startDate || plan.createdAt))
     .filter(Boolean);
 
   const preorderDates = preorders
-    .filter((preorder) => ["confirmed", "shipped"].includes(String(preorder.status || "").trim()))
+    .filter((preorder) => isProductionRelevantPreorder(preorder))
     .map((preorder) => toDateKey(preorder.deliveryDate || preorder.createdAt))
     .filter(Boolean);
 
@@ -359,7 +385,7 @@ export const computeDemandForDeliveryDate = ({
   });
 
   orderPlans.forEach((plan) => {
-    if (String(plan.status || "").trim() !== "active") {
+    if (!isProductionRelevantOrderPlan(plan)) {
       return;
     }
 
@@ -385,7 +411,7 @@ export const computeDemandForDeliveryDate = ({
   });
 
   preorders.forEach((preorder) => {
-    if (!["confirmed", "shipped"].includes(String(preorder.status || "").trim())) {
+    if (!isProductionRelevantPreorder(preorder)) {
       return;
     }
 
@@ -484,10 +510,9 @@ export const computeWeeklyDemandFromAllOrders = ({
   });
 
   orderPlans.forEach((plan) => {
-    const status = String(plan.status || "").trim();
     const mode = String(plan.mode || "").trim();
 
-    if (status !== "active") {
+    if (!isProductionRelevantOrderPlan(plan)) {
       return;
     }
 
@@ -525,9 +550,7 @@ export const computeWeeklyDemandFromAllOrders = ({
   });
 
   preorders.forEach((preorder) => {
-    const status = String(preorder.status || "").trim();
-
-    if (!["confirmed", "shipped"].includes(status)) {
+    if (!isProductionRelevantPreorder(preorder)) {
       return;
     }
 

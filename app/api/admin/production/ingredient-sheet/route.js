@@ -78,7 +78,7 @@ export async function GET() {
         deliveryDate: demandSummary.deliveryDate,
         demandBySku: demandSummary.demandBySku,
         approvedRecipesBySku: recipeMap,
-        bottleSizeMl: 200,
+        bottleSizeMl: 220,
       });
 
       return {
