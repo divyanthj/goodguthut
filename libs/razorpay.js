@@ -360,6 +360,17 @@ export const fetchRazorpayPayment = async (paymentId = "") => {
   return response.json();
 };
 
+export const fetchRazorpayOrderPayments = async (orderId = "") => {
+  const normalizedOrderId = normalizeString(orderId);
+
+  if (!isRazorpayConfigured() || !normalizedOrderId) {
+    return [];
+  }
+
+  const data = await razorpayApiRequest(`/v1/orders/${normalizedOrderId}/payments`);
+  return Array.isArray(data?.items) ? data.items : [];
+};
+
 export const verifyRazorpayPaymentWithApi = async ({
   orderId = "",
   paymentId = "",
@@ -427,12 +438,10 @@ export const verifyRazorpayPaymentWithApi = async ({
 };
 
 export const getRazorpayPaymentVerificationError = ({
-  orderId = "",
   paymentId = "",
   signature = "",
   paymentCheck = null,
 } = {}) => {
-  const normalizedOrderId = normalizeString(orderId);
   const normalizedPaymentId = normalizeString(paymentId);
   const normalizedSignature = normalizeString(signature);
   const reason = paymentCheck?.reason || "signature_verification_failed";

@@ -323,14 +323,24 @@ export default function AdminOrdersList({ initialOrders = [] }) {
     const trackingInputId = getTrackingInputId(order);
     const deliveredAtInputId = getDeliveredAtInputId(order);
     const isLegacy = order.sourceType === "legacy_preorder";
+    const isRecurringOrderPlan =
+      order.sourceType === "order_plan" && order.mode === "recurring";
     const isPickup = order.fulfillmentMethod === "pickup";
+    const canManageRecurringDelivery =
+      isRecurringOrderPlan &&
+      !["cancelled", "completed", "expired", "failed"].includes(
+        String(order.payment?.status || "").trim()
+      );
     const canConfirmLegacy =
       isLegacy &&
       order.status === "pending" &&
       order.payment?.provider !== "razorpay";
-    const canMarkShipped = order.status === "confirmed";
-    const canMarkDelivered =
-      order.status === "confirmed" || order.status === "shipped";
+    const canMarkShipped = isRecurringOrderPlan
+      ? canManageRecurringDelivery && ["new", "active"].includes(order.status)
+      : order.status === "confirmed";
+    const canMarkDelivered = isRecurringOrderPlan
+      ? canManageRecurringDelivery && ["new", "active", "shipped"].includes(order.status)
+      : order.status === "confirmed" || order.status === "shipped";
 
     return (
       <>
@@ -584,35 +594,6 @@ export default function AdminOrdersList({ initialOrders = [] }) {
     );
   };
 
-  const renderRecurringOrder = (order) => (
-    <div className="mt-4 grid gap-3 text-sm md:grid-cols-2">
-      <div>
-        <div className="opacity-70">Delivery address</div>
-        <div className="mt-1">{order.normalizedDeliveryAddress || order.address || "-"}</div>
-      </div>
-      <div>
-        <div className="opacity-70">First delivery</div>
-        <div className="mt-1">{formatSubscriptionDate(order.firstDeliveryDate || order.startDate) || "-"}</div>
-      </div>
-      <div>
-        <div className="opacity-70">Next delivery</div>
-        <div className="mt-1">{formatSubscriptionDate(order.nextDeliveryDate) || "-"}</div>
-      </div>
-      <div>
-        <div className="opacity-70">Amount</div>
-        <div className="mt-1 font-medium">{formatCurrency(order.currency, order.total)}</div>
-      </div>
-      <div>
-        <div className="opacity-70">Payment status</div>
-        <div className="mt-1">{order.payment?.status || "-"}</div>
-      </div>
-      <div>
-        <div className="opacity-70">Selection</div>
-        <div className="mt-1">{order.selectionSummary}</div>
-      </div>
-    </div>
-  );
-
   const renderOrderCard = (order) => (
     <article
       key={`${order.sourceType}:${order.id}`}
@@ -652,9 +633,7 @@ export default function AdminOrdersList({ initialOrders = [] }) {
         </div>
       </div>
 
-      {order.sourceType === "order_plan" && order.mode === "recurring"
-        ? renderRecurringOrder(order)
-        : renderOneTimeOrder(order)}
+      {renderOneTimeOrder(order)}
     </article>
   );
 

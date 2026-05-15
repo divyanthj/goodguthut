@@ -8,6 +8,7 @@ import {
 } from "@/libs/order-plans";
 import { recalculateSubscriptionRouteSnapshots } from "@/libs/subscription-route-planner";
 import { createAndSendOrderPlanInvoice } from "@/libs/invoices";
+import { listPlannedSubscriptionDeliveryDates } from "@/libs/subscription-schedule";
 import OrderPlan from "@/models/OrderPlan";
 
 const ensureAdmin = async () => {
@@ -42,6 +43,32 @@ const ensureOneTimeFulfillmentStatus = (orderPlan) => {
   }
 };
 
+const getNextRecurringDeliveryDateAfterCurrent = (orderPlan) => {
+  const currentDeliveryDate = String(
+    orderPlan.nextDeliveryDate || orderPlan.firstDeliveryDate || orderPlan.startDate || ""
+  ).trim();
+  const plannedDates = listPlannedSubscriptionDeliveryDates({
+    startDate: orderPlan.firstDeliveryDate || orderPlan.startDate,
+    cadence: orderPlan.cadence,
+    totalCount: orderPlan.payment?.totalCount || 0,
+  });
+
+  return plannedDates.find((dateKey) => dateKey > currentDeliveryDate) || "";
+};
+
+const isRecurringDeliveryActionAllowed = (orderPlan, allowedStatuses = []) => {
+  const status = String(orderPlan.status || "").trim();
+  const paymentStatus = String(orderPlan.payment?.status || "").trim();
+  const blockedStatuses = new Set(["cancelled", "failed", "fulfilled", "paused"]);
+  const blockedPaymentStatuses = new Set(["cancelled", "completed", "expired", "failed"]);
+
+  return (
+    allowedStatuses.includes(status) &&
+    !blockedStatuses.has(status) &&
+    !blockedPaymentStatuses.has(paymentStatus)
+  );
+};
+
 export async function PATCH(req, { params }) {
   const authError = await ensureAdmin();
 
@@ -52,6 +79,7 @@ export async function PATCH(req, { params }) {
   try {
     const body = await req.json();
     let shouldGenerateInvoice = false;
+    let invoiceDeliveryDate = "";
 
     await connectMongo();
     const orderPlan = await OrderPlan.findById(params.id);
@@ -112,6 +140,48 @@ export async function PATCH(req, { params }) {
         assertValidOrderPlanStatus(normalizedStatus, "one_time");
         orderPlan.status = normalizedStatus;
       }
+    } else if (body?.markShipped) {
+      if (!isRecurringDeliveryActionAllowed(orderPlan, ["new", "active"])) {
+        return NextResponse.json(
+          { error: "Only active recurring orders can be marked as shipped." },
+          { status: 400 }
+        );
+      }
+
+      const trackingLink = String(body?.trackingLink || "").trim();
+      const now = new Date();
+
+      orderPlan.shipment = {
+        ...(orderPlan.shipment?.toObject?.() || orderPlan.shipment || {}),
+        trackingLink,
+        shippedAt: now,
+        estimatedArrivalAt: trackingLink ? null : new Date(now.getTime() + 60 * 60 * 1000),
+      };
+      orderPlan.status = "shipped";
+    } else if (body?.markDelivered) {
+      if (!isRecurringDeliveryActionAllowed(orderPlan, ["new", "active", "shipped"])) {
+        return NextResponse.json(
+          { error: "Only active or shipped recurring orders can be marked as delivered." },
+          { status: 400 }
+        );
+      }
+
+      const deliveredAtValue = String(body?.deliveredAt || "").trim();
+      const deliveredAt = deliveredAtValue ? new Date(deliveredAtValue) : new Date();
+
+      if (Number.isNaN(deliveredAt.getTime())) {
+        return NextResponse.json({ error: "Enter a valid delivered timestamp." }, { status: 400 });
+      }
+
+      invoiceDeliveryDate = String(
+        orderPlan.nextDeliveryDate || orderPlan.firstDeliveryDate || orderPlan.startDate || ""
+      ).trim();
+      orderPlan.deliveredAt = deliveredAt;
+
+      const nextDeliveryDate = getNextRecurringDeliveryDateAfterCurrent(orderPlan);
+      orderPlan.nextDeliveryDate = nextDeliveryDate;
+      orderPlan.status = nextDeliveryDate ? "active" : "fulfilled";
+      shouldGenerateInvoice = true;
     } else {
       const nextStatus = String(body?.status || "").trim();
       assertValidOrderPlanStatus(nextStatus, "recurring");
@@ -122,7 +192,10 @@ export async function PATCH(req, { params }) {
     await refreshRouteSnapshots();
 
     if (shouldGenerateInvoice) {
-      const invoiceDelivery = await createAndSendOrderPlanInvoice({ orderPlan });
+      const invoiceDelivery = await createAndSendOrderPlanInvoice({
+        orderPlan,
+        deliveryDate: invoiceDeliveryDate,
+      });
 
       return NextResponse.json({
         orderPlan: JSON.parse(JSON.stringify(orderPlan)),

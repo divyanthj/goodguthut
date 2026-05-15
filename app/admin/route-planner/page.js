@@ -10,43 +10,6 @@ import { getSubscriptionSettings } from "@/libs/subscription-settings";
 import Preorder from "@/models/Preorder";
 import PreorderWindow from "@/models/PreorderWindow";
 
-const toDateKey = (value) => {
-  if (!value) {
-    return "";
-  }
-
-  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}/.test(value)) {
-    return value.slice(0, 10);
-  }
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
-
-  return [
-    date.getFullYear(),
-    String(date.getMonth() + 1).padStart(2, "0"),
-    String(date.getDate()).padStart(2, "0"),
-  ].join("-");
-};
-
-const getTodayDateKey = () => toDateKey(new Date());
-
-const getNextDatedItem = (items = [], getDateValue) => {
-  const todayKey = getTodayDateKey();
-  const datedItems = (Array.isArray(items) ? items : [])
-    .map((item) => ({
-      item,
-      dateKey: toDateKey(getDateValue(item)),
-    }))
-    .filter(({ dateKey }) => Boolean(dateKey))
-    .sort((left, right) => left.dateKey.localeCompare(right.dateKey));
-
-  return datedItems.find(({ dateKey }) => dateKey >= todayKey)?.item || datedItems[0]?.item || null;
-};
-
 export default async function AdminRoutePlannerPage() {
   const { session, isAdmin } = await getAdminSessionState();
 
@@ -95,10 +58,6 @@ export default async function AdminRoutePlannerPage() {
   const allDeliveryRouteSnapshots = JSON.parse(
     JSON.stringify((await recalculateSubscriptionRouteSnapshots()) || [])
   );
-  const nextDeliveryRouteSnapshot = getNextDatedItem(
-    allDeliveryRouteSnapshots,
-    (snapshot) => snapshot.deliveryDate
-  );
   const currency = subscriptionSettings?.currency || "INR";
 
   return (
@@ -123,7 +82,7 @@ export default async function AdminRoutePlannerPage() {
         />
 
         <AdminSubscriptionRoutePlanner
-          initialRouteSnapshots={nextDeliveryRouteSnapshot ? [nextDeliveryRouteSnapshot] : []}
+          initialRouteSnapshots={allDeliveryRouteSnapshots}
           currency={currency}
         />
       </div>

@@ -9,7 +9,11 @@ import OrderPlan from "@/models/OrderPlan";
 import Preorder from "@/models/Preorder";
 import Subscription from "@/models/Subscription";
 import Sku from "@/models/Sku";
-import { cancelRazorpaySubscription, verifyRazorpayWebhookSignature } from "@/libs/razorpay";
+import {
+  cancelRazorpaySubscription,
+  fetchRazorpayOrderPayments,
+  verifyRazorpayWebhookSignature,
+} from "@/libs/razorpay";
 import { getNextSubscriptionDeliveryDate } from "@/libs/subscription-schedule";
 import { buildSeasonalCutoffMapFromCatalog, getValidRecurringDeliveryCount } from "@/libs/recurring-seasonal-policy";
 
@@ -30,6 +34,67 @@ const refreshRouteSnapshots = async () => {
   } catch (routeError) {
     console.error("Failed to refresh delivery route snapshots", routeError);
   }
+};
+
+const getCapturedPaymentForOrder = async (orderId = "") => {
+  try {
+    const payments = await fetchRazorpayOrderPayments(orderId);
+
+    return payments.find(
+      (payment) =>
+        payment?.status === "captured" ||
+        payment?.captured === true
+    ) || null;
+  } catch (error) {
+    console.error("Failed to check Razorpay order payments", error);
+    return null;
+  }
+};
+
+const applyCapturedOrderPlanPayment = ({ orderPlan, payment, orderEntity, signature, eventName }) => {
+  orderPlan.status =
+    orderPlan.status === "fulfilled" || orderPlan.status === "cancelled"
+      ? orderPlan.status
+      : "active";
+  orderPlan.payment = {
+    ...(orderPlan.payment?.toObject?.() || orderPlan.payment || {}),
+    provider: "razorpay",
+    status: "paid",
+    orderId: payment?.order_id || orderEntity?.id || orderPlan.payment?.orderId || "",
+    paymentId: payment?.id || orderPlan.payment?.paymentId || "",
+    signature: signature || orderPlan.payment?.signature || "",
+    webhookEvent: eventName,
+    amount: payment?.amount ? Number(payment.amount) / 100 : orderPlan.total,
+    currency: payment?.currency || orderEntity?.currency || orderPlan.currency,
+    paidAt: payment?.captured_at
+      ? new Date(Number(payment.captured_at) * 1000)
+      : payment?.created_at
+        ? new Date(Number(payment.created_at) * 1000)
+        : new Date(),
+  };
+};
+
+const applyCapturedPreorderPayment = ({ preorder, payment, orderEntity, signature, eventName }) => {
+  preorder.status =
+    preorder.status === "fulfilled" || preorder.status === "shipped"
+      ? preorder.status
+      : "confirmed";
+  preorder.payment = {
+    ...(preorder.payment?.toObject?.() || preorder.payment || {}),
+    provider: "razorpay",
+    status: "paid",
+    orderId: payment?.order_id || orderEntity?.id || preorder.payment?.orderId || "",
+    paymentId: payment?.id || preorder.payment?.paymentId || "",
+    signature: signature || preorder.payment?.signature || "",
+    webhookEvent: eventName,
+    amount: payment?.amount ? Number(payment.amount) / 100 : preorder.total,
+    currency: payment?.currency || orderEntity?.currency || preorder.currency,
+    paidAt: payment?.captured_at
+      ? new Date(Number(payment.captured_at) * 1000)
+      : payment?.created_at
+        ? new Date(Number(payment.created_at) * 1000)
+        : new Date(),
+  };
 };
 
 const applyRecurringNaturalEnd = ({
@@ -314,24 +379,13 @@ export async function POST(req) {
         case "order.paid": {
           const shouldSendConfirmationEmail = !orderPlan.notifications?.confirmationEmailSentAt;
 
-          orderPlan.status =
-            orderPlan.status === "fulfilled" || orderPlan.status === "cancelled"
-              ? orderPlan.status
-              : "active";
-          orderPlan.payment = {
-            ...(orderPlan.payment?.toObject?.() || orderPlan.payment || {}),
-            provider: "razorpay",
-            status: "paid",
-            orderId: paymentEntity?.order_id || orderEntity?.id || orderPlan.payment?.orderId || "",
-            paymentId: paymentEntity?.id || orderPlan.payment?.paymentId || "",
-            signature: signature || "",
-            webhookEvent: event.event,
-            amount: paymentEntity?.amount ? Number(paymentEntity.amount) / 100 : orderPlan.total,
-            currency: paymentEntity?.currency || orderEntity?.currency || orderPlan.currency,
-            paidAt: paymentEntity?.captured_at
-              ? new Date(Number(paymentEntity.captured_at) * 1000)
-              : new Date(),
-          };
+          applyCapturedOrderPlanPayment({
+            orderPlan,
+            payment: paymentEntity,
+            orderEntity,
+            signature,
+            eventName: event.event,
+          });
           await orderPlan.save();
           await refreshRouteSnapshots();
 
@@ -351,6 +405,25 @@ export async function POST(req) {
           break;
         }
         case "payment.failed": {
+          if (orderPlan.payment?.status === "paid") {
+            break;
+          }
+
+          const capturedPayment = await getCapturedPaymentForOrder(razorpayOrderId);
+
+          if (capturedPayment) {
+            applyCapturedOrderPlanPayment({
+              orderPlan,
+              payment: capturedPayment,
+              orderEntity,
+              signature,
+              eventName: "payment.captured",
+            });
+            await orderPlan.save();
+            await refreshRouteSnapshots();
+            break;
+          }
+
           orderPlan.payment = {
             ...(orderPlan.payment?.toObject?.() || orderPlan.payment || {}),
             provider: "razorpay",
@@ -386,24 +459,13 @@ export async function POST(req) {
           !preorder.notifications?.confirmationEmailSentAt ||
           !preorder.notifications?.confirmationWhatsappSentAt;
 
-        preorder.status =
-          preorder.status === "fulfilled" || preorder.status === "shipped"
-            ? preorder.status
-            : "confirmed";
-        preorder.payment = {
-          ...(preorder.payment?.toObject?.() || preorder.payment || {}),
-          provider: "razorpay",
-          status: "paid",
-          orderId: paymentEntity?.order_id || orderEntity?.id || preorder.payment?.orderId || "",
-          paymentId: paymentEntity?.id || preorder.payment?.paymentId || "",
-          signature: signature || "",
-          webhookEvent: event.event,
-          amount: paymentEntity?.amount ? Number(paymentEntity.amount) / 100 : preorder.total,
-          currency: paymentEntity?.currency || orderEntity?.currency || preorder.currency,
-          paidAt: paymentEntity?.captured_at
-            ? new Date(Number(paymentEntity.captured_at) * 1000)
-            : new Date(),
-        };
+        applyCapturedPreorderPayment({
+          preorder,
+          payment: paymentEntity,
+          orderEntity,
+          signature,
+          eventName: event.event,
+        });
         await preorder.save();
 
         if (preorder.preorderWindow) {
@@ -427,6 +489,34 @@ export async function POST(req) {
         break;
       }
       case "payment.failed": {
+        if (preorder.payment?.status === "paid") {
+          break;
+        }
+
+        const capturedPayment = await getCapturedPaymentForOrder(razorpayOrderId);
+
+        if (capturedPayment) {
+          applyCapturedPreorderPayment({
+            preorder,
+            payment: capturedPayment,
+            orderEntity,
+            signature,
+            eventName: "payment.captured",
+          });
+          await preorder.save();
+
+          if (preorder.preorderWindow) {
+            try {
+              await recalculatePreorderWindowRouteSnapshot({
+                preorderWindowId: preorder.preorderWindow,
+              });
+            } catch (routeError) {
+              console.error("Failed to refresh preorder delivery route snapshot", routeError);
+            }
+          }
+          break;
+        }
+
         preorder.payment = {
           ...(preorder.payment?.toObject?.() || preorder.payment || {}),
           provider: "razorpay",

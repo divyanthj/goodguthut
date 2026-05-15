@@ -14,6 +14,7 @@ export const RECURRING_ORDER_PLAN_STATUSES = [
   "new",
   "payment_pending",
   "active",
+  "shipped",
   "paused",
   "cancelled",
   "fulfilled",
