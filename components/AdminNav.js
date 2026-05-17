@@ -2,6 +2,7 @@ import Link from "next/link";
 
 export default function AdminNav({ active = "settings" }) {
   const settingsClass = active === "settings" ? "btn btn-primary" : "btn btn-ghost";
+  const statsClass = active === "stats" ? "btn btn-primary" : "btn btn-ghost";
   const discountsClass = active === "discounts" ? "btn btn-primary" : "btn btn-ghost";
   const ordersClass = active === "orders" ? "btn btn-primary" : "btn btn-ghost";
   const invoicesClass = active === "invoices" ? "btn btn-primary" : "btn btn-ghost";
@@ -12,6 +13,9 @@ export default function AdminNav({ active = "settings" }) {
     <div className="flex flex-wrap gap-2">
       <Link href="/admin" className={settingsClass}>
         Settings
+      </Link>
+      <Link href="/admin/stats" className={statsClass}>
+        Stats
       </Link>
       <Link href="/admin/orders" className={ordersClass}>
         Orders
