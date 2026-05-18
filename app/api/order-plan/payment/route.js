@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { sendAdminOrderPlanConfirmedEmail } from "@/libs/admin-order-notifications";
 import connectMongo from "@/libs/mongoose";
 import { sendOrderPlanConfirmationEmail } from "@/libs/order-plan-notifications";
 import { recalculateSubscriptionRouteSnapshots } from "@/libs/subscription-route-planner";
@@ -232,6 +233,19 @@ export async function PATCH(req) {
         }
       }
 
+      if (!orderPlan.notifications?.adminOrderEmailSentAt) {
+        try {
+          await sendAdminOrderPlanConfirmedEmail({ orderPlan });
+          orderPlan.notifications = {
+            ...(orderPlan.notifications?.toObject?.() || orderPlan.notifications || {}),
+            adminOrderEmailSentAt: new Date(),
+          };
+          await orderPlan.save();
+        } catch (notificationError) {
+          console.error("Failed to send admin order plan confirmation email", notificationError);
+        }
+      }
+
       return NextResponse.json({
         orderPlan: sanitizeOrderPlan(orderPlan),
         confirmationMessage: "Payment received. Your one-time order is confirmed.",
@@ -318,6 +332,19 @@ export async function PATCH(req) {
         await orderPlan.save();
       } catch (notificationError) {
         console.error("Failed to send order plan confirmation email", notificationError);
+      }
+    }
+
+    if (!orderPlan.notifications?.adminOrderEmailSentAt) {
+      try {
+        await sendAdminOrderPlanConfirmedEmail({ orderPlan });
+        orderPlan.notifications = {
+          ...(orderPlan.notifications?.toObject?.() || orderPlan.notifications || {}),
+          adminOrderEmailSentAt: new Date(),
+        };
+        await orderPlan.save();
+      } catch (notificationError) {
+        console.error("Failed to send admin order plan confirmation email", notificationError);
       }
     }
 

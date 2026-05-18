@@ -72,7 +72,7 @@ export default async function AdminStatsPage({ searchParams }) {
         },
       ],
     })
-      .select("billing currency total updatedAt")
+      .select("billing cadence startDate currency total updatedAt")
       .lean(),
   ]);
 
@@ -82,6 +82,7 @@ export default async function AdminStatsPage({ searchParams }) {
     subscriptions,
     period: String(searchParams?.period || "8w"),
     resolution: String(searchParams?.resolution || "week"),
+    projectionMode: String(searchParams?.projection || "blended"),
   });
 
   return (

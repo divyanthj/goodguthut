@@ -211,6 +211,10 @@ const orderPlanNotificationsSchema = mongoose.Schema(
       type: Date,
       default: null,
     },
+    adminOrderEmailSentAt: {
+      type: Date,
+      default: null,
+    },
   },
   { _id: false }
 );
@@ -370,6 +374,13 @@ const orderPlanSchema = mongoose.Schema(
       type: Number,
       min: 0,
       default: 0,
+    },
+    orderNumber: {
+      type: String,
+      trim: true,
+      default: "",
+      unique: true,
+      sparse: true,
     },
     source: {
       type: String,

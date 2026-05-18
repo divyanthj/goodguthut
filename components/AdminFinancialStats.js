@@ -46,6 +46,9 @@ const buildChartPath = (points = []) => {
 export default function AdminFinancialStats({
   summary,
   revenueSeries = [],
+  projectionSeries = [],
+  projectionSummary,
+  projection,
   range,
   controls,
   excludedCurrencies = [],
@@ -56,14 +59,33 @@ export default function AdminFinancialStats({
   const chartPadding = { top: 20, right: 20, bottom: 44, left: 20 };
   const chartInnerWidth = chartWidth - chartPadding.left - chartPadding.right;
   const chartInnerHeight = chartHeight - chartPadding.top - chartPadding.bottom;
-  const maxRevenue = Math.max(...revenueSeries.map((entry) => Number(entry.revenue || 0)), 0);
+  const showProjection = projection?.isEnabled;
+  const chartSeries = [
+    ...revenueSeries.map((entry) => ({
+      ...entry,
+      chartRevenue: Number(entry.revenue || 0),
+      chartLabel: entry.weekLabel,
+      chartType: "actual",
+    })),
+    ...(showProjection
+      ? projectionSeries.map((entry) => ({
+          ...entry,
+          chartRevenue: Number(entry.projectedRevenue || 0),
+          chartLabel: entry.weekLabel,
+          chartType: "projected",
+        }))
+      : []),
+  ];
+  const maxRevenue = Math.max(...chartSeries.map((entry) => Number(entry.chartRevenue || 0)), 0);
   const safeMaxRevenue = maxRevenue > 0 ? maxRevenue : 1;
-  const points = revenueSeries.map((entry, index) => {
+  const points = chartSeries.map((entry, index) => {
     const x =
       chartPadding.left +
-      (revenueSeries.length === 1 ? chartInnerWidth / 2 : (chartInnerWidth * index) / (revenueSeries.length - 1));
+      (chartSeries.length === 1 ? chartInnerWidth / 2 : (chartInnerWidth * index) / (chartSeries.length - 1));
     const y =
-      chartPadding.top + chartInnerHeight - (Number(entry.revenue || 0) / safeMaxRevenue) * chartInnerHeight;
+      chartPadding.top +
+      chartInnerHeight -
+      (Number(entry.chartRevenue || 0) / safeMaxRevenue) * chartInnerHeight;
 
     return {
       ...entry,
@@ -71,16 +93,25 @@ export default function AdminFinancialStats({
       y: Number(y.toFixed(2)),
     };
   });
-  const chartPath = buildChartPath(points);
-  const areaPath = points.length
-    ? `${chartPath} L ${points[points.length - 1].x} ${chartHeight - chartPadding.bottom} L ${points[0].x} ${
+  const actualPoints = points.filter((point) => point.chartType === "actual");
+  const projectedPoints = points.filter((point) => point.chartType === "projected");
+  const actualChartPath = buildChartPath(actualPoints);
+  const projectedChartPath = buildChartPath(
+    actualPoints.length > 0 && projectedPoints.length > 0
+      ? [actualPoints[actualPoints.length - 1], ...projectedPoints]
+      : projectedPoints
+  );
+  const areaPath = actualPoints.length
+    ? `${actualChartPath} L ${actualPoints[actualPoints.length - 1].x} ${chartHeight - chartPadding.bottom} L ${actualPoints[0].x} ${
         chartHeight - chartPadding.bottom
       } Z`
     : "";
-  const buildHref = (nextResolution, nextPeriod) => {
+
+  const buildHref = (nextResolution, nextPeriod, nextProjection) => {
     const params = new URLSearchParams();
     params.set("resolution", nextResolution);
     params.set("period", nextPeriod);
+    params.set("projection", nextProjection || controls?.projectionMode || "blended");
     return `/admin/stats?${params.toString()}`;
   };
 
@@ -102,13 +133,12 @@ export default function AdminFinancialStats({
             <div className="flex flex-wrap gap-2">
               {(controls?.resolutionOptions || []).map((option) => {
                 const isActive = option.value === controls?.resolution;
-                const fallbackPeriod =
-                  option.value === "month" ? "6m" : "8w";
+                const fallbackPeriod = option.value === "month" ? "6m" : "8w";
 
                 return (
                   <Link
                     key={option.value}
-                    href={buildHref(option.value, fallbackPeriod)}
+                    href={buildHref(option.value, fallbackPeriod, controls?.projectionMode)}
                     className={isActive ? "btn btn-primary btn-sm" : "btn btn-ghost btn-sm"}
                   >
                     {option.label}
@@ -124,9 +154,36 @@ export default function AdminFinancialStats({
               {(controls?.periodOptions || []).map((option) => (
                 <Link
                   key={option.value}
-                  href={buildHref(controls?.resolution || "week", option.value)}
+                  href={buildHref(
+                    controls?.resolution || "week",
+                    option.value,
+                    controls?.projectionMode
+                  )}
                   className={
                     option.value === controls?.period
+                      ? "btn btn-primary btn-sm"
+                      : "btn btn-ghost btn-sm"
+                  }
+                >
+                  {option.label}
+                </Link>
+              ))}
+            </div>
+          </div>
+
+          <div className="lg:col-span-2">
+            <div className="mb-2 text-xs uppercase tracking-[0.16em] opacity-60">Projection</div>
+            <div className="flex flex-wrap gap-2">
+              {(projection?.options || []).map((option) => (
+                <Link
+                  key={option.value}
+                  href={buildHref(
+                    controls?.resolution || "week",
+                    controls?.period || "8w",
+                    option.value
+                  )}
+                  className={
+                    option.value === projection?.mode
                       ? "btn btn-primary btn-sm"
                       : "btn btn-ghost btn-sm"
                   }
@@ -139,7 +196,7 @@ export default function AdminFinancialStats({
         </div>
       </section>
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
         <div className="rounded-2xl bg-base-100 p-5 shadow-sm">
           <div className="text-sm opacity-70">{summary.currentPeriodLabel}</div>
           <div className="mt-2 text-2xl font-semibold">
@@ -169,6 +226,12 @@ export default function AdminFinancialStats({
             {formatCurrency(summary.currency, summary.rangeRevenue)}
           </div>
         </div>
+        <div className="rounded-2xl bg-base-100 p-5 shadow-sm">
+          <div className="text-sm opacity-70">{projectionSummary?.forwardWindowLabel || "Projected revenue"}</div>
+          <div className="mt-2 text-2xl font-semibold">
+            {formatCurrency(summary.currency, projectionSummary?.projectedRevenue)}
+          </div>
+        </div>
       </div>
 
       <section className="rounded-2xl bg-base-100 p-5 shadow-md">
@@ -189,7 +252,7 @@ export default function AdminFinancialStats({
         </div>
 
         <div className="mt-5 overflow-x-auto">
-          {revenueSeries.length > 0 ? (
+          {chartSeries.length > 0 ? (
             <svg
               viewBox={`0 0 ${chartWidth} ${chartHeight}`}
               className="min-w-[720px]"
@@ -232,9 +295,9 @@ export default function AdminFinancialStats({
               })}
 
               {areaPath ? <path d={areaPath} fill="url(#admin-financials-area)" className="text-primary" /> : null}
-              {chartPath ? (
+              {actualChartPath ? (
                 <path
-                  d={chartPath}
+                  d={actualChartPath}
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="3"
@@ -243,9 +306,21 @@ export default function AdminFinancialStats({
                   className="text-primary"
                 />
               ) : null}
+              {showProjection && projectedChartPath ? (
+                <path
+                  d={projectedChartPath}
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="3"
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                  strokeDasharray="8 8"
+                  className="text-secondary"
+                />
+              ) : null}
 
               {points.map((point) => (
-                <g key={point.weekStart}>
+                <g key={`${point.chartType}-${point.weekStart}`}>
                   <circle
                     cx={point.x}
                     cy={point.y}
@@ -253,9 +328,21 @@ export default function AdminFinancialStats({
                     fill="transparent"
                     className="cursor-pointer"
                   >
-                    <title>{`${point.weekLabel}: ${formatCurrency(summary.currency, point.revenue)}`}</title>
+                    <title>{`${point.chartLabel}: ${formatCurrency(summary.currency, point.chartRevenue)}${
+                      point.chartType === "projected" ? " (projected)" : ""
+                    }`}</title>
                   </circle>
-                  <circle cx={point.x} cy={point.y} r="4" fill="currentColor" className="text-primary pointer-events-none" />
+                  <circle
+                    cx={point.x}
+                    cy={point.y}
+                    r="4"
+                    fill="currentColor"
+                    className={
+                      point.chartType === "projected"
+                        ? "text-secondary pointer-events-none"
+                        : "text-primary pointer-events-none"
+                    }
+                  />
                   <text
                     x={point.x}
                     y={chartHeight - 16}
@@ -299,6 +386,31 @@ export default function AdminFinancialStats({
           </div>
         </div>
 
+        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <div className="rounded-xl bg-base-200 p-4 text-sm">
+            <div className="text-xs uppercase tracking-[0.16em] opacity-60">Projected recurring</div>
+            <div className="mt-2 text-xl font-semibold">
+              {formatCurrency(summary.currency, projectionSummary?.projectedSubscriptionsRevenue)}
+            </div>
+          </div>
+          <div className="rounded-xl bg-base-200 p-4 text-sm">
+            <div className="text-xs uppercase tracking-[0.16em] opacity-60">Projected one-time</div>
+            <div className="mt-2 text-xl font-semibold">
+              {formatCurrency(summary.currency, projectionSummary?.projectedOrdersRevenue)}
+            </div>
+          </div>
+          <div className="rounded-xl bg-base-200 p-4 text-sm">
+            <div className="text-xs uppercase tracking-[0.16em] opacity-60">Forecast note</div>
+            <div className="mt-2 text-sm leading-6 opacity-80">
+              One-time revenue uses a weighted average from the last{" "}
+              {Number(projectionSummary?.trailingAverageWindow || 4)} completed{" "}
+              {range?.resolution === "month" ? "months" : "weeks"}, then applies a capped recent trend of{" "}
+              {formatCurrency(summary.currency, projectionSummary?.projectedOrdersSlope || 0)} per{" "}
+              {range?.resolution === "month" ? "month" : "week"}.
+            </div>
+          </div>
+        </div>
+
         <div className="mt-5 flex flex-wrap items-center gap-3 text-sm opacity-80">
           <div className="flex items-center gap-2">
             <span className="inline-block h-3 w-3 rounded-full bg-primary" />
@@ -306,10 +418,12 @@ export default function AdminFinancialStats({
               Total {range?.resolution === "month" ? "monthly" : "weekly"} revenue
             </span>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="inline-block h-3 w-3 rounded-full bg-base-content/50" />
-            <span>Orders + subscriptions combined</span>
-          </div>
+          {showProjection && (
+            <div className="flex items-center gap-2">
+              <span className="inline-block h-3 w-3 rounded-full bg-secondary" />
+              <span>Projected extension</span>
+            </div>
+          )}
         </div>
 
         {excludedCurrencies.length > 0 && (

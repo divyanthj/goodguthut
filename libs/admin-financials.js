@@ -1,8 +1,16 @@
+import {
+  addDaysToDateKey,
+  getSubscriptionCycleDays,
+  parseDateKeyToIstDate,
+} from "@/libs/subscription-schedule";
+
 const INDIA_TIMEZONE = "Asia/Kolkata";
 const DEFAULT_CURRENCY = "INR";
 const DEFAULT_PERIOD = "8w";
 const DEFAULT_RESOLUTION = "week";
+const DEFAULT_PROJECTION_MODE = "blended";
 const BILLABLE_SUBSCRIPTION_STATUSES = new Set(["authenticated", "active", "pending", "completed"]);
+const PROJECTABLE_SUBSCRIPTION_STATUSES = new Set(["authenticated", "active", "pending"]);
 
 export const FINANCIAL_PERIOD_OPTIONS = [
   { value: "4w", label: "4 weeks", bucketCount: 4, resolution: "week" },
@@ -17,6 +25,11 @@ export const FINANCIAL_PERIOD_OPTIONS = [
 export const FINANCIAL_RESOLUTION_OPTIONS = [
   { value: "week", label: "Weekly" },
   { value: "month", label: "Monthly" },
+];
+
+export const FINANCIAL_PROJECTION_OPTIONS = [
+  { value: "actual", label: "Actual only" },
+  { value: "blended", label: "Actual + projected" },
 ];
 
 const formatPartsInIndia = (value) => {
@@ -159,6 +172,7 @@ const getResolutionConfig = (resolution = DEFAULT_RESOLUTION) => {
       formatBucketLabel: formatMonthLabel,
       addBuckets: addUtcMonths,
       periodLabel: "month",
+      trailingAverageWindow: 4,
     };
   }
 
@@ -169,15 +183,22 @@ const getResolutionConfig = (resolution = DEFAULT_RESOLUTION) => {
     formatBucketLabel: formatWeekLabel,
     addBuckets: (date, count) => addUtcDays(date, count * 7),
     periodLabel: "week",
+    trailingAverageWindow: 4,
   };
 };
 
 const getDefaultPeriodForResolution = (resolution = DEFAULT_RESOLUTION) =>
   resolution === "month" ? "6m" : "8w";
 
+const resolveProjectionMode = (value = DEFAULT_PROJECTION_MODE) =>
+  FINANCIAL_PROJECTION_OPTIONS.some((option) => option.value === value)
+    ? value
+    : DEFAULT_PROJECTION_MODE;
+
 export const resolveFinancialControls = ({
   period = DEFAULT_PERIOD,
   resolution = DEFAULT_RESOLUTION,
+  projectionMode = DEFAULT_PROJECTION_MODE,
 } = {}) => {
   const normalizedResolution =
     FINANCIAL_RESOLUTION_OPTIONS.some((option) => option.value === resolution)
@@ -200,6 +221,8 @@ export const resolveFinancialControls = ({
       (option) => option.resolution === normalizedResolution
     ),
     resolutionOptions: FINANCIAL_RESOLUTION_OPTIONS,
+    projectionMode: resolveProjectionMode(projectionMode),
+    projectionOptions: FINANCIAL_PROJECTION_OPTIONS,
   };
 };
 
@@ -212,14 +235,246 @@ const getRangeEndLabel = (resolutionConfig, currentBucketStart) => {
   return formatDateKey(addUtcDays(currentBucketStart, 6));
 };
 
+const createEmptyBucket = (bucketStart, resolutionConfig) => ({
+  bucketStart,
+  weekStart: bucketStart,
+  weekLabel: resolutionConfig.formatBucketLabel(new Date(`${bucketStart}T00:00:00.000Z`)),
+  revenue: 0,
+  ordersRevenue: 0,
+  subscriptionsRevenue: 0,
+});
+
+const createEmptyProjectionBucket = (bucketStart, resolutionConfig) => ({
+  bucketStart,
+  weekStart: bucketStart,
+  weekLabel: resolutionConfig.formatBucketLabel(new Date(`${bucketStart}T00:00:00.000Z`)),
+  projectedRevenue: 0,
+  projectedOrdersRevenue: 0,
+  projectedSubscriptionsRevenue: 0,
+});
+
+const buildHistoricalRevenueSeries = ({
+  events = [],
+  resolutionConfig,
+  currentBucketStart,
+  bucketCount,
+}) => {
+  const firstBucketStart = resolutionConfig.addBuckets(currentBucketStart, -(bucketCount - 1));
+  const buckets = new Map();
+
+  for (let offset = 0; offset < bucketCount; offset += 1) {
+    const bucketStart = resolutionConfig.addBuckets(firstBucketStart, offset);
+    const key = formatDateKey(bucketStart);
+    buckets.set(key, createEmptyBucket(key, resolutionConfig));
+  }
+
+  events.forEach((event) => {
+    const bucketStart = resolutionConfig.getBucketStart(event.date);
+    const bucketKey = bucketStart ? formatDateKey(bucketStart) : "";
+    const bucket = buckets.get(bucketKey);
+
+    if (!bucket) {
+      return;
+    }
+
+    const amount = normalizeAmount(event.amount);
+    bucket.revenue = Number((bucket.revenue + amount).toFixed(2));
+
+    if (event.sourceType === "subscription") {
+      bucket.subscriptionsRevenue = Number((bucket.subscriptionsRevenue + amount).toFixed(2));
+    } else {
+      bucket.ordersRevenue = Number((bucket.ordersRevenue + amount).toFixed(2));
+    }
+  });
+
+  return [...buckets.values()];
+};
+
+const buildProjectionSeries = ({
+  resolutionConfig,
+  currentBucketStart,
+  bucketCount,
+}) => {
+  const buckets = new Map();
+
+  for (let offset = 1; offset <= bucketCount; offset += 1) {
+    const bucketStart = resolutionConfig.addBuckets(currentBucketStart, offset);
+    const key = formatDateKey(bucketStart);
+    buckets.set(key, createEmptyProjectionBucket(key, resolutionConfig));
+  }
+
+  return buckets;
+};
+
+const getProjectedOrderRevenueSeries = ({
+  revenueSeries = [],
+  trailingAverageWindow = 4,
+  projectionBucketCount = 0,
+}) => {
+  const completedBuckets = revenueSeries.slice(0, -1).slice(-trailingAverageWindow);
+
+  if (completedBuckets.length === 0 || projectionBucketCount <= 0) {
+    return {
+      values: [],
+      baseline: 0,
+      slope: 0,
+    };
+  }
+
+  const weighted = completedBuckets.reduce(
+    (result, entry, index) => {
+      const weight = index + 1;
+      const value = Number(entry.ordersRevenue || 0);
+
+      result.weightedRevenue += value * weight;
+      result.totalWeight += weight;
+      result.values.push(value);
+      return result;
+    },
+    { weightedRevenue: 0, totalWeight: 0, values: [] }
+  );
+  const baseline =
+    weighted.totalWeight > 0
+      ? Number((weighted.weightedRevenue / weighted.totalWeight).toFixed(2))
+      : 0;
+  const deltas = weighted.values.slice(1).map((value, index) => value - weighted.values[index]);
+  const rawSlope =
+    deltas.length > 0
+      ? deltas.reduce((sum, value) => sum + value, 0) / deltas.length
+      : 0;
+  const slopeCap = baseline > 0 ? baseline * 0.35 : 0;
+  const slope = Number(
+    Math.max(-slopeCap, Math.min(slopeCap, rawSlope || 0)).toFixed(2)
+  );
+  const values = Array.from({ length: projectionBucketCount }, (_, index) => {
+    const projectedValue = Math.max(0, baseline + slope * index);
+    return Number(projectedValue.toFixed(2));
+  });
+
+  return {
+    values,
+    baseline,
+    slope,
+  };
+};
+
+const getProjectedSubscriptionEvents = ({
+  subscriptions = [],
+  firstProjectedBucketStart,
+  projectionEnd,
+}) => {
+  const events = [];
+
+  subscriptions.forEach((subscription) => {
+    const billing = subscription.billing || {};
+    const billingStatus = String(billing.status || "").trim().toLowerCase();
+
+    if (!PROJECTABLE_SUBSCRIPTION_STATUSES.has(billingStatus)) {
+      return;
+    }
+
+    const currency = String(
+      billing.currency || subscription.currency || DEFAULT_CURRENCY
+    ).trim().toUpperCase();
+    const amount = normalizeAmount(billing.amount, subscription.total);
+    const paidCount = Math.max(0, Number(billing.paidCount || 0));
+    const totalCount = Math.max(0, Number(billing.totalCount || 0));
+    const startDate = String(subscription.startDate || "").trim();
+    const cycleDays = getSubscriptionCycleDays(subscription.cadence);
+
+    if (
+      !currency ||
+      currency !== DEFAULT_CURRENCY ||
+      amount <= 0 ||
+      !startDate ||
+      totalCount <= 0 ||
+      cycleDays <= 0
+    ) {
+      return;
+    }
+
+    for (let occurrenceIndex = paidCount; occurrenceIndex < totalCount; occurrenceIndex += 1) {
+      const occurrenceDateKey = addDaysToDateKey(
+        startDate,
+        occurrenceIndex * cycleDays
+      );
+      const occurrenceDate = parseDateKeyToIstDate(occurrenceDateKey);
+
+      if (!occurrenceDate || Number.isNaN(occurrenceDate.getTime())) {
+        continue;
+      }
+
+      if (
+        occurrenceDate.getTime() < firstProjectedBucketStart.getTime() ||
+        occurrenceDate.getTime() > projectionEnd.getTime()
+      ) {
+        continue;
+      }
+
+      events.push({
+        date: occurrenceDate.toISOString(),
+        amount,
+        currency,
+      });
+    }
+  });
+
+  return events;
+};
+
+const applyProjectedOrderRevenue = ({
+  projectionBuckets,
+  projectedOrderRevenueSeries = [],
+}) => {
+  if (projectedOrderRevenueSeries.length === 0) {
+    return;
+  }
+
+  [...projectionBuckets.values()].forEach((bucket, index) => {
+    const projectedOrderRevenue = Number(projectedOrderRevenueSeries[index] || 0);
+
+    if (projectedOrderRevenue <= 0) {
+      return;
+    }
+
+    bucket.projectedOrdersRevenue = projectedOrderRevenue;
+    bucket.projectedRevenue = Number(
+      (bucket.projectedRevenue + projectedOrderRevenue).toFixed(2)
+    );
+  });
+};
+
+const applyProjectedSubscriptionRevenue = ({
+  projectionBuckets,
+  subscriptionEvents = [],
+  resolutionConfig,
+}) => {
+  subscriptionEvents.forEach((event) => {
+    const bucketStart = resolutionConfig.getBucketStart(event.date);
+    const bucketKey = bucketStart ? formatDateKey(bucketStart) : "";
+    const bucket = projectionBuckets.get(bucketKey);
+
+    if (!bucket) {
+      return;
+    }
+
+    const amount = normalizeAmount(event.amount);
+    bucket.projectedSubscriptionsRevenue = Number(
+      (bucket.projectedSubscriptionsRevenue + amount).toFixed(2)
+    );
+    bucket.projectedRevenue = Number((bucket.projectedRevenue + amount).toFixed(2));
+  });
+};
+
 export const buildFinancialStats = ({
   preorders = [],
   orderPlans = [],
   subscriptions = [],
   period = DEFAULT_PERIOD,
   resolution = DEFAULT_RESOLUTION,
+  projectionMode = DEFAULT_PROJECTION_MODE,
 } = {}) => {
-  const controls = resolveFinancialControls({ period, resolution });
+  const controls = resolveFinancialControls({ period, resolution, projectionMode });
   const resolutionConfig = getResolutionConfig(controls.resolution);
   const eventSources = [
     ...preorders.map((preorder) =>
@@ -240,8 +495,6 @@ export const buildFinancialStats = ({
     ),
     ...subscriptions.map((subscription) =>
       normalizeRevenueEvent({
-        // Subscriptions do not persist a payment-captured timestamp today, so we fall back
-        // to the earliest reliable billing lifecycle timestamp that indicates cash collection/setup.
         date: getSubscriptionRevenueDate(subscription),
         amount: normalizeAmount(subscription.billing?.amount, subscription.total),
         currency: subscription.billing?.currency || subscription.currency,
@@ -265,45 +518,12 @@ export const buildFinancialStats = ({
   const currentBucketStart =
     resolutionConfig.getBucketStart(new Date()) ||
     createUtcDateFromParts(formatPartsInIndia(new Date()));
-  const firstBucketStart = resolutionConfig.addBuckets(
+  const revenueSeries = buildHistoricalRevenueSeries({
+    events: includedEvents,
+    resolutionConfig,
     currentBucketStart,
-    -(controls.bucketCount - 1)
-  );
-  const buckets = new Map();
-
-  for (let offset = 0; offset < controls.bucketCount; offset += 1) {
-    const bucketStart = resolutionConfig.addBuckets(firstBucketStart, offset);
-    const key = formatDateKey(bucketStart);
-    buckets.set(key, {
-      bucketStart: key,
-      weekStart: key,
-      weekLabel: resolutionConfig.formatBucketLabel(bucketStart),
-      revenue: 0,
-      ordersRevenue: 0,
-      subscriptionsRevenue: 0,
-    });
-  }
-
-  includedEvents.forEach((event) => {
-    const bucketStart = resolutionConfig.getBucketStart(event.date);
-    const bucketKey = bucketStart ? formatDateKey(bucketStart) : "";
-    const bucket = buckets.get(bucketKey);
-
-    if (!bucket) {
-      return;
-    }
-
-    const amount = normalizeAmount(event.amount);
-    bucket.revenue = Number((bucket.revenue + amount).toFixed(2));
-
-    if (event.sourceType === "subscription") {
-      bucket.subscriptionsRevenue = Number((bucket.subscriptionsRevenue + amount).toFixed(2));
-    } else {
-      bucket.ordersRevenue = Number((bucket.ordersRevenue + amount).toFixed(2));
-    }
+    bucketCount: controls.bucketCount,
   });
-
-  const revenueSeries = [...buckets.values()];
   const currentBucketKey = formatDateKey(currentBucketStart);
   const previousBucketKey = formatDateKey(resolutionConfig.addBuckets(currentBucketStart, -1));
   const currentPeriodRevenue =
@@ -313,7 +533,12 @@ export const buildFinancialStats = ({
   const periodDelta = Number((currentPeriodRevenue - previousPeriodRevenue).toFixed(2));
   const periodDeltaPercent =
     previousPeriodRevenue > 0
-      ? Number((((currentPeriodRevenue - previousPeriodRevenue) / previousPeriodRevenue) * 100).toFixed(2))
+      ? Number(
+          (
+            ((currentPeriodRevenue - previousPeriodRevenue) / previousPeriodRevenue) *
+            100
+          ).toFixed(2)
+        )
       : currentPeriodRevenue > 0
         ? 100
         : 0;
@@ -324,7 +549,61 @@ export const buildFinancialStats = ({
     revenueSeries.reduce((sum, entry) => sum + Number(entry.ordersRevenue || 0), 0).toFixed(2)
   );
   const subscriptionsRevenue = Number(
-    revenueSeries.reduce((sum, entry) => sum + Number(entry.subscriptionsRevenue || 0), 0).toFixed(2)
+    revenueSeries
+      .reduce((sum, entry) => sum + Number(entry.subscriptionsRevenue || 0), 0)
+      .toFixed(2)
+  );
+
+  const projectionBuckets = buildProjectionSeries({
+    resolutionConfig,
+    currentBucketStart,
+    bucketCount: controls.bucketCount,
+  });
+  const firstProjectedBucketStart = resolutionConfig.addBuckets(currentBucketStart, 1);
+  const lastProjectedBucketStart = resolutionConfig.addBuckets(
+    currentBucketStart,
+    controls.bucketCount
+  );
+  const projectionEnd =
+    resolutionConfig.value === "month"
+      ? addUtcDays(addUtcMonths(lastProjectedBucketStart, 1), -1)
+      : addUtcDays(lastProjectedBucketStart, 6);
+  const projectedOrderRevenue = getProjectedOrderRevenueSeries({
+    revenueSeries,
+    trailingAverageWindow: resolutionConfig.trailingAverageWindow,
+    projectionBucketCount: controls.bucketCount,
+  });
+  const projectedSubscriptionEvents = getProjectedSubscriptionEvents({
+    subscriptions,
+    firstProjectedBucketStart,
+    projectionEnd,
+  });
+
+  applyProjectedOrderRevenue({
+    projectionBuckets,
+    projectedOrderRevenueSeries: projectedOrderRevenue.values,
+  });
+  applyProjectedSubscriptionRevenue({
+    projectionBuckets,
+    subscriptionEvents: projectedSubscriptionEvents,
+    resolutionConfig,
+  });
+
+  const projectionSeries = [...projectionBuckets.values()];
+  const projectedRangeRevenue = Number(
+    projectionSeries
+      .reduce((sum, entry) => sum + Number(entry.projectedRevenue || 0), 0)
+      .toFixed(2)
+  );
+  const projectedOrdersRevenue = Number(
+    projectionSeries
+      .reduce((sum, entry) => sum + Number(entry.projectedOrdersRevenue || 0), 0)
+      .toFixed(2)
+  );
+  const projectedSubscriptionsRevenue = Number(
+    projectionSeries
+      .reduce((sum, entry) => sum + Number(entry.projectedSubscriptionsRevenue || 0), 0)
+      .toFixed(2)
   );
 
   return {
@@ -343,13 +622,34 @@ export const buildFinancialStats = ({
         resolutionConfig.value === "month" ? "Month-over-month change" : "Week-over-week change",
     },
     revenueSeries,
+    projectionSeries,
+    projectionSummary: {
+      currency: DEFAULT_CURRENCY,
+      projectionMode: controls.projectionMode,
+      projectedRevenue: projectedRangeRevenue,
+      projectedOrdersRevenue,
+      projectedSubscriptionsRevenue,
+      forwardWindowLabel: `Next ${controls.bucketCount} ${
+        resolutionConfig.value === "month" ? "months" : "weeks"
+      }`,
+      trailingAverageWindow: resolutionConfig.trailingAverageWindow,
+      projectedOrdersBaseline: projectedOrderRevenue.baseline,
+      projectedOrdersSlope: projectedOrderRevenue.slope,
+    },
+    projection: {
+      mode: controls.projectionMode,
+      isEnabled: controls.projectionMode !== "actual",
+      options: controls.projectionOptions,
+    },
     range: {
       period: controls.period,
       resolution: controls.resolution,
       bucketCount: controls.bucketCount,
       startDate: revenueSeries[0]?.bucketStart || "",
-      endDate: revenueSeries.length
-        ? getRangeEndLabel(resolutionConfig, currentBucketStart)
+      endDate: revenueSeries.length ? getRangeEndLabel(resolutionConfig, currentBucketStart) : "",
+      projectionStartDate: projectionSeries[0]?.bucketStart || "",
+      projectionEndDate: projectionSeries.length
+        ? getRangeEndLabel(resolutionConfig, lastProjectedBucketStart)
         : "",
     },
     controls,

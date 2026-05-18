@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
+import {
+  sendAdminOrderPlanConfirmedEmail,
+  sendAdminPreorderConfirmedEmail,
+} from "@/libs/admin-order-notifications";
 import { sendPreorderConfirmationNotifications } from "@/libs/emailSender";
 import { sendOrderPlanConfirmationEmail } from "@/libs/order-plan-notifications";
 import { recalculatePreorderWindowRouteSnapshot } from "@/libs/preorder-route-planner";
@@ -378,6 +382,7 @@ export async function POST(req) {
         case "payment.captured":
         case "order.paid": {
           const shouldSendConfirmationEmail = !orderPlan.notifications?.confirmationEmailSentAt;
+          const shouldSendAdminOrderEmail = !orderPlan.notifications?.adminOrderEmailSentAt;
 
           applyCapturedOrderPlanPayment({
             orderPlan,
@@ -399,6 +404,19 @@ export async function POST(req) {
               await orderPlan.save();
             } catch (notificationError) {
               console.error("Failed to send order plan confirmation email", notificationError);
+            }
+          }
+
+          if (shouldSendAdminOrderEmail) {
+            try {
+              await sendAdminOrderPlanConfirmedEmail({ orderPlan });
+              orderPlan.notifications = {
+                ...(orderPlan.notifications?.toObject?.() || orderPlan.notifications || {}),
+                adminOrderEmailSentAt: new Date(),
+              };
+              await orderPlan.save();
+            } catch (notificationError) {
+              console.error("Failed to send admin order plan confirmation email", notificationError);
             }
           }
 
@@ -458,6 +476,7 @@ export async function POST(req) {
         const shouldSendConfirmationNotifications =
           !preorder.notifications?.confirmationEmailSentAt ||
           !preorder.notifications?.confirmationWhatsappSentAt;
+        const shouldSendAdminOrderEmail = !preorder.notifications?.adminOrderEmailSentAt;
 
         applyCapturedPreorderPayment({
           preorder,
@@ -483,6 +502,19 @@ export async function POST(req) {
             await sendPreorderConfirmationNotifications({ preorder });
           } catch (notificationError) {
             console.error("Failed to send preorder confirmation notifications", notificationError);
+          }
+        }
+
+        if (shouldSendAdminOrderEmail) {
+          try {
+            await sendAdminPreorderConfirmedEmail({ preorder });
+            preorder.notifications = {
+              ...(preorder.notifications?.toObject?.() || preorder.notifications || {}),
+              adminOrderEmailSentAt: new Date(),
+            };
+            await preorder.save();
+          } catch (notificationError) {
+            console.error("Failed to send admin preorder confirmation email", notificationError);
           }
         }
 

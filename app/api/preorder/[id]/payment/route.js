@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { sendAdminPreorderConfirmedEmail } from "@/libs/admin-order-notifications";
 import { sendPreorderConfirmationNotifications } from "@/libs/emailSender";
 import connectMongo from "@/libs/mongoose";
 import {
@@ -156,6 +157,19 @@ export async function PATCH(req, { params }) {
           email: { status: "failed" },
           whatsapp: { status: "failed" },
         };
+      }
+
+      if (!preorder.notifications?.adminOrderEmailSentAt) {
+        try {
+          await sendAdminPreorderConfirmedEmail({ preorder });
+          preorder.notifications = {
+            ...(preorder.notifications?.toObject?.() || preorder.notifications || {}),
+            adminOrderEmailSentAt: new Date(),
+          };
+          await preorder.save();
+        } catch (notificationError) {
+          console.error("Failed to send admin preorder confirmation email", notificationError);
+        }
       }
     }
 

@@ -15,6 +15,7 @@ import {
   logAbuseEvent,
   readJsonBody,
 } from "@/libs/request-protection";
+import { reserveNextOrderNumber } from "@/libs/order-numbers";
 
 const isDatabaseUnavailable = (message = "") => {
   return (
@@ -28,6 +29,10 @@ const createPreorderDocument = async (orderRequest, payment = {}) => {
   const isPaidOrder = payment.status === "paid";
 
   return Preorder.create({
+    orderNumber: await reserveNextOrderNumber({
+      sourceType: "legacy_preorder",
+      mode: "one_time",
+    }),
     customerName: orderRequest.customerName,
     email: orderRequest.email,
     phone: orderRequest.phone,

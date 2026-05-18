@@ -1,4 +1,6 @@
 const BOTTLE_SIZE_ML = 220;
+const MIN_WASTAGE_BUFFER_LITRES = 0.25;
+const EXTRA_BUFFER_TOP_UP_LITRES = 0.5;
 
 const CONFIRMED_BILLING_STATUSES = new Set(["authenticated", "active", "pending", "completed"]);
 const EXCLUDED_SUBSCRIPTION_STATUSES = new Set(["cancelled", "paused"]);
@@ -629,7 +631,14 @@ export const buildIngredientSheet = ({
 
     const targetLitres = (Number(demandItem.weeklyEquivalentBottles || 0) * bottleSizeMl) / 1000;
     const baseYieldLitres = Number(recipe.baseYieldLitres || 1);
-    const batchCount = Math.max(1, Math.ceil(targetLitres / baseYieldLitres));
+    const initialBatchCount = Math.max(1, Math.ceil(targetLitres / baseYieldLitres));
+    const initialPlannedLitres = initialBatchCount * baseYieldLitres;
+    const initialWastageLitres = Math.max(0, initialPlannedLitres - targetLitres);
+    const adjustedTargetLitres =
+      initialWastageLitres <= MIN_WASTAGE_BUFFER_LITRES
+        ? targetLitres + EXTRA_BUFFER_TOP_UP_LITRES
+        : targetLitres;
+    const batchCount = Math.max(1, Math.ceil(adjustedTargetLitres / baseYieldLitres));
     const plannedLitres = batchCount * baseYieldLitres;
     const wastageLitres = Math.max(0, plannedLitres - targetLitres);
     const scalingFactor = plannedLitres / baseYieldLitres;

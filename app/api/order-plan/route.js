@@ -23,6 +23,7 @@ import {
   parseDateKeyToIstDate,
 } from "@/libs/subscription-schedule";
 import { getSubscriptionDurationConfig } from "@/libs/subscriptions";
+import { reserveNextOrderNumber } from "@/libs/order-numbers";
 import { RECURRING_SEASONAL_FULL_PERIOD_ERROR } from "@/libs/recurring-seasonal-policy";
 import OrderPlan from "@/models/OrderPlan";
 
@@ -144,6 +145,10 @@ export async function POST(req) {
       isManualOrderWithoutPaymentEnabled;
 
     const orderPlan = await OrderPlan.create({
+      orderNumber: await reserveNextOrderNumber({
+        sourceType: "order_plan",
+        mode: orderPlanRequest.mode,
+      }),
       mode: orderPlanRequest.mode,
       paymentType: orderPlanRequest.paymentType,
       name: orderPlanRequest.name,

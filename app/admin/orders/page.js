@@ -8,6 +8,7 @@ import {
   sortAdminOrdersByCreatedAtDesc,
 } from "@/libs/admin-orders";
 import connectMongo from "@/libs/mongoose";
+import { ensureOrderNumbersForDocuments } from "@/libs/order-numbers";
 import OrderPlan from "@/models/OrderPlan";
 import Preorder from "@/models/Preorder";
 
@@ -51,11 +52,15 @@ export default async function AdminOrdersPage() {
     OrderPlan.find({}).sort({ createdAt: -1 }).limit(300),
     Preorder.find({}).sort({ createdAt: -1 }).limit(200),
   ]);
+  const [orderPlansWithNumbers, legacyPreordersWithNumbers] = await Promise.all([
+    ensureOrderNumbersForDocuments(orderPlanDocs),
+    ensureOrderNumbersForDocuments(legacyPreorderDocs),
+  ]);
   const orders = sortAdminOrdersByCreatedAtDesc([
-    ...JSON.parse(JSON.stringify(orderPlanDocs)).map((orderPlan) =>
+    ...JSON.parse(JSON.stringify(orderPlansWithNumbers)).map((orderPlan) =>
       normalizeAdminOrderFromOrderPlan(orderPlan)
     ),
-    ...JSON.parse(JSON.stringify(legacyPreorderDocs)).map((preorder) =>
+    ...JSON.parse(JSON.stringify(legacyPreordersWithNumbers)).map((preorder) =>
       normalizeAdminOrderFromLegacyPreorder(preorder)
     ),
   ]);

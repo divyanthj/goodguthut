@@ -37,6 +37,28 @@ const formatDateOnly = (value) => {
   });
 };
 
+const escapeCsvValue = (value = "") => {
+  const normalized = String(value ?? "").replace(/\r?\n|\r/g, " ").trim();
+
+  if (normalized.includes(",") || normalized.includes('"')) {
+    return `"${normalized.replace(/"/g, '""')}"`;
+  }
+
+  return normalized;
+};
+
+const getOrderSummaryDeliveryDate = (order = {}) => {
+  if (order.sourceType === "legacy_preorder") {
+    return order.firstDeliveryDate || order.nextDeliveryDate || null;
+  }
+
+  if (order.mode === "recurring") {
+    return order.nextDeliveryDate || order.firstDeliveryDate || order.startDate || null;
+  }
+
+  return order.firstDeliveryDate || order.nextDeliveryDate || order.startDate || null;
+};
+
 const toDateTimeLocal = (value) => {
   const date = value ? new Date(value) : new Date();
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
@@ -120,6 +142,14 @@ const getModeLabel = (order = {}) =>
       ? "Recurring"
       : "One-time";
 
+const getModeBadgeClassName = (order = {}) => {
+  if (order.sourceType === "legacy_preorder" || order.mode !== "recurring") {
+    return "badge border-emerald-700 bg-emerald-50 px-3 py-3 text-[0.8rem] font-semibold text-emerald-900";
+  }
+
+  return "badge border-sky-700 bg-sky-50 px-3 py-3 text-[0.8rem] font-semibold text-sky-900";
+};
+
 const getTrackingInputId = (order = {}) => `tracking-link-${order.sourceType}-${order.id}`;
 const getDeliveredAtInputId = (order = {}) => `delivered-at-${order.sourceType}-${order.id}`;
 
@@ -130,6 +160,7 @@ export default function AdminOrdersList({ initialOrders = [] }) {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [showFulfilledOrders, setShowFulfilledOrders] = useState(false);
+  const [expandedOrders, setExpandedOrders] = useState({});
 
   const activeOrders = useMemo(
     () => orders.filter((order) => order.status !== "fulfilled"),
@@ -310,6 +341,69 @@ export default function AdminOrdersList({ initialOrders = [] }) {
     );
   };
 
+  const exportOrdersAsCsv = () => {
+    const headers = [
+      "Order Number",
+      "Customer Name",
+      "Order Type",
+      "Status",
+      "Payment Status",
+      "Delivery Date",
+      "Order Value",
+      "Currency",
+      "Quantity",
+      "Phone",
+      "Email",
+      "Address",
+      "Created At",
+      "Items",
+    ];
+
+    const rows = orders.map((order) => [
+      order.orderNumber || "",
+      order.customerName || "",
+      getModeLabel(order),
+      order.status || "",
+      order.paymentBadgeLabel || "",
+      formatDateOnly(getOrderSummaryDeliveryDate(order)),
+      Number(order.total || 0).toFixed(2),
+      order.currency || "INR",
+      String(order.totalQuantity || 0),
+      order.phone || "",
+      order.email || "",
+      order.normalizedDeliveryAddress || order.address || order.pickupAddressSnapshot || "",
+      formatDateTime(order.createdAt),
+      (Array.isArray(order.items) ? order.items : [])
+        .map((item) => `${item.productName || item.sku || "Item"} x ${Number(item.quantity || 0)}`)
+        .join("; "),
+    ]);
+
+    const csv = [headers, ...rows]
+      .map((row) => row.map((value) => escapeCsvValue(value)).join(","))
+      .join("\n");
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const dateStamp = new Date().toISOString().slice(0, 10);
+
+    link.href = url;
+    link.download = `orders-${dateStamp}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const toggleOrderExpanded = (order) => {
+    const key = `${order.sourceType}:${order.id}`;
+
+    setExpandedOrders((current) => ({
+      ...current,
+      [key]: !current[key],
+    }));
+  };
+
   if (orders.length === 0) {
     return (
       <section className="rounded-2xl bg-base-100 p-8 shadow-md">
@@ -404,14 +498,16 @@ export default function AdminOrdersList({ initialOrders = [] }) {
                 ) : (
                   <>
                     <div>
+                      <div className="text-xs uppercase tracking-[0.16em] opacity-60">Next delivery</div>
+                      <div className="mt-1">
+                        {formatSubscriptionDate(order.nextDeliveryDate) || "-"}
+                      </div>
+                    </div>
+                    <div>
                       <div className="text-xs uppercase tracking-[0.16em] opacity-60">First delivery</div>
                       <div className="mt-1">
                         {formatSubscriptionDate(order.firstDeliveryDate || order.startDate) || "-"}
                       </div>
-                    </div>
-                    <div>
-                      <div className="text-xs uppercase tracking-[0.16em] opacity-60">Next delivery</div>
-                      <div className="mt-1">{formatSubscriptionDate(order.nextDeliveryDate) || "-"}</div>
                     </div>
                   </>
                 )}
@@ -599,16 +695,59 @@ export default function AdminOrdersList({ initialOrders = [] }) {
       key={`${order.sourceType}:${order.id}`}
       className="rounded-2xl bg-base-100 p-5 shadow-md"
     >
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-semibold">{order.customerName}</h2>
-          <p className="text-sm opacity-75">{order.email || order.phone}</p>
-          <p className="text-sm opacity-75">{order.phone}</p>
-          <p className="mt-1 text-xs opacity-60">Created {formatDateTime(order.createdAt)}</p>
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <button
+            type="button"
+            className="min-w-0 flex-1 rounded-xl text-left transition hover:bg-base-200/60"
+            onClick={() => toggleOrderExpanded(order)}
+            aria-expanded={Boolean(expandedOrders[`${order.sourceType}:${order.id}`])}
+          >
+            <div className="grid gap-4 rounded-xl p-3 sm:grid-cols-2 lg:grid-cols-[minmax(220px,1.5fr)_minmax(150px,0.8fr)_minmax(150px,0.8fr)_90px]">
+              <div className="min-w-0">
+                <div className="text-xs uppercase tracking-[0.16em] opacity-60">Name</div>
+                <h2 className="mt-1 break-words text-lg font-semibold leading-snug">
+                  {order.customerName}
+                </h2>
+                <p className="mt-1 text-sm font-medium opacity-80">
+                  {order.orderNumber || "Order number pending"}
+                </p>
+              </div>
+              <div>
+                <div className="text-xs uppercase tracking-[0.16em] opacity-60">Delivery date</div>
+                <div className="mt-1 text-sm font-medium">
+                  {formatDateOnly(getOrderSummaryDeliveryDate(order))}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs uppercase tracking-[0.16em] opacity-60">Order value</div>
+                <div className="mt-1 text-sm font-medium">
+                  {formatCurrency(order.currency, order.total)}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs uppercase tracking-[0.16em] opacity-60">
+                  {expandedOrders[`${order.sourceType}:${order.id}`] ? "Collapse" : "Expand"}
+                </div>
+                <div className="mt-1 text-2xl leading-none">
+                  {expandedOrders[`${order.sourceType}:${order.id}`] ? "−" : "+"}
+                </div>
+              </div>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            className="btn btn-outline btn-sm text-error"
+            disabled={deletingId === `${order.sourceType}:${order.id}`}
+            onClick={() => deleteOrder(order)}
+          >
+            {deletingId === `${order.sourceType}:${order.id}` ? "Deleting..." : "Delete"}
+          </button>
         </div>
+
         <div className="flex flex-wrap items-center gap-2">
-          <div className="badge badge-outline">{order.sourceLabel}</div>
-          <div className="badge badge-outline">{getModeLabel(order)}</div>
+          <div className={getModeBadgeClassName(order)}>{getModeLabel(order)}</div>
           <div className="badge badge-outline">{order.status}</div>
           <div className="badge badge-outline">{order.paymentBadgeLabel}</div>
           {order.sourceType === "legacy_preorder" ? (
@@ -622,36 +761,38 @@ export default function AdminOrdersList({ initialOrders = [] }) {
             </>
           ) : null}
           <div className="badge badge-outline">qty {order.totalQuantity || 0}</div>
-          <button
-            type="button"
-            className="btn btn-outline btn-sm text-error"
-            disabled={deletingId === `${order.sourceType}:${order.id}`}
-            onClick={() => deleteOrder(order)}
-          >
-            {deletingId === `${order.sourceType}:${order.id}` ? "Deleting..." : "Delete"}
-          </button>
         </div>
       </div>
 
-      {renderOneTimeOrder(order)}
+      {expandedOrders[`${order.sourceType}:${order.id}`] ? renderOneTimeOrder(order) : null}
     </article>
   );
 
   return (
     <section className="space-y-4">
-      <div className="grid gap-3 md:grid-cols-3">
-        <div className="rounded-2xl bg-base-100 p-4 shadow-sm">
-          <div className="text-sm opacity-70">Total</div>
-          <div className="mt-1 text-2xl font-semibold">{summary.total}</div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="grid flex-1 gap-3 md:grid-cols-3">
+          <div className="rounded-2xl bg-base-100 p-4 shadow-sm">
+            <div className="text-sm opacity-70">Total</div>
+            <div className="mt-1 text-2xl font-semibold">{summary.total}</div>
+          </div>
+          <div className="rounded-2xl bg-base-100 p-4 shadow-sm">
+            <div className="text-sm opacity-70">One-time</div>
+            <div className="mt-1 text-2xl font-semibold">{summary.oneTime}</div>
+          </div>
+          <div className="rounded-2xl bg-base-100 p-4 shadow-sm">
+            <div className="text-sm opacity-70">Recurring</div>
+            <div className="mt-1 text-2xl font-semibold">{summary.recurring}</div>
+          </div>
         </div>
-        <div className="rounded-2xl bg-base-100 p-4 shadow-sm">
-          <div className="text-sm opacity-70">One-time</div>
-          <div className="mt-1 text-2xl font-semibold">{summary.oneTime}</div>
-        </div>
-        <div className="rounded-2xl bg-base-100 p-4 shadow-sm">
-          <div className="text-sm opacity-70">Recurring</div>
-          <div className="mt-1 text-2xl font-semibold">{summary.recurring}</div>
-        </div>
+
+        <button
+          type="button"
+          className="btn btn-outline"
+          onClick={exportOrdersAsCsv}
+        >
+          Export CSV
+        </button>
       </div>
 
       {error && (

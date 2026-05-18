@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import { sendAdminPreorderConfirmedEmail } from "@/libs/admin-order-notifications";
 import { sendPreorderConfirmationNotifications } from "@/libs/emailSender";
 import connectMongo from "@/libs/mongoose";
+import { reserveNextOrderNumber } from "@/libs/order-numbers";
 import Preorder from "@/models/Preorder";
 import { recalculatePreorderWindowRouteSnapshot } from "@/libs/preorder-route-planner";
 import {
@@ -12,6 +14,7 @@ import {
 } from "@/libs/razorpay";
 
 const buildPreorderPayload = (orderRequest, paymentResult) => ({
+  orderNumber: paymentResult.orderNumber,
   customerName: orderRequest.customerName,
   email: orderRequest.email,
   phone: orderRequest.phone,
@@ -113,6 +116,10 @@ export async function PATCH(req) {
         orderId: verifiedOrderId,
         paymentId,
         signature,
+        orderNumber: await reserveNextOrderNumber({
+          sourceType: "legacy_preorder",
+          mode: "one_time",
+        }),
       })
     );
 
@@ -129,6 +136,19 @@ export async function PATCH(req) {
         email: { status: "failed" },
         whatsapp: { status: "failed" },
       };
+    }
+
+    if (!preorder.notifications?.adminOrderEmailSentAt) {
+      try {
+        await sendAdminPreorderConfirmedEmail({ preorder });
+        preorder.notifications = {
+          ...(preorder.notifications?.toObject?.() || preorder.notifications || {}),
+          adminOrderEmailSentAt: new Date(),
+        };
+        await preorder.save();
+      } catch (notificationError) {
+        console.error("Failed to send admin preorder confirmation email", notificationError);
+      }
     }
 
     if (preorder.preorderWindow && preorder.fulfillmentMethod === "delivery") {

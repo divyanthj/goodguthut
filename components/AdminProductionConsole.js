@@ -168,6 +168,7 @@ export default function AdminProductionConsole() {
   const [approvingRecipeId, setApprovingRecipeId] = useState("");
   const [isEditingApprovedVersion, setIsEditingApprovedVersion] = useState(false);
   const [showConsolidatedIngredients, setShowConsolidatedIngredients] = useState(false);
+  const [showRecipeManager, setShowRecipeManager] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
@@ -370,6 +371,7 @@ export default function AdminProductionConsole() {
     setError("");
 
     if (typeof document !== "undefined") {
+      setShowRecipeManager(true);
       document.getElementById("recipe-manager")?.scrollIntoView({
         behavior: "smooth",
         block: "start",
@@ -705,9 +707,24 @@ export default function AdminProductionConsole() {
       </section>
 
       <section id="recipe-manager" className="rounded-2xl bg-base-100 p-5 shadow-md">
-        <h2 className="text-xl font-semibold">Recipe manager</h2>
-        <p className="mt-1 text-sm opacity-75">Create recipe drafts, track versions, and approve the one used for production.</p>
+        <button
+          type="button"
+          className="flex w-full items-start justify-between gap-4 text-left"
+          onClick={() => setShowRecipeManager((current) => !current)}
+          aria-expanded={showRecipeManager}
+          aria-controls="recipe-manager-content"
+        >
+          <div>
+            <h2 className="text-xl font-semibold">Recipe manager</h2>
+            <p className="mt-1 text-sm opacity-75">
+              Create recipe drafts, track versions, and approve the one used for production.
+            </p>
+          </div>
+          <div className="pt-1 text-2xl leading-none">{showRecipeManager ? "−" : "+"}</div>
+        </button>
 
+        {showRecipeManager && (
+          <div id="recipe-manager-content">
         <form onSubmit={saveManualRecipe} className="mt-4 rounded-xl bg-base-200 p-4">
           <div className="grid gap-3 md:grid-cols-2">
             <label className="form-control">
@@ -859,7 +876,7 @@ export default function AdminProductionConsole() {
           </div>
         </form>
 
-        <div className="mt-5 space-y-3">
+          <div className="mt-5 space-y-3">
           {isLoadingRecipes ? (
             <div className="rounded-xl bg-base-200 p-4 text-sm opacity-70">Loading recipes...</div>
           ) : groupedRecipes.length === 0 ? (
@@ -925,6 +942,8 @@ export default function AdminProductionConsole() {
             ))
           )}
         </div>
+          </div>
+        )}
       </section>
 
       <section className="rounded-2xl bg-base-100 p-5 shadow-md">

@@ -150,6 +150,10 @@ const preorderNotificationsSchema = mongoose.Schema(
       type: Date,
       default: null,
     },
+    adminOrderEmailSentAt: {
+      type: Date,
+      default: null,
+    },
   },
   { _id: false }
 );
@@ -258,6 +262,13 @@ const preorderSchema = mongoose.Schema(
       type: Number,
       min: 0,
       default: 0,
+    },
+    orderNumber: {
+      type: String,
+      trim: true,
+      default: "",
+      unique: true,
+      sparse: true,
     },
     normalizedDeliveryAddress: {
       type: String,
