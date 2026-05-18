@@ -87,6 +87,16 @@ const normalizeWhatsAppPhone = (value = "") => {
   return digits;
 };
 
+const buildWhatsAppUrl = (phone, message) => {
+  const normalizedPhone = normalizeWhatsAppPhone(phone);
+
+  if (!normalizedPhone || !message) {
+    return "";
+  }
+
+  return `https://web.whatsapp.com/send?phone=${normalizedPhone}&text=${encodeURIComponent(message)}`;
+};
+
 const isMobileDevice = () => {
   if (typeof navigator === "undefined") {
     return false;
@@ -95,14 +105,25 @@ const isMobileDevice = () => {
   return /Android|iPhone|iPad|iPod|IEMobile|Opera Mini/i.test(navigator.userAgent || "");
 };
 
-const buildWhatsAppUrl = (phone, message) => {
+const openWhatsAppThread = (phone, message, targetWindow = null) => {
   const normalizedPhone = normalizeWhatsAppPhone(phone);
 
   if (!normalizedPhone || !message) {
-    return "";
+    targetWindow?.close?.();
+    return false;
   }
 
-  return `whatsapp://send?phone=${normalizedPhone}&text=${encodeURIComponent(message)}`;
+  const whatsappUrl = isMobileDevice()
+    ? `whatsapp://send?phone=${normalizedPhone}&text=${encodeURIComponent(message)}`
+    : buildWhatsAppUrl(normalizedPhone, message);
+
+  if (targetWindow) {
+    targetWindow.location.href = whatsappUrl;
+    return true;
+  }
+
+  window.open(whatsappUrl, "_blank", "noopener,noreferrer");
+  return true;
 };
 
 const copyToClipboard = async (value) => {
@@ -153,6 +174,59 @@ const getModeBadgeClassName = (order = {}) => {
 const getTrackingInputId = (order = {}) => `tracking-link-${order.sourceType}-${order.id}`;
 const getDeliveredAtInputId = (order = {}) => `delivered-at-${order.sourceType}-${order.id}`;
 
+const buildOrderDetailsText = (order = {}) => {
+  const items = Array.isArray(order.items) ? order.items : [];
+  const itemSummary = items
+    .filter((item) => item?.productName || item?.sku)
+    .map((item) => {
+      const name = item.productName || item.sku;
+      const quantity = Number(item.quantity || 0);
+
+      return quantity > 0 ? `${quantity} x ${name}` : name;
+    })
+    .join(", ");
+
+  if (itemSummary) {
+    return itemSummary;
+  }
+
+  return order.selectionSummary || order.orderNumber || "your order";
+};
+
+const buildProductionWhatsAppMessage = (order = {}) => {
+  const customerName = String(order.customerName || "").trim() || "there";
+  const orderDetails = buildOrderDetailsText(order);
+  const deliveryDate = formatDateOnly(getOrderSummaryDeliveryDate(order));
+  const sproutEmoji = "🌱";
+  const sparkleEmoji = "✨";
+  const scooterEmoji = "🛵";
+
+  return `Hi ${customerName}! ${sproutEmoji}
+
+Tiny update from the Good Gut Hut kitchen: production has officially started for your gut-happy lineup:
+
+${orderDetails}
+
+${sparkleEmoji} We are brewing, bottling, and getting everything ready for delivery on ${deliveryDate}. ${scooterEmoji}`;
+};
+
+const buildFallbackShippedWhatsAppMessage = (order = {}) => {
+  const isPickup = order.fulfillmentMethod === "pickup";
+  const orderDetails = buildOrderDetailsText(order);
+
+  if (isPickup) {
+    return `Your Good Gut Hut order is ready for pickup. Items: ${orderDetails}`;
+  }
+
+  const trackingText = order.trackingLink
+    ? ` Track your order here: ${order.trackingLink}`
+    : order.estimatedArrivalAt
+      ? ` Estimated arrival: around ${formatDateTime(order.estimatedArrivalAt)}.`
+      : "";
+
+  return `Your Good Gut Hut order has been shipped. Items: ${orderDetails}.${trackingText}`;
+};
+
 export default function AdminOrdersList({ initialOrders = [] }) {
   const [orders, setOrders] = useState(() => initialOrders || []);
   const [savingId, setSavingId] = useState("");
@@ -200,7 +274,7 @@ export default function AdminOrdersList({ initialOrders = [] }) {
     );
   };
 
-  const patchOrder = async (order, payload, fallbackError) => {
+  const patchOrder = async (order, payload, fallbackError, options = {}) => {
     setSavingId(`${order.sourceType}:${order.id}`);
     setMessage("");
     setError("");
@@ -229,43 +303,65 @@ export default function AdminOrdersList({ initialOrders = [] }) {
         updateOrderInState(order.sourceType, nextRecord);
       }
 
-      if (order.sourceType === "legacy_preorder" && payload.markShipped) {
-        const whatsappMessage =
-          data.notificationScaffold?.notifications?.whatsapp?.text || "";
-        const whatsappPhone = data.preorder?.phone || "";
-        const whatsappUrl = buildWhatsAppUrl(whatsappPhone, whatsappMessage);
-        let clipboardCopied = false;
+      if (payload.markShipped) {
+        const updatedOrder =
+          order.sourceType === "legacy_preorder"
+            ? normalizeAdminOrderFromLegacyPreorder({
+                ...(data.preorder || {}),
+                sourceType: order.sourceType,
+              })
+            : normalizeAdminOrderFromOrderPlan({
+                ...(data.orderPlan || {}),
+                sourceType: order.sourceType,
+              });
+        let clipboardCopied = Boolean(options.clipboardCopied);
+        let whatsappOpened = Boolean(options.whatsappOpened);
 
-        if (whatsappMessage) {
-          try {
-            clipboardCopied = await copyToClipboard(whatsappMessage);
-          } catch (clipboardError) {
-            console.error("Could not copy shipped WhatsApp message", clipboardError);
+        if (!options.skipWhatsAppOpen) {
+          const whatsappMessage =
+            data.notificationScaffold?.notifications?.whatsapp?.text ||
+            buildFallbackShippedWhatsAppMessage(updatedOrder);
+          const whatsappPhone = updatedOrder.phone || "";
+
+          if (whatsappMessage) {
+            try {
+              clipboardCopied = await copyToClipboard(whatsappMessage);
+            } catch (clipboardError) {
+              console.error("Could not copy shipped WhatsApp message", clipboardError);
+            }
           }
+
+          whatsappOpened = openWhatsAppThread(whatsappPhone, whatsappMessage);
         }
 
-        if (whatsappUrl && isMobileDevice()) {
-          window.location.href = whatsappUrl;
-        }
-
-        const updatedPreorder = data.preorder || {};
-        const isPickup = updatedPreorder.fulfillmentMethod === "pickup";
+        const isPickup = updatedOrder.fulfillmentMethod === "pickup";
         const shipmentSummary = isPickup
           ? "Order marked ready for pickup."
           : payload.trackingLink?.trim()
             ? "Order marked as shipped and tracking link saved."
             : "Order marked as shipped and ETA set for 1 hour from shipment.";
-        const whatsappSummary = whatsappUrl
+        const whatsappSummary = whatsappOpened
           ? clipboardCopied
-            ? isMobileDevice()
-              ? " WhatsApp message copied to clipboard and opened in the WhatsApp app."
-              : " WhatsApp message copied to clipboard."
-            : isMobileDevice()
-              ? " WhatsApp app opened with the message prefilled."
-              : " WhatsApp message is ready to paste."
-          : " No WhatsApp action was opened because this preorder has no phone number.";
+            ? " WhatsApp message copied to clipboard and opened."
+            : " WhatsApp opened with the message prefilled."
+          : " No WhatsApp action was opened because this order has no phone number.";
+        const emailStatus = data.emailDelivery?.status;
+        const emailSummary =
+          emailStatus === "sent"
+            ? " Shipped email sent."
+            : emailStatus === "already_sent"
+              ? " Shipped email was already sent earlier."
+              : emailStatus === "skipped"
+                ? " No shipped email was sent because this order has no email address."
+                : emailStatus === "failed"
+                  ? " Shipped email failed to send."
+                  : "";
 
-        setMessage(`${shipmentSummary}${whatsappSummary}`);
+        setMessage(`${shipmentSummary}${whatsappSummary}${emailSummary}`);
+
+        if (emailStatus === "failed") {
+          setError(data.emailDelivery?.error || "Shipped email failed to send.");
+        }
       }
     } catch (updateError) {
       setError(updateError.message || fallbackError);
@@ -314,17 +410,120 @@ export default function AdminOrdersList({ initialOrders = [] }) {
   };
 
   const markShipped = async (order, trackingLink) => {
+    const shouldMarkShipped = window.confirm(
+      "Are you sure you want to mark this order as shipped? This will send the customer an email and open WhatsApp with the shipping message."
+    );
+
+    if (!shouldMarkShipped) {
+      return;
+    }
+
+    const trackingLinkValue = String(trackingLink || "").trim();
+    const whatsappOrder = {
+      ...order,
+      trackingLink: trackingLinkValue,
+      estimatedArrivalAt: trackingLinkValue
+        ? null
+        : new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    };
+    const whatsappMessage = buildFallbackShippedWhatsAppMessage(whatsappOrder);
+    let clipboardCopied = false;
+
+    if (whatsappMessage) {
+      try {
+        clipboardCopied = await copyToClipboard(whatsappMessage);
+      } catch (clipboardError) {
+        console.error("Could not copy shipped WhatsApp message", clipboardError);
+      }
+    }
+
+    const whatsappOpened = openWhatsAppThread(order.phone, whatsappMessage);
+
     await patchOrder(
       order,
       {
         markShipped: true,
-        trackingLink,
+        trackingLink: trackingLinkValue,
       },
-      "Could not mark order as shipped."
+      "Could not mark order as shipped.",
+      {
+        clipboardCopied,
+        skipWhatsAppOpen: true,
+        whatsappOpened,
+      }
     );
   };
 
+  const confirmProduction = async (order) => {
+    const shouldConfirmProduction = window.confirm(
+      "Are you sure production has started for this order? This will send the customer an email and open WhatsApp with the production message."
+    );
+
+    if (!shouldConfirmProduction) {
+      return;
+    }
+
+    const orderKey = `${order.sourceType}:${order.id}`;
+
+    setSavingId(orderKey);
+    setMessage("");
+    setError("");
+
+    const whatsappMessage = buildProductionWhatsAppMessage(order);
+    let clipboardCopied = false;
+
+    try {
+      clipboardCopied = await copyToClipboard(whatsappMessage);
+    } catch (clipboardError) {
+      console.error("Could not copy production WhatsApp message", clipboardError);
+    }
+
+    const whatsappOpened = openWhatsAppThread(order.phone, whatsappMessage);
+    const whatsappSummary = whatsappOpened
+      ? clipboardCopied
+        ? "WhatsApp message copied to clipboard and opened."
+        : "WhatsApp opened with the production message prefilled."
+      : "No WhatsApp action was opened because this order has no phone number.";
+
+    try {
+      const response = await fetch("/api/admin/orders/production-confirmation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourceType: order.sourceType,
+          id: order.id,
+        }),
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Could not send production confirmation email.");
+      }
+
+      const emailStatus = data.emailDelivery?.status;
+      const emailSummary =
+        emailStatus === "sent"
+          ? " Production email sent."
+          : " No production email was sent because this order has no email address.";
+
+      setMessage(`${whatsappSummary}${emailSummary}`);
+    } catch (emailError) {
+      setMessage(whatsappSummary);
+      setError(emailError.message || "Could not send production confirmation email.");
+    } finally {
+      setSavingId("");
+    }
+  };
+
   const markDelivered = async (order, deliveredAt) => {
+    const shouldMarkDelivered = window.confirm(
+      "Are you sure you want to mark this order as delivered?"
+    );
+
+    if (!shouldMarkDelivered) {
+      return;
+    }
+
     const payload =
       order.sourceType === "legacy_preorder"
         ? { deliveredAt }
@@ -639,6 +838,18 @@ export default function AdminOrdersList({ initialOrders = [] }) {
                 {savingId === `${order.sourceType}:${order.id}` ? "Saving..." : "Confirm order"}
               </button>
             )}
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              disabled={
+                savingId === `${order.sourceType}:${order.id}` ||
+                deletingId === `${order.sourceType}:${order.id}` ||
+                !order.phone
+              }
+              onClick={() => confirmProduction(order)}
+            >
+              {savingId === `${order.sourceType}:${order.id}` ? "Sending..." : "Confirm production"}
+            </button>
             <button
               type="button"
               className="btn btn-secondary btn-sm"

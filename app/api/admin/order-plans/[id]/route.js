@@ -8,6 +8,7 @@ import {
 } from "@/libs/order-plans";
 import { recalculateSubscriptionRouteSnapshots } from "@/libs/subscription-route-planner";
 import { createAndSendOrderPlanInvoice } from "@/libs/invoices";
+import { sendOrderPlanShippedEmail } from "@/libs/shipment-notifications";
 import { listPlannedSubscriptionDeliveryDates } from "@/libs/subscription-schedule";
 import OrderPlan from "@/models/OrderPlan";
 
@@ -191,6 +192,20 @@ export async function PATCH(req, { params }) {
     await orderPlan.save();
     await refreshRouteSnapshots();
 
+    let emailDelivery = null;
+
+    if (body?.markShipped) {
+      try {
+        emailDelivery = await sendOrderPlanShippedEmail({ orderPlan });
+      } catch (emailError) {
+        console.error("Failed to send order shipped email", emailError);
+        emailDelivery = {
+          status: "failed",
+          error: emailError.message || "Could not send shipped email.",
+        };
+      }
+    }
+
     if (shouldGenerateInvoice) {
       const invoiceDelivery = await createAndSendOrderPlanInvoice({
         orderPlan,
@@ -207,7 +222,10 @@ export async function PATCH(req, { params }) {
       });
     }
 
-    return NextResponse.json({ orderPlan: JSON.parse(JSON.stringify(orderPlan)) });
+    return NextResponse.json({
+      orderPlan: JSON.parse(JSON.stringify(orderPlan)),
+      ...(emailDelivery ? { emailDelivery } : {}),
+    });
   } catch (error) {
     console.error(error);
 

@@ -5,6 +5,7 @@ import { recalculatePreorderWindowRouteSnapshot } from "@/libs/preorder-route-pl
 import Preorder from "@/models/Preorder";
 import {
   preparePreorderShippedNotifications,
+  sendPreorderShippedEmail,
 } from "@/libs/shipment-notifications";
 import { createAndSendPreorderInvoice } from "@/libs/invoices";
 
@@ -63,11 +64,22 @@ export async function PATCH(req, { params }) {
       }
 
       const notificationScaffold = await preparePreorderShippedNotifications({ preorder });
+      let emailDelivery = { status: "manual" };
+
+      try {
+        emailDelivery = await sendPreorderShippedEmail({ preorder });
+      } catch (emailError) {
+        console.error("Failed to send preorder shipped email", emailError);
+        emailDelivery = {
+          status: "failed",
+          error: emailError.message || "Could not send shipped email.",
+        };
+      }
 
       return NextResponse.json({
         preorder,
         notificationScaffold,
-        emailDelivery: { status: "manual" },
+        emailDelivery,
         whatsappDelivery: { status: "manual" },
       });
     }
