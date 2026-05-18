@@ -1,6 +1,9 @@
 import { buildDeliveryRoutePlan } from "@/libs/delivery-route";
 import connectMongo from "@/libs/mongoose";
-import { normalizeOneTimeOrderPlanStatus } from "@/libs/order-plans";
+import {
+  isRecurringOrderPlanConfirmed,
+  normalizeOneTimeOrderPlanStatus,
+} from "@/libs/order-plans";
 import { formatPickupAddress, getActiveWindowFilter } from "@/libs/preorder-windows";
 import { getSubscriptionSettings } from "@/libs/subscription-settings";
 import OrderPlan from "@/models/OrderPlan";
@@ -9,18 +12,6 @@ import Subscription from "@/models/Subscription";
 
 const CONFIRMED_BILLING_STATUSES = new Set(["authenticated", "active", "pending", "completed"]);
 const EXCLUDED_SUBSCRIPTION_STATUSES = new Set(["cancelled", "paused"]);
-const ROUTE_ELIGIBLE_RECURRING_ORDER_PAYMENT_STATUSES = new Set([
-  ...CONFIRMED_BILLING_STATUSES,
-  "created",
-]);
-const EXCLUDED_RECURRING_ORDER_STATUSES = new Set(["cancelled", "failed", "fulfilled", "paused"]);
-const EXCLUDED_RECURRING_ORDER_PAYMENT_STATUSES = new Set([
-  "cancelled",
-  "completed",
-  "expired",
-  "failed",
-]);
-
 const buildEmptyRouteSnapshot = ({
   deliveryDate = "",
   pickupAddress = "",
@@ -108,20 +99,7 @@ const isRouteEligibleOrderPlan = (orderPlan) => {
   }
 
   if (orderPlan.mode === "recurring") {
-    const status = String(orderPlan.status || "").trim();
-    const paymentStatus = String(orderPlan.payment?.status || "").trim();
-
-    if (
-      EXCLUDED_RECURRING_ORDER_STATUSES.has(status) ||
-      EXCLUDED_RECURRING_ORDER_PAYMENT_STATUSES.has(paymentStatus)
-    ) {
-      return false;
-    }
-
-    return (
-      status === "active" ||
-      ROUTE_ELIGIBLE_RECURRING_ORDER_PAYMENT_STATUSES.has(paymentStatus)
-    );
+    return isRecurringOrderPlanConfirmed(orderPlan);
   }
 
   return false;

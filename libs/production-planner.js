@@ -1,3 +1,5 @@
+import { isRecurringOrderPlanConfirmed } from "@/libs/order-plans";
+
 const BOTTLE_SIZE_ML = 220;
 const MIN_WASTAGE_BUFFER_LITRES = 0.25;
 const EXTRA_BUFFER_TOP_UP_LITRES = 0.5;
@@ -178,6 +180,10 @@ const isProductionRelevantOrderPlan = (plan = {}) => {
 
   if (!status) {
     return false;
+  }
+
+  if (String(plan.mode || "").trim() === "recurring") {
+    return isRecurringOrderPlanConfirmed(plan);
   }
 
   return !["cancelled", "fulfilled"].includes(status);
