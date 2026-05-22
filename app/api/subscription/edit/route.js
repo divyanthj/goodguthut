@@ -18,13 +18,16 @@ import {
   isRazorpayConfigured,
 } from "@/libs/razorpay";
 import {
+  buildSubscriptionBillingDescription,
+  buildSubscriptionBillingNotes,
   canEditSubscriptionBilling,
   getSubscriptionDurationConfig,
 } from "@/libs/subscriptions";
 import {
   formatSubscriptionDate,
   getNextSubscriptionDeliveryDate,
-  parseDateKeyToIstDate,
+  getRecurringBillingStartAt,
+  getRecurringBillingStartDate,
 } from "@/libs/subscription-schedule";
 import { RECURRING_SEASONAL_FULL_PERIOD_ERROR } from "@/libs/recurring-seasonal-policy";
 import Subscription from "@/models/Subscription";
@@ -81,9 +84,6 @@ const resolveSubscriptionFromToken = async (token) => {
   return { subscription };
 };
 
-const buildLineupSummary = (items = []) =>
-  items.map((item) => `${item.productName} x ${item.quantity}`).join(", ");
-
 const buildSubscriptionCheckoutPayload = ({
   subscription,
   razorpaySubscription,
@@ -107,7 +107,7 @@ const buildSubscriptionCheckoutPayload = ({
       amount: Math.round(Number(subscription.total || 0) * 100),
       currency: subscription.currency || "INR",
       name: "Good Gut Hut",
-      description: `Set up recurring auto-pay starting ${formatSubscriptionDate(subscription.firstDeliveryDate)}`,
+      description: `Set up recurring auto-pay for first delivery on ${formatSubscriptionDate(subscription.firstDeliveryDate)}`,
       prefill: {
         name: subscription.name,
         email: subscription.email,
@@ -151,35 +151,39 @@ const syncBillingForSubscription = async (subscription) => {
     subscription.cadence,
     subscription.durationWeeks
   );
+  const billingNotes = buildSubscriptionBillingNotes({
+    recordType: "subscription",
+    recordId: subscription.id,
+    cadence: subscription.cadence,
+    cadenceConfig,
+    firstDeliveryDate: subscription.firstDeliveryDate || subscription.startDate,
+    billingStartDate: getRecurringBillingStartDate({
+      deliveryDate: subscription.firstDeliveryDate || subscription.startDate,
+      deliveryDaysOfWeek: subscription.deliveryDaysOfWeek,
+    }),
+    email: subscription.email,
+  });
+  const billingStartAt = getRecurringBillingStartAt({
+    deliveryDate: subscription.firstDeliveryDate || subscription.startDate,
+    deliveryDaysOfWeek: subscription.deliveryDaysOfWeek,
+  });
   const plan = await createRazorpayPlan({
     period: cadenceConfig.period,
     interval: cadenceConfig.interval,
     amount: Math.round(Number(subscription.total || 0) * 100),
     currency: subscription.currency || "INR",
     name: `Good Gut Hut ${cadenceConfig.label} Subscription`,
-    description:
-      buildLineupSummary(subscription.items) ||
-      `${cadenceConfig.label} fermented drinks subscription for ${cadenceConfig.durationLabel}`,
-    notes: {
-      subscriptionId: subscription.id,
-      cadence: subscription.cadence,
-      durationWeeks: String(subscription.durationWeeks || ""),
-      email: subscription.email,
-    },
+    description: buildSubscriptionBillingDescription({
+      cadenceConfig,
+      items: subscription.items,
+    }),
+    notes: billingNotes,
   });
   const razorpaySubscription = await createRazorpaySubscription({
     planId: plan.id,
     totalCount: cadenceConfig.totalCount,
-    expireBy: Math.floor(Date.now() / 1000) + 24 * 60 * 60,
-    startAt: Math.floor(
-      parseDateKeyToIstDate(subscription.firstDeliveryDate || subscription.startDate).getTime() / 1000
-    ),
-    notes: {
-      subscriptionId: subscription.id,
-      cadence: subscription.cadence,
-      durationWeeks: String(subscription.durationWeeks || ""),
-      email: subscription.email,
-    },
+    startAt: billingStartAt ? Math.floor(billingStartAt.getTime() / 1000) : null,
+    notes: billingNotes,
   });
 
   subscription.billing = {

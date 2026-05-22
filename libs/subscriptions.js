@@ -120,6 +120,40 @@ export const getSubscriptionDurationConfig = (
   };
 };
 
+export const buildSubscriptionBillingDescription = ({
+  cadenceConfig,
+  items = [],
+} = {}) => {
+  const itemSummary = (items || [])
+    .map((item) => `${item.productName} x ${item.quantity}`)
+    .join(", ");
+  const cycleLabel = `${cadenceConfig.label} for ${cadenceConfig.durationLabel} (${cadenceConfig.totalCount} billing cycle${cadenceConfig.totalCount === 1 ? "" : "s"})`;
+
+  return itemSummary
+    ? `${cycleLabel}: ${itemSummary}`
+    : `Good Gut Hut ${cycleLabel}`;
+};
+
+export const buildSubscriptionBillingNotes = ({
+  recordType = "subscription",
+  recordId = "",
+  cadence = "",
+  cadenceConfig,
+  firstDeliveryDate = "",
+  billingStartDate = "",
+  email = "",
+} = {}) => ({
+  [recordType === "order_plan" ? "orderPlanId" : "subscriptionId"]: String(recordId || ""),
+  cadence: String(cadence || ""),
+  cadenceLabel: String(cadenceConfig?.label || ""),
+  durationWeeks: String(cadenceConfig?.durationWeeks || ""),
+  durationLabel: String(cadenceConfig?.durationLabel || ""),
+  totalCount: String(cadenceConfig?.totalCount || ""),
+  firstDeliveryDate: String(firstDeliveryDate || ""),
+  billingStartDate: String(billingStartDate || ""),
+  email: String(email || ""),
+});
+
 export const isMutableBillingStatus = (status = "") =>
   !status || ["created", "cancelled", "completed", "expired"].includes(status);
 

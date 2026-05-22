@@ -5,6 +5,7 @@ import { isAdminEmail } from "@/libs/admin";
 import connectMongo from "@/libs/mongoose";
 import DiscountCode from "@/models/DiscountCode";
 import { normalizeDiscountCodePayload } from "@/libs/discount-codes";
+import { syncCollatoKnowledgeDocument } from "@/libs/collato-knowledge";
 
 const getAdminSession = async () => {
   const session = await getServerSession(authOptions);
@@ -67,6 +68,12 @@ export async function PUT(req, { params }) {
     if (!discountCode) {
       return NextResponse.json({ error: "Discount code not found." }, { status: 404 });
     }
+    await syncCollatoKnowledgeDocument({
+      sourceType: "discount_code",
+      id: discountCode.id,
+      title: `Discount ${discountCode.code}`,
+      data: discountCode,
+    });
 
     return NextResponse.json({ discountCode });
   } catch (e) {

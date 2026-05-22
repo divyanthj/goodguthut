@@ -1842,7 +1842,7 @@ export default function SubscriptionForm({
                   <div className="mt-1 text-xs text-[#6b7d74]">
                     {isOneTimeMode
                       ? `We currently need at least ${formatMinimumLeadDays(minimumLeadDays)} notice, and deliveries go out on ${formatDeliveryDaysOfWeek(deliveryDaysOfWeek)}.`
-                      : `Recurring payment will begin on that date. We currently need at least ${formatMinimumLeadDays(minimumLeadDays)} notice, and deliveries go out on ${formatDeliveryDaysOfWeek(deliveryDaysOfWeek)}.`}
+                      : `We currently need at least ${formatMinimumLeadDays(minimumLeadDays)} notice, and deliveries go out on ${formatDeliveryDaysOfWeek(deliveryDaysOfWeek)}. Recurring billing begins on the previous production day.`}
                   </div>
                   {isRecurringMode &&
                     nextDeliveryDate &&

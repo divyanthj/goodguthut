@@ -8,6 +8,7 @@ export default function AdminNav({ active = "settings" }) {
   const invoicesClass = active === "invoices" ? "btn btn-primary" : "btn btn-ghost";
   const productionClass = active === "production" ? "btn btn-primary" : "btn btn-ghost";
   const routePlannerClass = active === "route-planner" ? "btn btn-primary" : "btn btn-ghost";
+  const knowledgeClass = active === "knowledge" ? "btn btn-primary" : "btn btn-ghost";
 
   return (
     <div className="flex flex-wrap gap-2">
@@ -28,6 +29,9 @@ export default function AdminNav({ active = "settings" }) {
       </Link>
       <Link href="/admin/production" className={productionClass}>
         Production
+      </Link>
+      <Link href="/admin/knowledge" className={knowledgeClass}>
+        Knowledge
       </Link>
       <Link href="/admin/discount-codes" className={discountsClass}>
         Discounts

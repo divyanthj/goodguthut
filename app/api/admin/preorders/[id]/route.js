@@ -8,6 +8,10 @@ import {
   sendPreorderShippedEmail,
 } from "@/libs/shipment-notifications";
 import { createAndSendPreorderInvoice } from "@/libs/invoices";
+import {
+  removeCollatoKnowledgeDocument,
+  syncCollatoKnowledgeDocument,
+} from "@/libs/collato-knowledge";
 
 export async function PATCH(req, { params }) {
   const { session, isAdmin } = await getAdminSessionState();
@@ -75,6 +79,12 @@ export async function PATCH(req, { params }) {
           error: emailError.message || "Could not send shipped email.",
         };
       }
+      await syncCollatoKnowledgeDocument({
+        sourceType: "preorder",
+        id: preorder.id,
+        title: `Preorder ${preorder.orderNumber || preorder.customerName || preorder.id}`,
+        data: preorder,
+      });
 
       return NextResponse.json({
         preorder,
@@ -117,6 +127,20 @@ export async function PATCH(req, { params }) {
 
       if (nextStatus === "fulfilled") {
         const invoiceDelivery = await createAndSendPreorderInvoice({ preorder });
+        await syncCollatoKnowledgeDocument({
+          sourceType: "preorder",
+          id: preorder.id,
+          title: `Preorder ${preorder.orderNumber || preorder.customerName || preorder.id}`,
+          data: preorder,
+        });
+        if (invoiceDelivery.invoice) {
+          await syncCollatoKnowledgeDocument({
+            sourceType: "invoice",
+            id: invoiceDelivery.invoice.id,
+            title: `Invoice ${invoiceDelivery.invoice.invoiceNumber || invoiceDelivery.invoice.id}`,
+            data: invoiceDelivery.invoice,
+          });
+        }
 
         return NextResponse.json({
           preorder,
@@ -128,6 +152,12 @@ export async function PATCH(req, { params }) {
         });
       }
 
+      await syncCollatoKnowledgeDocument({
+        sourceType: "preorder",
+        id: preorder.id,
+        title: `Preorder ${preorder.orderNumber || preorder.customerName || preorder.id}`,
+        data: preorder,
+      });
       return NextResponse.json({ preorder });
     }
 
@@ -158,6 +188,20 @@ export async function PATCH(req, { params }) {
     }
 
     const invoiceDelivery = await createAndSendPreorderInvoice({ preorder });
+    await syncCollatoKnowledgeDocument({
+      sourceType: "preorder",
+      id: preorder.id,
+      title: `Preorder ${preorder.orderNumber || preorder.customerName || preorder.id}`,
+      data: preorder,
+    });
+    if (invoiceDelivery.invoice) {
+      await syncCollatoKnowledgeDocument({
+        sourceType: "invoice",
+        id: invoiceDelivery.invoice.id,
+        title: `Invoice ${invoiceDelivery.invoice.invoiceNumber || invoiceDelivery.invoice.id}`,
+        data: invoiceDelivery.invoice,
+      });
+    }
 
     return NextResponse.json({
       preorder,
@@ -202,6 +246,7 @@ export async function DELETE(_req, { params }) {
         console.error("Failed to refresh preorder delivery route snapshot", routeError);
       }
     }
+    await removeCollatoKnowledgeDocument({ sourceType: "preorder", id: preorder.id });
 
     return NextResponse.json({ success: true });
   } catch (e) {

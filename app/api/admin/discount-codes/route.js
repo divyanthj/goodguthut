@@ -5,6 +5,7 @@ import { isAdminEmail } from "@/libs/admin";
 import connectMongo from "@/libs/mongoose";
 import DiscountCode from "@/models/DiscountCode";
 import { normalizeDiscountCodePayload } from "@/libs/discount-codes";
+import { syncCollatoKnowledgeDocument } from "@/libs/collato-knowledge";
 
 const getAdminSession = async () => {
   const session = await getServerSession(authOptions);
@@ -69,6 +70,12 @@ export async function POST(req) {
     }
 
     const discountCode = await DiscountCode.create(payload);
+    await syncCollatoKnowledgeDocument({
+      sourceType: "discount_code",
+      id: discountCode.id,
+      title: `Discount ${discountCode.code}`,
+      data: discountCode,
+    });
     return NextResponse.json({ discountCode }, { status: 201 });
   } catch (e) {
     console.error(e);

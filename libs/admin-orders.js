@@ -10,6 +10,30 @@ const getLegacyPreorderPaymentBadgeLabel = (preorder = {}) => {
   return "payment: manual";
 };
 
+export const getOrderPlanPaymentBadgeLabel = (plan = {}) => {
+  const status = String(plan.payment?.status || "").trim();
+
+  if (plan.mode === "recurring") {
+    if (status === "created") {
+      return "mandate setup pending";
+    }
+
+    if (status === "authenticated") {
+      return "mandate authenticated";
+    }
+
+    if (status === "active") {
+      return "mandate active";
+    }
+
+    if (status === "not_required") {
+      return "payment not required";
+    }
+  }
+
+  return `payment: ${status || "-"}`;
+};
+
 export const getLegacyPreorderConfirmationLabel = (preorder = {}) => {
   const isPickup = preorder.fulfillmentMethod === "pickup";
 
@@ -80,7 +104,7 @@ export const normalizeAdminOrderFromOrderPlan = (plan = {}) => {
     trackingLink: plan.shipment?.trackingLink || "",
     estimatedArrivalAt: plan.shipment?.estimatedArrivalAt || null,
     payment: plan.payment || {},
-    paymentBadgeLabel: `payment: ${plan.payment?.status || "-"}`,
+    paymentBadgeLabel: getOrderPlanPaymentBadgeLabel(plan),
     mode: plan.mode || "one_time",
     cadence: plan.cadence || "",
     durationWeeks: Number(plan.durationWeeks || 0),

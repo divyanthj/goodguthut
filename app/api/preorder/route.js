@@ -16,6 +16,7 @@ import {
   readJsonBody,
 } from "@/libs/request-protection";
 import { reserveNextOrderNumber } from "@/libs/order-numbers";
+import { syncCollatoKnowledgeDocument } from "@/libs/collato-knowledge";
 
 const isDatabaseUnavailable = (message = "") => {
   return (
@@ -162,6 +163,12 @@ export async function POST(req) {
         console.error("Failed to refresh preorder delivery route snapshot", routeError);
       }
     }
+    await syncCollatoKnowledgeDocument({
+      sourceType: "preorder",
+      id: preorder.id,
+      title: `Preorder ${preorder.orderNumber || preorder.customerName || preorder.id}`,
+      data: preorder,
+    });
 
     return NextResponse.json({
       id: preorder.id,

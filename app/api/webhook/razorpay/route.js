@@ -18,7 +18,6 @@ import {
   fetchRazorpayOrderPayments,
   verifyRazorpayWebhookSignature,
 } from "@/libs/razorpay";
-import { getNextSubscriptionDeliveryDate } from "@/libs/subscription-schedule";
 import { buildSeasonalCutoffMapFromCatalog, getValidRecurringDeliveryCount } from "@/libs/recurring-seasonal-policy";
 
 const getRazorpayOrderIdFromEvent = (event) => {
@@ -126,12 +125,6 @@ const applyRecurringNaturalEnd = ({
 
   planDoc[paymentField].totalCount = effectiveTotalCount;
   planDoc[paymentField].remainingCount = Math.max(0, effectiveTotalCount - paidCount);
-  planDoc.nextDeliveryDate = getNextSubscriptionDeliveryDate({
-    startDate: planDoc.firstDeliveryDate || planDoc.startDate,
-    cadence: planDoc.cadence,
-    paidCount,
-    totalCount: effectiveTotalCount,
-  });
 
   return {
     shouldCancelNow:
@@ -213,24 +206,26 @@ export async function POST(req) {
             event.event === "subscription.expired" ? new Date() : orderPlan.payment?.expiredAt || null,
         };
 
-        orderPlan.nextDeliveryDate = getNextSubscriptionDeliveryDate({
-          startDate: orderPlan.firstDeliveryDate || orderPlan.startDate,
-          cadence: orderPlan.cadence,
-          paidCount: orderPlan.payment?.paidCount || 0,
-          totalCount: orderPlan.payment?.totalCount || 0,
-        });
+        if (!orderPlan.nextDeliveryDate && orderPlan.firstDeliveryDate) {
+          orderPlan.nextDeliveryDate = orderPlan.firstDeliveryDate;
+        }
 
         if (event.event === "subscription.cancelled") {
           orderPlan.payment.shortUrl = "";
           orderPlan.status = "cancelled";
         }
 
-        if (event.event === "subscription.completed" || event.event === "subscription.expired") {
+        if (event.event === "subscription.expired") {
           orderPlan.payment.shortUrl = "";
           orderPlan.status = "cancelled";
         }
 
-        if (event.event === "subscription.activated" || event.event === "subscription.charged") {
+        if (
+          event.event === "subscription.activated" ||
+          event.event === "subscription.charged" ||
+          event.event === "subscription.completed"
+        ) {
+          orderPlan.payment.shortUrl = "";
           orderPlan.status = orderPlan.status === "cancelled" ? orderPlan.status : "active";
         }
 
@@ -317,24 +312,26 @@ export async function POST(req) {
           expiredAt:
             event.event === "subscription.expired" ? new Date() : subscription.billing?.expiredAt || null,
         };
-        subscription.nextDeliveryDate = getNextSubscriptionDeliveryDate({
-          startDate: subscription.firstDeliveryDate || subscription.startDate,
-          cadence: subscription.cadence,
-          paidCount: subscription.billing?.paidCount || 0,
-          totalCount: subscription.billing?.totalCount || 0,
-        });
+        if (!subscription.nextDeliveryDate && subscription.firstDeliveryDate) {
+          subscription.nextDeliveryDate = subscription.firstDeliveryDate;
+        }
 
         if (event.event === "subscription.cancelled") {
           subscription.billing.shortUrl = "";
           subscription.status = "cancelled";
         }
 
-        if (event.event === "subscription.completed" || event.event === "subscription.expired") {
+        if (event.event === "subscription.expired") {
           subscription.billing.shortUrl = "";
           subscription.status = "cancelled";
         }
 
-        if (event.event === "subscription.activated" || event.event === "subscription.charged") {
+        if (
+          event.event === "subscription.activated" ||
+          event.event === "subscription.charged" ||
+          event.event === "subscription.completed"
+        ) {
+          subscription.billing.shortUrl = "";
           subscription.status = subscription.status === "cancelled" ? subscription.status : "active";
         }
 

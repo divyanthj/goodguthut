@@ -10,6 +10,7 @@ import {
   sanitizeRecurringMinTotalQuantity,
 } from "@/libs/subscription-settings";
 import { recalculateSubscriptionRouteSnapshots } from "@/libs/subscription-route-planner";
+import { syncCollatoKnowledgeDocument } from "@/libs/collato-knowledge";
 
 const getAdminSession = async () => {
   const session = await getServerSession(authOptions);
@@ -58,6 +59,12 @@ export async function PUT(req) {
     await settings.save();
     await recalculateSubscriptionRouteSnapshots();
     const refreshedSettings = await getSubscriptionSettings();
+    await syncCollatoKnowledgeDocument({
+      sourceType: "subscription_settings",
+      id: refreshedSettings.id,
+      title: "Subscription settings",
+      data: refreshedSettings,
+    });
 
     return NextResponse.json({ settings: refreshedSettings });
   } catch (error) {

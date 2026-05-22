@@ -4,6 +4,7 @@ import { getAdminSessionState } from "@/libs/admin-auth";
 import {
   assertValidOrderPlanStatus,
   getOrderPlanDisplayStatus,
+  isRecurringOrderPlanPaymentConfirmed,
   normalizeOneTimeOrderPlanStatus,
 } from "@/libs/order-plans";
 import { recalculateSubscriptionRouteSnapshots } from "@/libs/subscription-route-planner";
@@ -11,6 +12,10 @@ import { createAndSendOrderPlanInvoice } from "@/libs/invoices";
 import { sendOrderPlanShippedEmail } from "@/libs/shipment-notifications";
 import { listPlannedSubscriptionDeliveryDates } from "@/libs/subscription-schedule";
 import OrderPlan from "@/models/OrderPlan";
+import {
+  removeCollatoKnowledgeDocument,
+  syncCollatoKnowledgeDocument,
+} from "@/libs/collato-knowledge";
 
 const ensureAdmin = async () => {
   const { session, isAdmin } = await getAdminSessionState();
@@ -59,14 +64,12 @@ const getNextRecurringDeliveryDateAfterCurrent = (orderPlan) => {
 
 const isRecurringDeliveryActionAllowed = (orderPlan, allowedStatuses = []) => {
   const status = String(orderPlan.status || "").trim();
-  const paymentStatus = String(orderPlan.payment?.status || "").trim();
   const blockedStatuses = new Set(["cancelled", "failed", "fulfilled", "paused"]);
-  const blockedPaymentStatuses = new Set(["cancelled", "completed", "expired", "failed"]);
 
   return (
     allowedStatuses.includes(status) &&
     !blockedStatuses.has(status) &&
-    !blockedPaymentStatuses.has(paymentStatus)
+    isRecurringOrderPlanPaymentConfirmed(orderPlan.payment)
   );
 };
 
@@ -211,6 +214,20 @@ export async function PATCH(req, { params }) {
         orderPlan,
         deliveryDate: invoiceDeliveryDate,
       });
+      await syncCollatoKnowledgeDocument({
+        sourceType: "order_plan",
+        id: orderPlan.id,
+        title: `Order plan ${orderPlan.orderNumber || orderPlan.name || orderPlan.id}`,
+        data: orderPlan,
+      });
+      if (invoiceDelivery.invoice) {
+        await syncCollatoKnowledgeDocument({
+          sourceType: "invoice",
+          id: invoiceDelivery.invoice.id,
+          title: `Invoice ${invoiceDelivery.invoice.invoiceNumber || invoiceDelivery.invoice.id}`,
+          data: invoiceDelivery.invoice,
+        });
+      }
 
       return NextResponse.json({
         orderPlan: JSON.parse(JSON.stringify(orderPlan)),
@@ -222,6 +239,12 @@ export async function PATCH(req, { params }) {
       });
     }
 
+    await syncCollatoKnowledgeDocument({
+      sourceType: "order_plan",
+      id: orderPlan.id,
+      title: `Order plan ${orderPlan.orderNumber || orderPlan.name || orderPlan.id}`,
+      data: orderPlan,
+    });
     return NextResponse.json({
       orderPlan: JSON.parse(JSON.stringify(orderPlan)),
       ...(emailDelivery ? { emailDelivery } : {}),
@@ -253,6 +276,7 @@ export async function DELETE(_req, { params }) {
     }
 
     await refreshRouteSnapshots();
+    await removeCollatoKnowledgeDocument({ sourceType: "order_plan", id: orderPlan.id });
 
     return NextResponse.json({ ok: true });
   } catch (error) {

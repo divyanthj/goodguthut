@@ -5,6 +5,10 @@ import { isAdminEmail } from "@/libs/admin";
 import connectMongo from "@/libs/mongoose";
 import Sku from "@/models/Sku";
 import SubscriptionCombo from "@/models/SubscriptionCombo";
+import {
+  removeCollatoKnowledgeDocument,
+  syncCollatoKnowledgeDocument,
+} from "@/libs/collato-knowledge";
 
 const normalizeRecurringCutoffDate = (value = "") => {
   const normalized = String(value || "").trim();
@@ -86,6 +90,12 @@ export async function PUT(req, { params }) {
     if (!sku) {
       return NextResponse.json({ error: "SKU not found." }, { status: 404 });
     }
+    await syncCollatoKnowledgeDocument({
+      sourceType: "sku",
+      id: sku.id,
+      title: `SKU ${sku.sku || sku.name}`,
+      data: sku,
+    });
 
     return NextResponse.json({ sku });
   } catch (e) {
@@ -124,6 +134,7 @@ export async function DELETE(_req, { params }) {
     }
 
     await Sku.findByIdAndDelete(params.id);
+    await removeCollatoKnowledgeDocument({ sourceType: "sku", id: sku.id });
 
     return NextResponse.json({ success: true });
   } catch (deleteError) {

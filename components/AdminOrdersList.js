@@ -5,6 +5,8 @@ import {
   normalizeAdminOrderFromLegacyPreorder,
   normalizeAdminOrderFromOrderPlan,
 } from "@/libs/admin-orders";
+import { isRecurringOrderPlanPaymentConfirmed } from "@/libs/order-plans";
+import { getRazorpayArtifactRows } from "@/libs/razorpay-dashboard-links";
 import { formatSubscriptionCadence, formatSubscriptionDuration } from "@/libs/subscriptions";
 import { formatSubscriptionDate } from "@/libs/subscription-schedule";
 
@@ -225,6 +227,39 @@ const buildFallbackShippedWhatsAppMessage = (order = {}) => {
       : "";
 
   return `Your Good Gut Hut order has been shipped. Items: ${orderDetails}.${trackingText}`;
+};
+
+const renderRazorpayArtifacts = (payment = {}) => {
+  const rows = getRazorpayArtifactRows(payment);
+
+  if (rows.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="rounded-xl bg-base-200 p-4 text-sm">
+      <div className="text-xs uppercase tracking-[0.16em] opacity-60">Razorpay</div>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        {rows.map((row) => (
+          <div key={`${row.label}-${row.value}`} className="min-w-0">
+            <div className="text-xs opacity-60">{row.label}</div>
+            {row.url ? (
+              <a
+                className="link link-primary mt-1 block break-all font-mono text-xs"
+                href={row.url}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {row.value}
+              </a>
+            ) : (
+              <div className="mt-1 break-all font-mono text-xs">{row.value}</div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 };
 
 export default function AdminOrdersList({ initialOrders = [] }) {
@@ -621,9 +656,7 @@ export default function AdminOrdersList({ initialOrders = [] }) {
     const isPickup = order.fulfillmentMethod === "pickup";
     const canManageRecurringDelivery =
       isRecurringOrderPlan &&
-      !["cancelled", "completed", "expired", "failed"].includes(
-        String(order.payment?.status || "").trim()
-      );
+      isRecurringOrderPlanPaymentConfirmed(order.payment);
     const canConfirmLegacy =
       isLegacy &&
       order.status === "pending" &&
@@ -801,6 +834,7 @@ export default function AdminOrdersList({ initialOrders = [] }) {
                 </div>
               </div>
             </div>
+            {renderRazorpayArtifacts(order.payment)}
           </div>
         </div>
 

@@ -11,6 +11,7 @@ import {
   verifyRazorpayPaymentSignature,
 } from "@/libs/razorpay";
 import Preorder from "@/models/Preorder";
+import { syncCollatoKnowledgeDocument } from "@/libs/collato-knowledge";
 
 export async function POST(_req, { params }) {
   try {
@@ -51,6 +52,12 @@ export async function POST(_req, { params }) {
       orderId: razorpayOrder.id,
     };
     await preorder.save();
+    await syncCollatoKnowledgeDocument({
+      sourceType: "preorder",
+      id: preorder.id,
+      title: `Preorder ${preorder.orderNumber || preorder.customerName || preorder.id}`,
+      data: preorder,
+    });
 
     return NextResponse.json({
       preorderId: preorder.id,
@@ -172,6 +179,12 @@ export async function PATCH(req, { params }) {
         }
       }
     }
+    await syncCollatoKnowledgeDocument({
+      sourceType: "preorder",
+      id: preorder.id,
+      title: `Preorder ${preorder.orderNumber || preorder.customerName || preorder.id}`,
+      data: preorder,
+    });
 
     return NextResponse.json({
       preorder,

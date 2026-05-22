@@ -235,6 +235,62 @@ export const getNextSubscriptionDeliveryDate = ({
   return addDaysToDateKey(startDate, normalizedPaidCount * cycleDays);
 };
 
+export const getPreviousConfiguredDeliveryDate = ({
+  deliveryDate = "",
+  deliveryDaysOfWeek = [],
+}) => {
+  const allowedDays = sanitizeDeliveryDaysOfWeek(deliveryDaysOfWeek);
+
+  if (!deliveryDate || allowedDays.length === 0) {
+    return "";
+  }
+
+  for (let daysBack = 1; daysBack <= 7; daysBack += 1) {
+    const candidate = addDaysToDateKey(deliveryDate, -daysBack);
+
+    if (!candidate) {
+      continue;
+    }
+
+    if (allowedDays.includes(getWeekdayValueForDateKey(candidate))) {
+      return candidate;
+    }
+  }
+
+  return "";
+};
+
+export const getRecurringBillingStartDate = ({
+  deliveryDate = "",
+  deliveryDaysOfWeek = [],
+}) =>
+  getPreviousConfiguredDeliveryDate({
+    deliveryDate,
+    deliveryDaysOfWeek,
+  }) || deliveryDate;
+
+export const getRecurringBillingStartAt = ({
+  deliveryDate = "",
+  deliveryDaysOfWeek = [],
+  now = new Date(),
+}) => {
+  const billingDate = getRecurringBillingStartDate({
+    deliveryDate,
+    deliveryDaysOfWeek,
+  });
+  const scheduledAt = parseDateKeyToIstDate(billingDate);
+
+  if (!scheduledAt) {
+    return null;
+  }
+
+  if (scheduledAt.getTime() <= new Date(now).getTime()) {
+    return null;
+  }
+
+  return scheduledAt;
+};
+
 export const listPlannedSubscriptionDeliveryDates = ({
   startDate = "",
   cadence = "",

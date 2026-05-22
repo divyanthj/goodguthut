@@ -379,7 +379,10 @@ const getProjectedSubscriptionEvents = ({
     const amount = normalizeAmount(billing.amount, subscription.total);
     const paidCount = Math.max(0, Number(billing.paidCount || 0));
     const totalCount = Math.max(0, Number(billing.totalCount || 0));
-    const startDate = String(subscription.startDate || "").trim();
+    const billingStartDate = billing.startAt
+      ? formatDateKey(createUtcDateFromParts(formatPartsInIndia(billing.startAt)))
+      : "";
+    const startDate = String(billingStartDate || subscription.startDate || "").trim();
     const cycleDays = getSubscriptionCycleDays(subscription.cadence);
 
     if (

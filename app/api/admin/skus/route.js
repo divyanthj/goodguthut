@@ -5,6 +5,7 @@ import { isAdminEmail } from "@/libs/admin";
 import connectMongo from "@/libs/mongoose";
 import Sku from "@/models/Sku";
 import { listSkuCatalog } from "@/libs/sku-catalog";
+import { syncCollatoKnowledgeDocument } from "@/libs/collato-knowledge";
 
 const normalizeRecurringCutoffDate = (value = "") => {
   const normalized = String(value || "").trim();
@@ -81,6 +82,12 @@ export async function POST(req) {
     }
 
     const sku = await Sku.create(payload);
+    await syncCollatoKnowledgeDocument({
+      sourceType: "sku",
+      id: sku.id,
+      title: `SKU ${sku.sku || sku.name}`,
+      data: sku,
+    });
     return NextResponse.json({ sku }, { status: 201 });
   } catch (e) {
     console.error(e);

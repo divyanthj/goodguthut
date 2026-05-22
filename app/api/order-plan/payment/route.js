@@ -16,9 +16,10 @@ import {
   verifyRazorpaySubscriptionSignature,
   verifySignedCheckoutToken,
 } from "@/libs/razorpay";
-import { formatSubscriptionDate, getNextSubscriptionDeliveryDate } from "@/libs/subscription-schedule";
+import { formatSubscriptionDate } from "@/libs/subscription-schedule";
 import { buildSeasonalCutoffMapFromCatalog, getValidRecurringDeliveryCount } from "@/libs/recurring-seasonal-policy";
 import OrderPlan from "@/models/OrderPlan";
+import { syncCollatoKnowledgeDocument } from "@/libs/collato-knowledge";
 
 const sanitizeOrderPlan = (orderPlan) => JSON.parse(JSON.stringify(orderPlan));
 
@@ -124,14 +125,11 @@ const syncRecurringOrderPlanPayment = async ({
     effectiveTotalCount - Math.max(0, Number(orderPlan.payment?.paidCount || 0))
   );
 
-  orderPlan.nextDeliveryDate = getNextSubscriptionDeliveryDate({
-    startDate: orderPlan.firstDeliveryDate || orderPlan.startDate,
-    cadence: orderPlan.cadence,
-    paidCount: orderPlan.payment?.paidCount || 0,
-    totalCount: effectiveTotalCount,
-  });
+  if (!orderPlan.nextDeliveryDate && orderPlan.firstDeliveryDate) {
+    orderPlan.nextDeliveryDate = orderPlan.firstDeliveryDate;
+  }
 
-  if (["authenticated", "active"].includes(effectiveStatus)) {
+  if (["authenticated", "active", "completed"].includes(effectiveStatus)) {
     orderPlan.status = orderPlan.status === "cancelled" ? "cancelled" : "active";
   }
 };
@@ -245,6 +243,12 @@ export async function PATCH(req) {
           console.error("Failed to send admin order plan confirmation email", notificationError);
         }
       }
+      await syncCollatoKnowledgeDocument({
+        sourceType: "order_plan",
+        id: orderPlan.id,
+        title: `Order plan ${orderPlan.orderNumber || orderPlan.name || orderPlan.id}`,
+        data: orderPlan,
+      });
 
       return NextResponse.json({
         orderPlan: sanitizeOrderPlan(orderPlan),
@@ -347,6 +351,12 @@ export async function PATCH(req) {
         console.error("Failed to send admin order plan confirmation email", notificationError);
       }
     }
+    await syncCollatoKnowledgeDocument({
+      sourceType: "order_plan",
+      id: orderPlan.id,
+      title: `Order plan ${orderPlan.orderNumber || orderPlan.name || orderPlan.id}`,
+      data: orderPlan,
+    });
 
     return NextResponse.json({
       orderPlan: sanitizeOrderPlan(orderPlan),

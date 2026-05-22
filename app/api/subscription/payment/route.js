@@ -14,9 +14,9 @@ import {
 import { recalculateSubscriptionRouteSnapshots } from "@/libs/subscription-route-planner";
 import {
   formatSubscriptionDate,
-  getNextSubscriptionDeliveryDate,
 } from "@/libs/subscription-schedule";
 import { buildSeasonalCutoffMapFromCatalog, getValidRecurringDeliveryCount } from "@/libs/recurring-seasonal-policy";
+import { syncCollatoKnowledgeDocument } from "@/libs/collato-knowledge";
 
 const sanitizeSubscription = (subscription) => ({
   id: subscription.id,
@@ -139,14 +139,11 @@ const syncSubscriptionBilling = async ({
     effectiveTotalCount - Math.max(0, Number(subscription.billing?.paidCount || 0))
   );
 
-  subscription.nextDeliveryDate = getNextSubscriptionDeliveryDate({
-    startDate: subscription.firstDeliveryDate || subscription.startDate,
-    cadence: subscription.cadence,
-    paidCount: subscription.billing?.paidCount || 0,
-    totalCount: effectiveTotalCount,
-  });
+  if (!subscription.nextDeliveryDate && subscription.firstDeliveryDate) {
+    subscription.nextDeliveryDate = subscription.firstDeliveryDate;
+  }
 
-  if (["authenticated", "active"].includes(effectiveStatus)) {
+  if (["authenticated", "active", "completed"].includes(effectiveStatus)) {
     subscription.status = subscription.status === "cancelled" ? "cancelled" : "active";
   }
 };
@@ -255,6 +252,12 @@ export async function PATCH(req) {
     } catch (routeError) {
       console.error("Failed to refresh subscription delivery route snapshots", routeError);
     }
+    await syncCollatoKnowledgeDocument({
+      sourceType: "subscription",
+      id: subscription.id,
+      title: `Subscription ${subscription.name || subscription.email || subscription.id}`,
+      data: subscription,
+    });
 
     return NextResponse.json({
       subscription: sanitizeSubscription(subscription),

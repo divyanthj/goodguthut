@@ -20,15 +20,18 @@ import {
 import {
   formatSubscriptionDate,
   getNextSubscriptionDeliveryDate,
-  parseDateKeyToIstDate,
+  getRecurringBillingStartAt,
+  getRecurringBillingStartDate,
 } from "@/libs/subscription-schedule";
-import { getSubscriptionDurationConfig } from "@/libs/subscriptions";
+import {
+  buildSubscriptionBillingDescription,
+  buildSubscriptionBillingNotes,
+  getSubscriptionDurationConfig,
+} from "@/libs/subscriptions";
 import { reserveNextOrderNumber } from "@/libs/order-numbers";
 import { RECURRING_SEASONAL_FULL_PERIOD_ERROR } from "@/libs/recurring-seasonal-policy";
 import OrderPlan from "@/models/OrderPlan";
-
-const buildLineupSummary = (items = []) =>
-  items.map((item) => `${item.productName} x ${item.quantity}`).join(", ");
+import { syncCollatoKnowledgeDocument } from "@/libs/collato-knowledge";
 
 const serializeOrderPlan = (orderPlan) => JSON.parse(JSON.stringify(orderPlan));
 const isManualOrderWithoutPaymentEnabled =
@@ -93,7 +96,7 @@ const buildOrderPlanCheckoutPayload = ({ orderPlan, mode, razorpayOrder, razorpa
         amount: Math.round(Number(orderPlan.total || 0) * 100),
         currency: orderPlan.currency || "INR",
         name: "Good Gut Hut",
-        description: `Set up recurring auto-pay starting ${formatSubscriptionDate(orderPlan.firstDeliveryDate)}`,
+        description: `Set up recurring auto-pay for first delivery on ${formatSubscriptionDate(orderPlan.firstDeliveryDate)}`,
         prefill: {
           name: orderPlan.name,
           email: orderPlan.email,
@@ -226,36 +229,39 @@ export async function POST(req) {
           orderPlan.cadence,
           orderPlan.durationWeeks
         );
-        const lineupSummary = buildLineupSummary(orderPlan.items);
+        const billingNotes = buildSubscriptionBillingNotes({
+          recordType: "order_plan",
+          recordId: orderPlan.id,
+          cadence: orderPlan.cadence,
+          cadenceConfig,
+          firstDeliveryDate: orderPlan.firstDeliveryDate || orderPlan.startDate,
+          billingStartDate: getRecurringBillingStartDate({
+            deliveryDate: orderPlan.firstDeliveryDate || orderPlan.startDate,
+            deliveryDaysOfWeek: orderPlan.deliveryDaysOfWeek,
+          }),
+          email: orderPlan.email,
+        });
+        const billingStartAt = getRecurringBillingStartAt({
+          deliveryDate: orderPlan.firstDeliveryDate || orderPlan.startDate,
+          deliveryDaysOfWeek: orderPlan.deliveryDaysOfWeek,
+        });
         const plan = await createRazorpayPlan({
           period: cadenceConfig.period,
           interval: cadenceConfig.interval,
           amount: Math.round(Number(orderPlan.total || 0) * 100),
           currency: orderPlan.currency || "INR",
           name: `Good Gut Hut ${cadenceConfig.label} Subscription`,
-          description:
-            lineupSummary ||
-            `${cadenceConfig.label} fermented drinks subscription for ${cadenceConfig.durationLabel}`,
-          notes: {
-            orderPlanId: orderPlan.id,
-            cadence: orderPlan.cadence,
-            durationWeeks: String(orderPlan.durationWeeks || ""),
-            email: orderPlan.email,
-          },
+          description: buildSubscriptionBillingDescription({
+            cadenceConfig,
+            items: orderPlan.items,
+          }),
+          notes: billingNotes,
         });
         const razorpaySubscription = await createRazorpaySubscription({
           planId: plan.id,
           totalCount: cadenceConfig.totalCount,
-          expireBy: Math.floor(Date.now() / 1000) + 24 * 60 * 60,
-          startAt: Math.floor(
-            parseDateKeyToIstDate(orderPlan.firstDeliveryDate || orderPlan.startDate).getTime() / 1000
-          ),
-          notes: {
-            orderPlanId: orderPlan.id,
-            cadence: orderPlan.cadence,
-            durationWeeks: String(orderPlan.durationWeeks || ""),
-            email: orderPlan.email,
-          },
+          startAt: billingStartAt ? Math.floor(billingStartAt.getTime() / 1000) : null,
+          notes: billingNotes,
         });
 
         orderPlan.payment = {
@@ -316,6 +322,12 @@ export async function POST(req) {
         console.error("Failed to send order plan confirmation email", notificationError);
       }
     }
+    await syncCollatoKnowledgeDocument({
+      sourceType: "order_plan",
+      id: orderPlan.id,
+      title: `Order plan ${orderPlan.orderNumber || orderPlan.name || orderPlan.id}`,
+      data: orderPlan,
+    });
 
     return NextResponse.json({
       id: orderPlan.id,

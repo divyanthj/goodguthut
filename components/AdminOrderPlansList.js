@@ -1,7 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { getOrderPlanPaymentBadgeLabel } from "@/libs/admin-orders";
 import { getOrderPlanDisplayStatus } from "@/libs/order-plans";
+import { getRazorpayArtifactRows } from "@/libs/razorpay-dashboard-links";
 import { formatSubscriptionCadence, formatSubscriptionDuration } from "@/libs/subscriptions";
 import { formatSubscriptionDate } from "@/libs/subscription-schedule";
 
@@ -51,6 +53,39 @@ const getSelectionSummary = (plan = {}) => {
   }
 
   return "Custom lineup";
+};
+
+const renderRazorpayArtifacts = (payment = {}) => {
+  const rows = getRazorpayArtifactRows(payment);
+
+  if (rows.length === 0) {
+    return null;
+  }
+
+  return (
+    <div>
+      <div className="opacity-70">Razorpay</div>
+      <div className="mt-1 grid gap-2">
+        {rows.map((row) => (
+          <div key={`${row.label}-${row.value}`} className="min-w-0">
+            <div className="text-xs opacity-60">{row.label}</div>
+            {row.url ? (
+              <a
+                className="link link-primary block break-all font-mono text-xs"
+                href={row.url}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {row.value}
+              </a>
+            ) : (
+              <div className="break-all font-mono text-xs">{row.value}</div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 };
 
 export default function AdminOrderPlansList({ initialOrderPlans = [] }) {
@@ -216,7 +251,7 @@ export default function AdminOrderPlansList({ initialOrderPlans = [] }) {
               <div className="flex flex-wrap items-center gap-2">
                 <div className="badge badge-outline">{modeLabel(plan.mode)}</div>
                 <div className="badge badge-outline">{plan.status}</div>
-                <div className="badge badge-outline">payment: {plan.payment?.status || "-"}</div>
+                <div className="badge badge-outline">{getOrderPlanPaymentBadgeLabel(plan)}</div>
                 {isOneTime ? (
                   <div className="badge badge-outline">qty {plan.totalQuantity || 0}</div>
                 ) : (
@@ -350,6 +385,7 @@ export default function AdminOrderPlansList({ initialOrderPlans = [] }) {
                         </div>
                       </div>
                     </div>
+                    {renderRazorpayArtifacts(plan.payment)}
                   </div>
                 </div>
 
@@ -437,6 +473,7 @@ export default function AdminOrderPlansList({ initialOrderPlans = [] }) {
                   <div className="opacity-70">Selection</div>
                   <div className="mt-1">{getSelectionSummary(plan)}</div>
                 </div>
+                {renderRazorpayArtifacts(plan.payment)}
               </div>
             )}
           </article>
@@ -483,7 +520,7 @@ export default function AdminOrderPlansList({ initialOrderPlans = [] }) {
                     <div className="flex flex-wrap items-center gap-2">
                       <div className="badge badge-outline">{modeLabel(plan.mode)}</div>
                       <div className="badge badge-outline">{plan.status}</div>
-                      <div className="badge badge-outline">payment: {plan.payment?.status || "-"}</div>
+                      <div className="badge badge-outline">{getOrderPlanPaymentBadgeLabel(plan)}</div>
                       {isOneTime ? (
                         <div className="badge badge-outline">qty {plan.totalQuantity || 0}</div>
                       ) : (
@@ -617,6 +654,7 @@ export default function AdminOrderPlansList({ initialOrderPlans = [] }) {
                               </div>
                             </div>
                           </div>
+                          {renderRazorpayArtifacts(plan.payment)}
                         </div>
                       </div>
 
@@ -704,6 +742,7 @@ export default function AdminOrderPlansList({ initialOrderPlans = [] }) {
                         <div className="opacity-70">Selection</div>
                         <div className="mt-1">{getSelectionSummary(plan)}</div>
                       </div>
+                      {renderRazorpayArtifacts(plan.payment)}
                     </div>
                   )}
                 </article>

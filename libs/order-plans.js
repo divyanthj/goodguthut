@@ -28,8 +28,9 @@ export const ORDER_PLAN_STATUSES = Array.from(
 export const RECURRING_ORDER_PLAN_CONFIRMED_PAYMENT_STATUSES = new Set([
   "authenticated",
   "active",
-  "pending",
-  "created",
+  "completed",
+  "paid",
+  "not_required",
 ]);
 
 export const RECURRING_ORDER_PLAN_BLOCKED_STATUSES = new Set([
@@ -40,11 +41,18 @@ export const RECURRING_ORDER_PLAN_BLOCKED_STATUSES = new Set([
 ]);
 
 export const RECURRING_ORDER_PLAN_BLOCKED_PAYMENT_STATUSES = new Set([
+  "created",
+  "pending",
+  "order_created",
   "cancelled",
-  "completed",
   "expired",
   "failed",
 ]);
+
+export const isRecurringOrderPlanPaymentConfirmed = (payment = {}) =>
+  RECURRING_ORDER_PLAN_CONFIRMED_PAYMENT_STATUSES.has(
+    String(payment?.status || "").trim()
+  );
 
 export const normalizeOneTimeOrderPlanStatus = (status = "") => {
   const trimmed = String(status || "").trim();
@@ -71,9 +79,8 @@ export const isRecurringOrderPlanConfirmed = (orderPlan = {}) => {
   }
 
   return (
-    status === "active" ||
-    status === "shipped" ||
-    RECURRING_ORDER_PLAN_CONFIRMED_PAYMENT_STATUSES.has(paymentStatus)
+    ["active", "shipped"].includes(status) &&
+    isRecurringOrderPlanPaymentConfirmed({ status: paymentStatus })
   );
 };
 

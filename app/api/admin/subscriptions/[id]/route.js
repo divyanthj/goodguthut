@@ -9,6 +9,10 @@ import {
   pauseRazorpaySubscription,
   resumeRazorpaySubscription,
 } from "@/libs/razorpay";
+import {
+  removeCollatoKnowledgeDocument,
+  syncCollatoKnowledgeDocument,
+} from "@/libs/collato-knowledge";
 
 const sanitizeSubscription = (subscription) =>
   JSON.parse(JSON.stringify(subscription));
@@ -87,6 +91,12 @@ export async function PATCH(req, { params }) {
 
     await subscription.save();
     await recalculateSubscriptionRouteSnapshots();
+    await syncCollatoKnowledgeDocument({
+      sourceType: "subscription",
+      id: subscription.id,
+      title: `Subscription ${subscription.name || subscription.email || subscription.id}`,
+      data: subscription,
+    });
 
     return NextResponse.json({ subscription: sanitizeSubscription(subscription) });
   } catch (error) {
@@ -128,6 +138,10 @@ export async function DELETE(_req, { params }) {
 
     await Subscription.findByIdAndDelete(params.id);
     await recalculateSubscriptionRouteSnapshots();
+    await removeCollatoKnowledgeDocument({
+      sourceType: "subscription",
+      id: subscription.id,
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {

@@ -10,6 +10,7 @@ import {
   serializeRecipeFormula,
   validateRecipeFormulaPayload,
 } from "@/libs/recipe-formulas";
+import { syncCollatoKnowledgeDocument } from "@/libs/collato-knowledge";
 
 const getAdminSession = async () => {
   const session = await getServerSession(authOptions);
@@ -63,6 +64,12 @@ export async function POST(req) {
       version,
       status: "draft",
       sourceType: "manual",
+    });
+    await syncCollatoKnowledgeDocument({
+      sourceType: "recipe",
+      id: recipe.id,
+      title: `Recipe ${recipe.skuName || recipe.sku} v${recipe.version}`,
+      data: recipe,
     });
 
     return NextResponse.json({ recipe: serializeRecipeFormula(recipe) }, { status: 201 });
