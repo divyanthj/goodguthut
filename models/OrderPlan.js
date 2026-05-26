@@ -81,6 +81,11 @@ const orderPlanPaymentSchema = mongoose.Schema(
       trim: true,
       default: "",
     },
+    paymentLinkId: {
+      type: String,
+      trim: true,
+      default: "",
+    },
     signature: {
       type: String,
       trim: true,

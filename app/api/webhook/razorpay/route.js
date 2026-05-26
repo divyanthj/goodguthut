@@ -24,6 +24,11 @@ const getRazorpayOrderIdFromEvent = (event) => {
   return event?.payload?.payment?.entity?.order_id || event?.payload?.order?.entity?.id || "";
 };
 
+const getRazorpayPaymentLinkIdFromEvent = (event) =>
+  event?.payload?.payment_link?.entity?.id ||
+  event?.payload?.payment?.entity?.notes?.paymentLinkId ||
+  "";
+
 const getRazorpaySubscriptionIdFromEvent = (event) =>
   event?.payload?.subscription?.entity?.id ||
   event?.payload?.payment?.entity?.subscription_id ||
@@ -247,6 +252,7 @@ export async function POST(req) {
     );
     const razorpaySubscriptionId = getRazorpaySubscriptionIdFromEvent(event);
     const razorpayOrderId = getRazorpayOrderIdFromEvent(event);
+    const razorpayPaymentLinkId = getRazorpayPaymentLinkIdFromEvent(event);
 
     if (razorpaySubscriptionId) {
       const orderPlan = await OrderPlan.findOne({
@@ -470,6 +476,122 @@ export async function POST(req) {
         await subscription.save();
 
         await refreshRouteSnapshots();
+      }
+    }
+
+    if (razorpayPaymentLinkId && event.event === "payment_link.paid") {
+      const paymentEntity = event?.payload?.payment?.entity || {};
+      const paymentLinkEntity = event?.payload?.payment_link?.entity || {};
+      const orderPlan = await OrderPlan.findOne({
+        "payment.paymentLinkId": razorpayPaymentLinkId,
+      });
+
+      if (orderPlan) {
+        const shouldSendConfirmationEmail = !orderPlan.notifications?.confirmationEmailSentAt;
+        const shouldSendAdminOrderEmail = !orderPlan.notifications?.adminOrderEmailSentAt;
+
+        applyCapturedOrderPlanPayment({
+          orderPlan,
+          payment: {
+            ...paymentEntity,
+            amount: paymentEntity.amount || paymentLinkEntity.amount,
+            currency: paymentEntity.currency || paymentLinkEntity.currency,
+          },
+          orderEntity: null,
+          signature,
+          eventName: event.event,
+        });
+        orderPlan.payment.paymentLinkId = razorpayPaymentLinkId;
+        orderPlan.payment.shortUrl = "";
+        await orderPlan.save();
+        await refreshRouteSnapshots();
+
+        if (shouldSendConfirmationEmail) {
+          try {
+            await sendOrderPlanConfirmationEmail({ orderPlan });
+            orderPlan.notifications = {
+              ...(orderPlan.notifications?.toObject?.() || orderPlan.notifications || {}),
+              confirmationEmailSentAt: new Date(),
+            };
+            await orderPlan.save();
+          } catch (notificationError) {
+            console.error("Failed to send order plan confirmation email", notificationError);
+          }
+        }
+
+        if (shouldSendAdminOrderEmail) {
+          try {
+            await sendAdminOrderPlanConfirmedEmail({ orderPlan });
+            orderPlan.notifications = {
+              ...(orderPlan.notifications?.toObject?.() || orderPlan.notifications || {}),
+              adminOrderEmailSentAt: new Date(),
+            };
+            await orderPlan.save();
+          } catch (notificationError) {
+            console.error("Failed to send admin order plan confirmation email", notificationError);
+          }
+        }
+
+        return NextResponse.json({ ok: true });
+      }
+
+      const preorder = await Preorder.findOne({
+        "payment.paymentLinkId": razorpayPaymentLinkId,
+      });
+
+      if (preorder) {
+        const shouldSendConfirmationNotifications =
+          !preorder.notifications?.confirmationEmailSentAt ||
+          !preorder.notifications?.confirmationWhatsappSentAt;
+        const shouldSendAdminOrderEmail = !preorder.notifications?.adminOrderEmailSentAt;
+
+        applyCapturedPreorderPayment({
+          preorder,
+          payment: {
+            ...paymentEntity,
+            amount: paymentEntity.amount || paymentLinkEntity.amount,
+            currency: paymentEntity.currency || paymentLinkEntity.currency,
+          },
+          orderEntity: null,
+          signature,
+          eventName: event.event,
+        });
+        preorder.payment.paymentLinkId = razorpayPaymentLinkId;
+        preorder.payment.shortUrl = "";
+        await preorder.save();
+
+        if (preorder.preorderWindow) {
+          try {
+            await recalculatePreorderWindowRouteSnapshot({
+              preorderWindowId: preorder.preorderWindow,
+            });
+          } catch (routeError) {
+            console.error("Failed to refresh preorder delivery route snapshot", routeError);
+          }
+        }
+
+        if (shouldSendConfirmationNotifications) {
+          try {
+            await sendPreorderConfirmationNotifications({ preorder });
+          } catch (notificationError) {
+            console.error("Failed to send preorder confirmation notifications", notificationError);
+          }
+        }
+
+        if (shouldSendAdminOrderEmail) {
+          try {
+            await sendAdminPreorderConfirmedEmail({ preorder });
+            preorder.notifications = {
+              ...(preorder.notifications?.toObject?.() || preorder.notifications || {}),
+              adminOrderEmailSentAt: new Date(),
+            };
+            await preorder.save();
+          } catch (notificationError) {
+            console.error("Failed to send admin preorder confirmation email", notificationError);
+          }
+        }
+
+        return NextResponse.json({ ok: true });
       }
     }
 

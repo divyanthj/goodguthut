@@ -67,6 +67,16 @@ const preorderPaymentSchema = mongoose.Schema(
       trim: true,
       default: "",
     },
+    paymentLinkId: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    shortUrl: {
+      type: String,
+      trim: true,
+      default: "",
+    },
     signature: {
       type: String,
       trim: true,

@@ -247,6 +247,36 @@ const razorpayApiRequest = async (path, { method = "GET", body } = {}) => {
   return response.json();
 };
 
+export const createRazorpayPaymentLink = async ({
+  amount,
+  currency = "INR",
+  referenceId = "",
+  description = "",
+  customer = {},
+  notes = {},
+}) =>
+  razorpayApiRequest("/v1/payment_links", {
+    method: "POST",
+    body: {
+      amount,
+      currency,
+      accept_partial: false,
+      reference_id: referenceId,
+      description,
+      customer: {
+        name: normalizeString(customer.name),
+        email: normalizeString(customer.email),
+        contact: normalizeString(customer.contact),
+      },
+      notify: {
+        sms: false,
+        email: false,
+      },
+      reminder_enable: false,
+      notes,
+    },
+  });
+
 export const createRazorpayPlan = async ({
   period,
   interval,

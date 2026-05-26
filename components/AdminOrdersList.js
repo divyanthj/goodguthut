@@ -175,6 +175,17 @@ const getModeBadgeClassName = (order = {}) => {
 
 const getTrackingInputId = (order = {}) => `tracking-link-${order.sourceType}-${order.id}`;
 const getDeliveredAtInputId = (order = {}) => `delivered-at-${order.sourceType}-${order.id}`;
+const GOOD_GUT_HUT_BASE_URL = "https://goodguthut.com";
+
+const buildPaymentRedirectUrl = (order = {}) => {
+  if (!order.id) {
+    return "";
+  }
+
+  const kind = order.sourceType === "legacy_preorder" ? "preorder" : "order";
+
+  return `${GOOD_GUT_HUT_BASE_URL}/pay/${kind}/${encodeURIComponent(order.id)}`;
+};
 
 const buildOrderDetailsText = (order = {}) => {
   const items = Array.isArray(order.items) ? order.items : [];
@@ -210,6 +221,39 @@ Tiny update from the Good Gut Hut kitchen: production has officially started for
 ${orderDetails}
 
 ${sparkleEmoji} We are brewing, bottling, and getting everything ready for delivery on ${deliveryDate}. ${scooterEmoji}`;
+};
+
+const isPaymentOrMandateSetupPending = (order = {}) => {
+  const paymentStatus = String(order.payment?.status || "").trim();
+
+  if (order.sourceType === "order_plan" && order.mode === "recurring") {
+    return paymentStatus === "created";
+  }
+
+  return ["pending", "order_created", "created"].includes(paymentStatus);
+};
+
+const buildPaymentNudgeWhatsAppMessage = (order = {}) => {
+  const customerName = String(order.customerName || "").trim() || "there";
+  const orderDetails = buildOrderDetailsText(order);
+  const paymentRedirectUrl = buildPaymentRedirectUrl(order);
+  const isRecurring = order.mode === "recurring";
+  const actionText = isRecurring
+    ? "Your plan is almost in production. Complete your payment setup here to confirm it:"
+    : "Your order is almost in production. Complete your payment here to confirm it:";
+  const linkText = paymentRedirectUrl ? `\n${paymentRedirectUrl}` : "";
+
+  return `Hi ${customerName}! 🌿
+
+Quick reminder about your Good Gut Hut order ✨
+
+${actionText}
+${linkText}
+
+Your gut-happy lineup: ${orderDetails}
+Total: ${formatCurrency(order.currency, order.total)}
+
+Ping us here if you need help - we have got you. 🫶`;
 };
 
 const buildFallbackShippedWhatsAppMessage = (order = {}) => {
@@ -550,6 +594,90 @@ export default function AdminOrdersList({ initialOrders = [] }) {
     }
   };
 
+  const sendPaymentNudge = async (order) => {
+    const isRecurring = order.mode === "recurring";
+    const shouldSendNudge = window.confirm(
+      isRecurring
+        ? "Send a mandate setup nudge? This will send the customer an email and open WhatsApp with the nudge message."
+        : "Send a payment nudge? This will send the customer an email and open WhatsApp with the nudge message."
+    );
+
+    if (!shouldSendNudge) {
+      return;
+    }
+
+    const orderKey = `${order.sourceType}:${order.id}`;
+
+    setSavingId(orderKey);
+    setMessage("");
+    setError("");
+
+    const whatsappWindow = order.phone ? window.open("", "_blank") : null;
+
+    try {
+      const response = await fetch("/api/admin/orders/payment-nudge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourceType: order.sourceType,
+          id: order.id,
+        }),
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Could not send payment nudge email.");
+      }
+
+      const nextRecord =
+        order.sourceType === "legacy_preorder" ? data.preorder : data.orderPlan;
+      const updatedOrder = nextRecord
+        ? normalizeAdminOrder({
+            ...nextRecord,
+            sourceType: order.sourceType,
+          })
+        : order;
+
+      if (nextRecord) {
+        updateOrderInState(order.sourceType, nextRecord);
+      }
+
+      const whatsappMessage = buildPaymentNudgeWhatsAppMessage(updatedOrder);
+      let clipboardCopied = false;
+
+      try {
+        clipboardCopied = await copyToClipboard(whatsappMessage);
+      } catch (clipboardError) {
+        console.error("Could not copy payment nudge WhatsApp message", clipboardError);
+      }
+
+      const whatsappOpened = openWhatsAppThread(
+        updatedOrder.phone,
+        whatsappMessage,
+        whatsappWindow
+      );
+      const whatsappSummary = whatsappOpened
+        ? clipboardCopied
+          ? "WhatsApp nudge copied to clipboard and opened."
+          : "WhatsApp opened with the nudge message prefilled."
+        : "No WhatsApp action was opened because this order has no phone number.";
+      const emailStatus = data.emailDelivery?.status;
+      const emailSummary =
+        emailStatus === "sent"
+          ? " Nudge email sent."
+          : emailStatus === "skipped" && data.emailDelivery?.reason === "not_pending"
+            ? " Nudge email skipped because this order is no longer pending."
+            : " No nudge email was sent because this order has no email address.";
+
+      setMessage(`${whatsappSummary}${emailSummary}`);
+    } catch (nudgeError) {
+      whatsappWindow?.close?.();
+      setError(nudgeError.message || "Could not send payment nudge email.");
+    } finally {
+      setSavingId("");
+    }
+  };
+
   const markDelivered = async (order, deliveredAt) => {
     const shouldMarkDelivered = window.confirm(
       "Are you sure you want to mark this order as delivered?"
@@ -657,6 +785,7 @@ export default function AdminOrdersList({ initialOrders = [] }) {
     const canManageRecurringDelivery =
       isRecurringOrderPlan &&
       isRecurringOrderPlanPaymentConfirmed(order.payment);
+    const canSendPaymentNudge = isPaymentOrMandateSetupPending(order);
     const canConfirmLegacy =
       isLegacy &&
       order.status === "pending" &&
@@ -870,6 +999,24 @@ export default function AdminOrdersList({ initialOrders = [] }) {
                 onClick={() => confirmLegacyPreorder(order)}
               >
                 {savingId === `${order.sourceType}:${order.id}` ? "Saving..." : "Confirm order"}
+              </button>
+            )}
+            {canSendPaymentNudge && (
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                disabled={
+                  savingId === `${order.sourceType}:${order.id}` ||
+                  deletingId === `${order.sourceType}:${order.id}` ||
+                  (!order.phone && !order.email)
+                }
+                onClick={() => sendPaymentNudge(order)}
+              >
+                {savingId === `${order.sourceType}:${order.id}`
+                  ? "Sending..."
+                  : isRecurringOrderPlan
+                    ? "Nudge mandate setup"
+                    : "Nudge payment"}
               </button>
             )}
             <button
