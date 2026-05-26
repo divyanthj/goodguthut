@@ -1,4 +1,5 @@
 import Image from "next/image";
+import mongoose from "mongoose";
 import config from "@/config";
 import connectMongo from "@/libs/mongoose";
 import { createRazorpayPaymentLink } from "@/libs/razorpay";
@@ -30,7 +31,18 @@ const getRecord = async ({ kind, id }) => {
 
   await connectMongo();
 
-  return kind === "preorder" ? Preorder.findById(id) : OrderPlan.findById(id);
+  const Model = kind === "preorder" ? Preorder : OrderPlan;
+  const trimmedId = String(id || "").trim();
+
+  if (mongoose.Types.ObjectId.isValid(trimmedId)) {
+    const record = await Model.findById(trimmedId);
+
+    if (record) {
+      return record;
+    }
+  }
+
+  return Model.findOne({ orderNumber: trimmedId });
 };
 
 const getRecordFields = ({ kind, record }) => {
