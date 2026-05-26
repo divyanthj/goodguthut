@@ -915,7 +915,14 @@ export default function AdminOrdersList({ initialOrders = [] }) {
                 )}
                 <div>
                   <div className="text-xs uppercase tracking-[0.16em] opacity-60">Delivery fee</div>
-                  <div className="mt-1">{formatCurrency(order.currency, order.deliveryFee)}</div>
+                  <div className="mt-1">
+                    {formatCurrency(order.currency, order.deliveryFee)}
+                    {order.appliedPerks?.length > 0 && (
+                      <span className="ml-2 text-xs text-success">
+                        {order.appliedPerks[0].areaLabel || order.appliedPerks[0].name}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div>
                   <div className="text-xs uppercase tracking-[0.16em] opacity-60">Total</div>

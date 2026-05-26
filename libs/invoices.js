@@ -198,6 +198,12 @@ const buildInvoiceHtml = (invoice) => {
   const deliveryTax = invoice.deliveryTax || {};
   const taxTotal = Number(taxSummary.totalTaxAmount || 0);
   const grandTotal = Number(invoice.grandTotal || invoice.total || 0);
+  const appliedDeliveryPerk = Array.isArray(invoice.appliedPerks)
+    ? invoice.appliedPerks[0]
+    : null;
+  const deliveryLabel = appliedDeliveryPerk?.areaLabel
+    ? `Delivery (${appliedDeliveryPerk.areaLabel} perk applied)`
+    : "Delivery";
   const gstStatusLine = seller.gstin
     ? `GSTIN: ${escapeHtml(seller.gstin)}`
     : GST_NOT_APPLICABLE_TEXT;
@@ -294,13 +300,13 @@ const buildInvoiceHtml = (invoice) => {
         }
         ${
           isGstReadySnapshot
-            ? `<tr><td>Delivery (${escapeHtml(deliveryTax.hsnSac || "HSN/SAC not set")}, GST ${escapeHtml(String(Number(deliveryTax.gstRate || 0)))}%)</td><td>${escapeHtml(formatMoney(invoice.currency, invoice.deliveryFee))}</td></tr>
+            ? `<tr><td>${escapeHtml(`${deliveryLabel} (${deliveryTax.hsnSac || "HSN/SAC not set"}, GST ${Number(deliveryTax.gstRate || 0)}%)`)}</td><td>${escapeHtml(formatMoney(invoice.currency, invoice.deliveryFee))}</td></tr>
         <tr><td>CGST</td><td>${escapeHtml(formatMoney(invoice.currency, taxSummary.cgstAmount))}</td></tr>
         <tr><td>SGST</td><td>${escapeHtml(formatMoney(invoice.currency, taxSummary.sgstAmount))}</td></tr>
         <tr><td>IGST</td><td>${escapeHtml(formatMoney(invoice.currency, taxSummary.igstAmount))}</td></tr>
         <tr><td>Total tax</td><td>${escapeHtml(formatMoney(invoice.currency, taxTotal))}</td></tr>
         <tr class="summary-total"><td>Grand total</td><td>${escapeHtml(formatMoney(invoice.currency, grandTotal))}</td></tr>`
-            : `<tr><td>Delivery</td><td>${escapeHtml(formatMoney(invoice.currency, invoice.deliveryFee))}</td></tr>
+            : `<tr><td>${escapeHtml(deliveryLabel)}</td><td>${escapeHtml(formatMoney(invoice.currency, invoice.deliveryFee))}</td></tr>
         <tr class="summary-total"><td>Total</td><td>${escapeHtml(formatMoney(invoice.currency, invoice.total))}</td></tr>`
         }
       </table>
@@ -321,6 +327,12 @@ const buildInvoiceText = (invoice) =>
     const seller = invoice.seller || {};
     const taxSummary = invoice.taxSummary || {};
     const deliveryTax = invoice.deliveryTax || {};
+    const appliedDeliveryPerk = Array.isArray(invoice.appliedPerks)
+      ? invoice.appliedPerks[0]
+      : null;
+    const deliveryLabel = appliedDeliveryPerk?.areaLabel
+      ? `Delivery (${appliedDeliveryPerk.areaLabel} perk applied)`
+      : "Delivery";
     return [
     `${invoice.invoiceLabel || "Invoice"} ${invoice.invoiceNumber}`,
     `Seller: ${seller.legalName || invoice.sellerName || INVOICE_SELLER_NAME}`,
@@ -353,8 +365,8 @@ const buildInvoiceText = (invoice) =>
       ? `Discount: -${formatMoney(invoice.currency, invoice.discountAmount)}`
       : "",
     isGstReadySnapshot
-      ? `Delivery (${deliveryTax.hsnSac || "HSN/SAC not set"}, GST ${Number(deliveryTax.gstRate || 0)}%): ${formatMoney(invoice.currency, invoice.deliveryFee)}`
-      : `Delivery: ${formatMoney(invoice.currency, invoice.deliveryFee)}`,
+      ? `${deliveryLabel} (${deliveryTax.hsnSac || "HSN/SAC not set"}, GST ${Number(deliveryTax.gstRate || 0)}%): ${formatMoney(invoice.currency, invoice.deliveryFee)}`
+      : `${deliveryLabel}: ${formatMoney(invoice.currency, invoice.deliveryFee)}`,
     isGstReadySnapshot ? `CGST: ${formatMoney(invoice.currency, taxSummary.cgstAmount)}` : "",
     isGstReadySnapshot ? `SGST: ${formatMoney(invoice.currency, taxSummary.sgstAmount)}` : "",
     isGstReadySnapshot ? `IGST: ${formatMoney(invoice.currency, taxSummary.igstAmount)}` : "",
@@ -409,6 +421,8 @@ const createInvoiceFromSnapshot = async ({
   subtotal = 0,
   discountAmount = 0,
   deliveryFee = 0,
+  deliveryFeeBeforePerks = 0,
+  appliedPerks = [],
   total = 0,
   deliveredAt = new Date(),
 }) => {
@@ -511,6 +525,8 @@ const createInvoiceFromSnapshot = async ({
     subtotal: Number(subtotal || 0),
     discountAmount: Number(discountAmount || 0),
     deliveryFee: Number(deliveryFee || 0),
+    deliveryFeeBeforePerks: Number(deliveryFeeBeforePerks || deliveryFee || 0),
+    appliedPerks: Array.isArray(appliedPerks) ? appliedPerks : [],
     deliveryTax,
     taxSummary,
     total: normalizedTotal,
@@ -547,6 +563,8 @@ export const createAndSendPreorderInvoice = async ({ preorder }) => {
     subtotal: preorder.subtotal,
     discountAmount: preorder.discount?.discountAmount || 0,
     deliveryFee: preorder.deliveryFee,
+    deliveryFeeBeforePerks: preorder.deliveryFeeBeforePerks,
+    appliedPerks: preorder.appliedPerks,
     total: preorder.total || preorder.payment?.amount || preorder.subtotal,
     deliveredAt,
   });
@@ -575,6 +593,8 @@ export const createAndSendOrderPlanInvoice = async ({ orderPlan, deliveryDate = 
     items: orderPlan.items || [],
     subtotal: orderPlan.subtotal,
     deliveryFee: orderPlan.deliveryFee,
+    deliveryFeeBeforePerks: orderPlan.deliveryFeeBeforePerks,
+    appliedPerks: orderPlan.appliedPerks,
     total: orderPlan.total || orderPlan.payment?.amount || orderPlan.subtotal,
     deliveredAt,
   });

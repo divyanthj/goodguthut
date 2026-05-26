@@ -339,7 +339,14 @@ export default function AdminOrderPlansList({ initialOrderPlans = [] }) {
                         </div>
                         <div>
                           <div className="text-xs uppercase tracking-[0.16em] opacity-60">Delivery fee</div>
-                          <div className="mt-1">{formatCurrency(plan.currency, plan.deliveryFee)}</div>
+                          <div className="mt-1">
+                            {formatCurrency(plan.currency, plan.deliveryFee)}
+                            {plan.appliedPerks?.length > 0 && (
+                              <span className="ml-2 text-xs text-success">
+                                {plan.appliedPerks[0].areaLabel || plan.appliedPerks[0].name}
+                              </span>
+                            )}
+                          </div>
                         </div>
                         <div>
                           <div className="text-xs uppercase tracking-[0.16em] opacity-60">Total</div>

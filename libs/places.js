@@ -113,6 +113,7 @@ export const getPlaceDetails = async ({ placeId, sessionToken }) => {
   return {
     placeId,
     formattedAddress: data.formattedAddress || data.displayName?.text || "",
+    displayName: data.displayName?.text || "",
     location: data.location || null,
     addressComponents: data.addressComponents || [],
   };

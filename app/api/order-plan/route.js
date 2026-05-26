@@ -176,6 +176,8 @@ export async function POST(req) {
       subtotal: orderPlanRequest.subtotal,
       discount: orderPlanRequest.discount,
       deliveryFee: orderPlanRequest.deliveryFee,
+      deliveryFeeBeforePerks: orderPlanRequest.deliveryFeeBeforePerks,
+      appliedPerks: orderPlanRequest.appliedPerks,
       deliveryDistanceKm: orderPlanRequest.deliveryDistanceKm,
       total: orderPlanRequest.total,
       status: "new",

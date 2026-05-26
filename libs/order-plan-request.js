@@ -1,4 +1,5 @@
 import { calculateDeliveryQuote } from "@/libs/delivery";
+import { applyDeliveryFeePerksToQuote } from "@/libs/geo-perks";
 import { resolveDiscountCode } from "@/libs/discount-codes";
 import { getPlaceDetails } from "@/libs/places";
 import { MAX_PER_ORDER_LIMIT } from "@/libs/preorder-windows";
@@ -146,8 +147,10 @@ const buildOneTimeRequest = async (body = {}) => {
   }
 
   let deliveryFee = 0;
+  let deliveryFeeBeforePerks = 0;
   let deliveryDistanceKm = 0;
   let normalizedDeliveryAddress = address;
+  let appliedPerks = [];
 
   if (pickupAddress && deliveryBands.length > 0) {
     if (!placeId) {
@@ -155,7 +158,7 @@ const buildOneTimeRequest = async (body = {}) => {
     }
 
     const placeDetails = await getPlaceDetails({ placeId, sessionToken });
-    const deliveryQuote = await calculateDeliveryQuote({
+    const baseDeliveryQuote = await calculateDeliveryQuote({
       pickupAddress,
       deliveryBands,
       address,
@@ -163,14 +166,21 @@ const buildOneTimeRequest = async (body = {}) => {
       orderSubtotal: subtotal,
       freeDeliveryThreshold,
     });
+    const deliveryQuote = await applyDeliveryFeePerksToQuote({
+      quote: baseDeliveryQuote,
+      address,
+      placeDetails,
+    });
 
     if (!deliveryQuote.isDeliverable) {
       throw new Error(deliveryQuote.reason || "We do not deliver there yet.");
     }
 
     deliveryFee = deliveryQuote.deliveryFee;
+    deliveryFeeBeforePerks = deliveryQuote.deliveryFeeBeforePerks;
     deliveryDistanceKm = deliveryQuote.distanceKm;
     normalizedDeliveryAddress = deliveryQuote.normalizedAddress;
+    appliedPerks = deliveryQuote.appliedPerks || [];
   }
 
   return {
@@ -197,6 +207,8 @@ const buildOneTimeRequest = async (body = {}) => {
     subtotal,
     discount,
     deliveryFee,
+    deliveryFeeBeforePerks,
+    appliedPerks,
     deliveryDistanceKm,
     total: discount.subtotalAfterDiscount + deliveryFee,
     addressSessionToken: sessionToken,

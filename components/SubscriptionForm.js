@@ -335,6 +335,8 @@ export default function SubscriptionForm({
       ? {
           isDeliverable: true,
           deliveryFee: Number(initialValues.deliveryFee || 0),
+          deliveryFeeBeforePerks: Number(initialValues.deliveryFeeBeforePerks || initialValues.deliveryFee || 0),
+          appliedPerks: initialValues.appliedPerks || [],
           distanceKm: Number(initialValues.deliveryDistanceKm || 0),
           normalizedAddress: initialValues.normalizedDeliveryAddress || initialValues.address || "",
         }
@@ -426,6 +428,8 @@ export default function SubscriptionForm({
     setDeliveryQuote({
       isDeliverable: true,
       deliveryFee: Number(initialValues.deliveryFee || 0),
+      deliveryFeeBeforePerks: Number(initialValues.deliveryFeeBeforePerks || initialValues.deliveryFee || 0),
+      appliedPerks: initialValues.appliedPerks || [],
       distanceKm: Number(initialValues.deliveryDistanceKm || 0),
       normalizedAddress: initialValues.normalizedDeliveryAddress || initialValues.address || "",
     });
@@ -1212,6 +1216,8 @@ export default function SubscriptionForm({
     setDeliveryQuote({
       isDeliverable: true,
       deliveryFee: Number(nextSubscription.deliveryFee || 0),
+      deliveryFeeBeforePerks: Number(nextSubscription.deliveryFeeBeforePerks || nextSubscription.deliveryFee || 0),
+      appliedPerks: nextSubscription.appliedPerks || [],
       distanceKm: Number(nextSubscription.deliveryDistanceKm || 0),
       normalizedAddress:
         nextSubscription.normalizedDeliveryAddress || nextSubscription.address || "",
@@ -2227,6 +2233,16 @@ export default function SubscriptionForm({
                     : `${currency} 0.00`}
                 </span>
               </div>
+              {!isRecurringMode && deliveryQuote?.appliedPerks?.length > 0 && (
+                <div className="rounded-xl border border-[#cfe2d0] bg-[#eef7ef] p-3 text-sm text-[#264f35]">
+                  {deliveryQuote.appliedPerks[0].customerMessage}
+                  {Number(deliveryQuote.deliveryFeeBeforePerks || 0) > 0 && (
+                    <span>
+                      {" "}You saved {currency} {Number(deliveryQuote.deliveryFeeBeforePerks || 0).toFixed(2)}.
+                    </span>
+                  )}
+                </div>
+              )}
               {isRecurringMode && (
                 <div className="text-xs text-[#5f7068]">
                   Recurring plans include free delivery.

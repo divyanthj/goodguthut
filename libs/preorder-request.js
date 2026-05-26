@@ -1,6 +1,7 @@
 import connectMongo from "@/libs/mongoose";
 import PreorderWindow from "@/models/PreorderWindow";
 import { calculateDeliveryQuote } from "@/libs/delivery";
+import { applyDeliveryFeePerksToQuote } from "@/libs/geo-perks";
 import { resolveDiscountCode, normalizeDiscountCode } from "@/libs/discount-codes";
 import { getPlaceDetails } from "@/libs/places";
 import {
@@ -154,8 +155,10 @@ export const buildPreorderRequest = async (body = {}) => {
   });
 
   let deliveryFee = 0;
+  let deliveryFeeBeforePerks = 0;
   let deliveryDistanceKm = 0;
   let normalizedDeliveryAddress = address;
+  let appliedPerks = [];
   const pickupAddressSnapshot = formatPickupAddress({
     pickupDoorNumber: preorderWindow?.pickupDoorNumber,
     pickupAddress: preorderWindow?.pickupAddress,
@@ -169,7 +172,7 @@ export const buildPreorderRequest = async (body = {}) => {
     }
 
     const placeDetails = await getPlaceDetails({ placeId, sessionToken });
-    const deliveryQuote = await calculateDeliveryQuote({
+    const baseDeliveryQuote = await calculateDeliveryQuote({
       pickupAddress: pickupAddressSnapshot || preorderWindow.pickupAddress,
       deliveryBands: preorderWindow.deliveryBands,
       address,
@@ -177,14 +180,21 @@ export const buildPreorderRequest = async (body = {}) => {
       orderSubtotal: subtotal,
       freeDeliveryThreshold: preorderWindow.freeDeliveryThreshold,
     });
+    const deliveryQuote = await applyDeliveryFeePerksToQuote({
+      quote: baseDeliveryQuote,
+      address,
+      placeDetails,
+    });
 
     if (!deliveryQuote.isDeliverable) {
       throw new Error(deliveryQuote.reason || "We do not deliver there yet.");
     }
 
     deliveryFee = deliveryQuote.deliveryFee;
+    deliveryFeeBeforePerks = deliveryQuote.deliveryFeeBeforePerks;
     deliveryDistanceKm = deliveryQuote.distanceKm;
     normalizedDeliveryAddress = deliveryQuote.normalizedAddress;
+    appliedPerks = deliveryQuote.appliedPerks || [];
   }
 
   const total = discount.subtotalAfterDiscount + deliveryFee;
@@ -217,6 +227,8 @@ export const buildPreorderRequest = async (body = {}) => {
     subtotal,
     discount,
     deliveryFee,
+    deliveryFeeBeforePerks,
+    appliedPerks,
     deliveryDistanceKm,
     total,
     currency: preorderWindow?.currency || "INR",

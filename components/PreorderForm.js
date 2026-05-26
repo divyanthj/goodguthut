@@ -891,6 +891,16 @@ export default function PreorderForm({
                           : `${currency} 0.00`
                   }`}
             </div>
+            {!isPickup && deliveryQuote?.appliedPerks?.length > 0 && (
+              <div className="rounded-xl border border-success/30 bg-success/10 p-3 text-sm text-success">
+                {deliveryQuote.appliedPerks[0].customerMessage}
+                {Number(deliveryQuote.deliveryFeeBeforePerks || 0) > 0 && (
+                  <span>
+                    {" "}You saved {currency} {Number(deliveryQuote.deliveryFeeBeforePerks || 0).toFixed(2)}.
+                  </span>
+                )}
+              </div>
+            )}
             {!isPickup && hasFreeDeliveryThreshold && (
               <div className="text-sm opacity-80">
                 {qualifiesForFreeDelivery

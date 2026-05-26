@@ -111,6 +111,46 @@ const invoiceCustomerSchema = mongoose.Schema(
   { _id: false }
 );
 
+const invoiceAppliedPerkSchema = mongoose.Schema(
+  {
+    id: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    name: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    areaLabel: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    type: {
+      type: String,
+      trim: true,
+      default: "delivery_fee",
+    },
+    mode: {
+      type: String,
+      trim: true,
+      default: "waive",
+    },
+    customerMessage: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    matchedTerms: {
+      type: [String],
+      default: [],
+    },
+  },
+  { _id: false }
+);
+
 const invoiceSellerSchema = mongoose.Schema(
   {
     legalName: {
@@ -310,6 +350,15 @@ const invoiceSchema = mongoose.Schema(
       type: Number,
       min: 0,
       default: 0,
+    },
+    deliveryFeeBeforePerks: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+    appliedPerks: {
+      type: [invoiceAppliedPerkSchema],
+      default: [],
     },
     deliveryTax: {
       type: invoiceDeliveryTaxSchema,

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import connectMongo from "@/libs/mongoose";
 import { calculateDeliveryQuote, isGoogleMapsConfigured } from "@/libs/delivery";
+import { applyDeliveryFeePerksToQuote } from "@/libs/geo-perks";
 import { getPlaceDetails } from "@/libs/places";
 import PreorderWindow from "@/models/PreorderWindow";
 import { getActiveWindowFilter } from "@/libs/preorder-windows";
@@ -88,7 +89,7 @@ export async function POST(req) {
 
     const placeDetails = placeId ? await getPlaceDetails({ placeId, sessionToken }) : null;
 
-    const quote = await calculateDeliveryQuote({
+    const baseQuote = await calculateDeliveryQuote({
       pickupAddress: preorderWindow.pickupAddress,
       deliveryBands: preorderWindow.deliveryBands,
       address,
@@ -96,10 +97,16 @@ export async function POST(req) {
       orderSubtotal,
       freeDeliveryThreshold: preorderWindow.freeDeliveryThreshold,
     });
+    const quote = await applyDeliveryFeePerksToQuote({
+      quote: baseQuote,
+      address,
+      placeDetails,
+    });
 
     return NextResponse.json({
       distanceKm: quote.distanceKm,
       deliveryFee: quote.deliveryFee,
+      deliveryFeeBeforePerks: quote.deliveryFeeBeforePerks,
       normalizedAddress: quote.normalizedAddress,
       matchedBand: quote.matchedBand,
       currency: preorderWindow.currency || "INR",
@@ -107,6 +114,7 @@ export async function POST(req) {
       isConfigured: quote.isConfigured,
       isFreeDelivery: quote.isFreeDelivery,
       freeDeliveryThreshold: quote.freeDeliveryThreshold,
+      appliedPerks: quote.appliedPerks || [],
       reason: quote.reason,
       location: quote.location,
       placeId: placeDetails?.placeId || placeId,
