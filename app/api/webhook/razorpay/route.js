@@ -134,6 +134,102 @@ const applyRecurringNaturalEnd = ({
   };
 };
 
+const getSubscriptionStatusFromEvent = ({
+  eventName = "",
+  subscriptionEntity = {},
+  fallbackStatus = "",
+}) => {
+  const entityStatus = String(subscriptionEntity.status || "").trim();
+
+  if (eventName === "subscription.resumed") {
+    return entityStatus && entityStatus !== "resumed" ? entityStatus : "active";
+  }
+
+  if (entityStatus) {
+    return entityStatus;
+  }
+
+  switch (eventName) {
+    case "subscription.authenticated":
+      return "authenticated";
+    case "subscription.activated":
+    case "subscription.charged":
+      return "active";
+    case "subscription.paused":
+      return "paused";
+    case "subscription.pending":
+      return "pending";
+    case "subscription.halted":
+      return "halted";
+    case "subscription.cancelled":
+      return "cancelled";
+    case "subscription.completed":
+      return "completed";
+    case "subscription.expired":
+      return "expired";
+    default:
+      return fallbackStatus;
+  }
+};
+
+const applyOrderPlanSubscriptionEventStatus = (orderPlan, eventName = "") => {
+  if (["cancelled", "fulfilled"].includes(orderPlan.status)) {
+    return;
+  }
+
+  switch (eventName) {
+    case "subscription.authenticated":
+    case "subscription.pending":
+      orderPlan.status = "payment_pending";
+      break;
+    case "subscription.paused":
+    case "subscription.halted":
+      orderPlan.status = "paused";
+      break;
+    case "subscription.activated":
+    case "subscription.charged":
+    case "subscription.resumed":
+    case "subscription.completed":
+      orderPlan.status = orderPlan.status === "shipped" ? "shipped" : "active";
+      break;
+    case "subscription.cancelled":
+    case "subscription.expired":
+      orderPlan.status = "cancelled";
+      break;
+    default:
+      break;
+  }
+};
+
+const applySubscriptionEventStatus = (subscription, eventName = "") => {
+  if (subscription.status === "cancelled") {
+    return;
+  }
+
+  switch (eventName) {
+    case "subscription.authenticated":
+    case "subscription.pending":
+      subscription.status = "new";
+      break;
+    case "subscription.paused":
+    case "subscription.halted":
+      subscription.status = "paused";
+      break;
+    case "subscription.activated":
+    case "subscription.charged":
+    case "subscription.resumed":
+    case "subscription.completed":
+      subscription.status = "active";
+      break;
+    case "subscription.cancelled":
+    case "subscription.expired":
+      subscription.status = "cancelled";
+      break;
+    default:
+      break;
+  }
+};
+
 export async function POST(req) {
   const body = await req.text();
   const signature = headers().get("x-razorpay-signature");
@@ -159,14 +255,20 @@ export async function POST(req) {
       if (orderPlan) {
         const subscriptionEntity = event?.payload?.subscription?.entity || {};
         const paymentEntity = event?.payload?.payment?.entity || {};
+        const nextPaymentStatus = getSubscriptionStatusFromEvent({
+          eventName: event.event,
+          subscriptionEntity,
+          fallbackStatus: orderPlan.payment?.status || "",
+        });
 
         orderPlan.payment = {
           ...(orderPlan.payment?.toObject?.() || orderPlan.payment || {}),
           provider: "razorpay",
-          status: subscriptionEntity.status || orderPlan.payment?.status || "",
+          status: nextPaymentStatus,
           subscriptionId: subscriptionEntity.id || razorpaySubscriptionId,
           planId: subscriptionEntity.plan_id || orderPlan.payment?.planId || "",
           shortUrl: subscriptionEntity.short_url || orderPlan.payment?.shortUrl || "",
+          webhookEvent: event.event,
           amount: orderPlan.total,
           currency: orderPlan.currency || orderPlan.payment?.currency || "INR",
           totalCount: subscriptionEntity.total_count || orderPlan.payment?.totalCount || 0,
@@ -212,22 +314,22 @@ export async function POST(req) {
 
         if (event.event === "subscription.cancelled") {
           orderPlan.payment.shortUrl = "";
-          orderPlan.status = "cancelled";
         }
 
         if (event.event === "subscription.expired") {
           orderPlan.payment.shortUrl = "";
-          orderPlan.status = "cancelled";
         }
 
         if (
           event.event === "subscription.activated" ||
           event.event === "subscription.charged" ||
+          event.event === "subscription.resumed" ||
           event.event === "subscription.completed"
         ) {
           orderPlan.payment.shortUrl = "";
-          orderPlan.status = orderPlan.status === "cancelled" ? orderPlan.status : "active";
         }
+
+        applyOrderPlanSubscriptionEventStatus(orderPlan, event.event);
 
         const { shouldCancelNow } = applyRecurringNaturalEnd({
           planDoc: orderPlan,
@@ -265,11 +367,16 @@ export async function POST(req) {
       if (subscription) {
         const subscriptionEntity = event?.payload?.subscription?.entity || {};
         const paymentEntity = event?.payload?.payment?.entity || {};
+        const nextBillingStatus = getSubscriptionStatusFromEvent({
+          eventName: event.event,
+          subscriptionEntity,
+          fallbackStatus: subscription.billing?.status || "",
+        });
 
         subscription.billing = {
           ...(subscription.billing?.toObject?.() || subscription.billing || {}),
           provider: "razorpay",
-          status: subscriptionEntity.status || subscription.billing?.status || "",
+          status: nextBillingStatus,
           subscriptionId: subscriptionEntity.id || razorpaySubscriptionId,
           planId: subscriptionEntity.plan_id || subscription.billing?.planId || "",
           shortUrl: subscriptionEntity.short_url || subscription.billing?.shortUrl || "",
@@ -318,22 +425,22 @@ export async function POST(req) {
 
         if (event.event === "subscription.cancelled") {
           subscription.billing.shortUrl = "";
-          subscription.status = "cancelled";
         }
 
         if (event.event === "subscription.expired") {
           subscription.billing.shortUrl = "";
-          subscription.status = "cancelled";
         }
 
         if (
           event.event === "subscription.activated" ||
           event.event === "subscription.charged" ||
+          event.event === "subscription.resumed" ||
           event.event === "subscription.completed"
         ) {
           subscription.billing.shortUrl = "";
-          subscription.status = subscription.status === "cancelled" ? subscription.status : "active";
         }
+
+        applySubscriptionEventStatus(subscription, event.event);
 
         const { shouldCancelNow } = applyRecurringNaturalEnd({
           planDoc: subscription,

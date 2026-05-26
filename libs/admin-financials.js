@@ -9,8 +9,8 @@ const DEFAULT_CURRENCY = "INR";
 const DEFAULT_PERIOD = "8w";
 const DEFAULT_RESOLUTION = "week";
 const DEFAULT_PROJECTION_MODE = "blended";
-const BILLABLE_SUBSCRIPTION_STATUSES = new Set(["authenticated", "active", "pending", "completed"]);
-const PROJECTABLE_SUBSCRIPTION_STATUSES = new Set(["authenticated", "active", "pending"]);
+const BILLABLE_SUBSCRIPTION_STATUSES = new Set(["active", "completed"]);
+const PROJECTABLE_SUBSCRIPTION_STATUSES = new Set(["active"]);
 
 export const FINANCIAL_PERIOD_OPTIONS = [
   { value: "4w", label: "4 weeks", bucketCount: 4, resolution: "week" },

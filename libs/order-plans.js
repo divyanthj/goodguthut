@@ -26,7 +26,6 @@ export const ORDER_PLAN_STATUSES = Array.from(
 );
 
 export const RECURRING_ORDER_PLAN_CONFIRMED_PAYMENT_STATUSES = new Set([
-  "authenticated",
   "active",
   "completed",
   "paid",

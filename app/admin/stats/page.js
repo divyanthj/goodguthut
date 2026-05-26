@@ -61,9 +61,7 @@ export default async function AdminStatsPage({ searchParams }) {
       $and: [
         {
           $or: [
-            { "billing.status": "authenticated" },
             { "billing.status": "active" },
-            { "billing.status": "pending" },
             { "billing.status": "completed" },
           ],
         },

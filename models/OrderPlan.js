@@ -52,6 +52,7 @@ const orderPlanPaymentSchema = mongoose.Schema(
         "created",
         "authenticated",
         "active",
+        "halted",
         "paused",
         "cancelled",
         "completed",

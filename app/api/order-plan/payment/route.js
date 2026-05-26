@@ -129,7 +129,11 @@ const syncRecurringOrderPlanPayment = async ({
     orderPlan.nextDeliveryDate = orderPlan.firstDeliveryDate;
   }
 
-  if (["authenticated", "active", "completed"].includes(effectiveStatus)) {
+  if (effectiveStatus === "authenticated") {
+    orderPlan.status = orderPlan.status === "cancelled" ? "cancelled" : "payment_pending";
+  }
+
+  if (["active", "completed"].includes(effectiveStatus)) {
     orderPlan.status = orderPlan.status === "cancelled" ? "cancelled" : "active";
   }
 };

@@ -143,7 +143,11 @@ const syncSubscriptionBilling = async ({
     subscription.nextDeliveryDate = subscription.firstDeliveryDate;
   }
 
-  if (["authenticated", "active", "completed"].includes(effectiveStatus)) {
+  if (effectiveStatus === "authenticated") {
+    subscription.status = subscription.status === "cancelled" ? "cancelled" : "new";
+  }
+
+  if (["active", "completed"].includes(effectiveStatus)) {
     subscription.status = subscription.status === "cancelled" ? "cancelled" : "active";
   }
 };

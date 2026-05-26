@@ -10,7 +10,7 @@ import OrderPlan from "@/models/OrderPlan";
 import PreorderWindow from "@/models/PreorderWindow";
 import Subscription from "@/models/Subscription";
 
-const CONFIRMED_BILLING_STATUSES = new Set(["authenticated", "active", "pending", "completed"]);
+const CONFIRMED_BILLING_STATUSES = new Set(["active", "completed"]);
 const EXCLUDED_SUBSCRIPTION_STATUSES = new Set(["cancelled", "paused"]);
 const buildEmptyRouteSnapshot = ({
   deliveryDate = "",
@@ -80,7 +80,7 @@ const isRouteEligibleSubscription = (subscription) => {
   }
 
   return (
-    subscription.status === "active" ||
+    subscription.status === "active" &&
     CONFIRMED_BILLING_STATUSES.has(subscription.billing?.status || "")
   );
 };

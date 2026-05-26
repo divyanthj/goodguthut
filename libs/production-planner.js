@@ -4,7 +4,7 @@ const BOTTLE_SIZE_ML = 220;
 const MIN_WASTAGE_BUFFER_LITRES = 0.25;
 const EXTRA_BUFFER_TOP_UP_LITRES = 0.5;
 
-const CONFIRMED_BILLING_STATUSES = new Set(["authenticated", "active", "pending", "completed"]);
+const CONFIRMED_BILLING_STATUSES = new Set(["active", "completed"]);
 const EXCLUDED_SUBSCRIPTION_STATUSES = new Set(["cancelled", "paused"]);
 const WEEKDAY_TO_INDEX = {
   sunday: 0,
@@ -112,7 +112,7 @@ export const computeWeeklyDemandFromSubscriptions = (subscriptions = []) => {
 
     const billingStatus = subscription.billing?.status || "";
     const isConfirmed =
-      subscription.status === "active" || CONFIRMED_BILLING_STATUSES.has(billingStatus);
+      subscription.status === "active" && CONFIRMED_BILLING_STATUSES.has(billingStatus);
     const weeklyFactor = cadenceToWeeklyFactor(subscription.cadence);
 
     if (!isConfirmed || weeklyFactor <= 0) {
@@ -274,7 +274,7 @@ const getCommittedDeliveryDateKeys = ({ subscriptions = [], orderPlans = [], pre
       }
 
       const billingStatus = subscription.billing?.status || "";
-      return subscription.status === "active" || CONFIRMED_BILLING_STATUSES.has(billingStatus);
+      return subscription.status === "active" && CONFIRMED_BILLING_STATUSES.has(billingStatus);
     })
     .map((subscription) => toDateKey(subscription.nextDeliveryDate))
     .filter(Boolean);
@@ -379,7 +379,7 @@ export const computeDemandForDeliveryDate = ({
 
     const billingStatus = subscription.billing?.status || "";
     const isConfirmed =
-      subscription.status === "active" || CONFIRMED_BILLING_STATUSES.has(billingStatus);
+      subscription.status === "active" && CONFIRMED_BILLING_STATUSES.has(billingStatus);
 
     if (!isConfirmed) {
       return;
@@ -502,7 +502,7 @@ export const computeWeeklyDemandFromAllOrders = ({
 
     const billingStatus = subscription.billing?.status || "";
     const isConfirmed =
-      subscription.status === "active" || CONFIRMED_BILLING_STATUSES.has(billingStatus);
+      subscription.status === "active" && CONFIRMED_BILLING_STATUSES.has(billingStatus);
     const weeklyFactor = cadenceToWeeklyFactor(subscription.cadence);
 
     if (!isConfirmed || weeklyFactor <= 0) {
