@@ -251,7 +251,7 @@ const getSubscriptionStatusFromEvent = ({
 };
 
 const applyOrderPlanSubscriptionEventStatus = (orderPlan, eventName = "") => {
-  if (["cancelled", "fulfilled"].includes(orderPlan.status)) {
+  if (orderPlan.status === "fulfilled") {
     return;
   }
 
@@ -280,7 +280,7 @@ const applyOrderPlanSubscriptionEventStatus = (orderPlan, eventName = "") => {
 };
 
 const applySubscriptionEventStatus = (subscription, eventName = "") => {
-  if (subscription.status === "cancelled") {
+  if (subscription.status === "fulfilled") {
     return;
   }
 
