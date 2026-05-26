@@ -254,6 +254,7 @@ export const createRazorpayPaymentLink = async ({
   description = "",
   customer = {},
   notes = {},
+  callbackUrl = "",
 }) =>
   razorpayApiRequest("/v1/payment_links", {
     method: "POST",
@@ -274,8 +275,24 @@ export const createRazorpayPaymentLink = async ({
       },
       reminder_enable: false,
       notes,
+      ...(callbackUrl
+        ? {
+            callback_url: callbackUrl,
+            callback_method: "get",
+          }
+        : {}),
     },
   });
+
+export const fetchRazorpayPaymentLink = async (paymentLinkId = "") => {
+  const normalizedPaymentLinkId = normalizeString(paymentLinkId);
+
+  if (!isRazorpayConfigured() || !normalizedPaymentLinkId) {
+    return null;
+  }
+
+  return razorpayApiRequest(`/v1/payment_links/${normalizedPaymentLinkId}`);
+};
 
 export const createRazorpayPlan = async ({
   period,

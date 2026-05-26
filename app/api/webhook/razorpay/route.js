@@ -27,12 +27,19 @@ const getRazorpayOrderIdFromEvent = (event) => {
 const getRazorpayPaymentLinkIdFromEvent = (event) =>
   event?.payload?.payment_link?.entity?.id ||
   event?.payload?.payment?.entity?.notes?.paymentLinkId ||
+  event?.payload?.payment?.entity?.notes?.payment_link_id ||
   "";
 
 const getRazorpaySubscriptionIdFromEvent = (event) =>
   event?.payload?.subscription?.entity?.id ||
   event?.payload?.payment?.entity?.subscription_id ||
   "";
+
+const getPaymentNotesFromEvent = (event) => {
+  const notes = event?.payload?.payment?.entity?.notes;
+
+  return notes && typeof notes === "object" ? notes : {};
+};
 
 const TERMINAL_BILLING_STATUSES = new Set(["cancelled", "completed", "expired"]);
 
@@ -57,6 +64,72 @@ const getCapturedPaymentForOrder = async (orderId = "") => {
     console.error("Failed to check Razorpay order payments", error);
     return null;
   }
+};
+
+const findOrderPlanForPaymentEvent = async ({
+  razorpayOrderId = "",
+  razorpayPaymentLinkId = "",
+  paymentNotes = {},
+}) => {
+  const orderPlanId = String(paymentNotes.orderPlanId || "").trim();
+
+  if (orderPlanId) {
+    const orderPlan = await OrderPlan.findById(orderPlanId);
+
+    if (orderPlan) {
+      return orderPlan;
+    }
+  }
+
+  const query = [];
+  const notedOrderId = String(paymentNotes.razorpayOrderId || "").trim();
+
+  if (razorpayOrderId) {
+    query.push({ "payment.orderId": razorpayOrderId });
+  }
+
+  if (notedOrderId) {
+    query.push({ "payment.orderId": notedOrderId });
+  }
+
+  if (razorpayPaymentLinkId) {
+    query.push({ "payment.paymentLinkId": razorpayPaymentLinkId });
+  }
+
+  return query.length > 0 ? OrderPlan.findOne({ $or: query }) : null;
+};
+
+const findPreorderForPaymentEvent = async ({
+  razorpayOrderId = "",
+  razorpayPaymentLinkId = "",
+  paymentNotes = {},
+}) => {
+  const preorderId = String(paymentNotes.preorderId || "").trim();
+
+  if (preorderId) {
+    const preorder = await Preorder.findById(preorderId);
+
+    if (preorder) {
+      return preorder;
+    }
+  }
+
+  const query = [];
+  const notedOrderId = String(paymentNotes.razorpayOrderId || "").trim();
+
+  if (razorpayOrderId) {
+    query.push({ "payment.orderId": razorpayOrderId });
+  }
+
+  if (notedOrderId) {
+    query.push({ "payment.orderId": notedOrderId });
+  }
+
+  if (razorpayPaymentLinkId) {
+    query.push({ "payment.paymentLinkId": razorpayPaymentLinkId });
+  }
+
+  return query.length > 0 ? Preorder.findOne({ $or: query }) : null;
 };
 
 const applyCapturedOrderPlanPayment = ({ orderPlan, payment, orderEntity, signature, eventName }) => {
@@ -253,6 +326,7 @@ export async function POST(req) {
     const razorpaySubscriptionId = getRazorpaySubscriptionIdFromEvent(event);
     const razorpayOrderId = getRazorpayOrderIdFromEvent(event);
     const razorpayPaymentLinkId = getRazorpayPaymentLinkIdFromEvent(event);
+    const paymentNotes = getPaymentNotesFromEvent(event);
 
     if (razorpaySubscriptionId) {
       const orderPlan = await OrderPlan.findOne({
@@ -482,8 +556,10 @@ export async function POST(req) {
     if (razorpayPaymentLinkId && event.event === "payment_link.paid") {
       const paymentEntity = event?.payload?.payment?.entity || {};
       const paymentLinkEntity = event?.payload?.payment_link?.entity || {};
-      const orderPlan = await OrderPlan.findOne({
-        "payment.paymentLinkId": razorpayPaymentLinkId,
+      const orderPlan = await findOrderPlanForPaymentEvent({
+        razorpayOrderId,
+        razorpayPaymentLinkId,
+        paymentNotes,
       });
 
       if (orderPlan) {
@@ -535,8 +611,10 @@ export async function POST(req) {
         return NextResponse.json({ ok: true });
       }
 
-      const preorder = await Preorder.findOne({
-        "payment.paymentLinkId": razorpayPaymentLinkId,
+      const preorder = await findPreorderForPaymentEvent({
+        razorpayOrderId,
+        razorpayPaymentLinkId,
+        paymentNotes,
       });
 
       if (preorder) {
@@ -595,11 +673,21 @@ export async function POST(req) {
       }
     }
 
-    if (!razorpayOrderId) {
+    if (
+      !razorpayOrderId &&
+      !razorpayPaymentLinkId &&
+      !paymentNotes.orderPlanId &&
+      !paymentNotes.preorderId &&
+      !paymentNotes.razorpayOrderId
+    ) {
       return NextResponse.json({ ok: true });
     }
 
-    const orderPlan = await OrderPlan.findOne({ "payment.orderId": razorpayOrderId });
+    const orderPlan = await findOrderPlanForPaymentEvent({
+      razorpayOrderId,
+      razorpayPaymentLinkId,
+      paymentNotes,
+    });
     if (orderPlan) {
       const paymentEntity = event?.payload?.payment?.entity;
       const orderEntity = event?.payload?.order?.entity;
@@ -687,7 +775,11 @@ export async function POST(req) {
       }
     }
 
-    const preorder = await Preorder.findOne({ "payment.orderId": razorpayOrderId });
+    const preorder = await findPreorderForPaymentEvent({
+      razorpayOrderId,
+      razorpayPaymentLinkId,
+      paymentNotes,
+    });
 
     if (!preorder) {
       return NextResponse.json({ ok: true });

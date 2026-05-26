@@ -2,7 +2,12 @@ import Image from "next/image";
 import mongoose from "mongoose";
 import config from "@/config";
 import connectMongo from "@/libs/mongoose";
-import { createRazorpayPaymentLink } from "@/libs/razorpay";
+import { createRazorpayPaymentLink, fetchRazorpayPaymentLink } from "@/libs/razorpay";
+import { sendAdminOrderPlanConfirmedEmail, sendAdminPreorderConfirmedEmail } from "@/libs/admin-order-notifications";
+import { sendOrderPlanConfirmationEmail } from "@/libs/order-plan-notifications";
+import { sendPreorderConfirmationNotifications } from "@/libs/emailSender";
+import { recalculatePreorderWindowRouteSnapshot } from "@/libs/preorder-route-planner";
+import { recalculateSubscriptionRouteSnapshots } from "@/libs/subscription-route-planner";
 import OrderPlan from "@/models/OrderPlan";
 import Preorder from "@/models/Preorder";
 import PaymentRedirectClient from "./PaymentRedirectClient";
@@ -75,8 +80,139 @@ const getRecordFields = ({ kind, record }) => {
   };
 };
 
+const getPaymentFromPaymentLink = (paymentLink = {}) => {
+  const payments = Array.isArray(paymentLink.payments) ? paymentLink.payments : [];
+  const payment = payments.find((item) => item?.payment_id || item?.id) || {};
+
+  return {
+    id: payment.payment_id || payment.id || "",
+    amount: Number(payment.amount || paymentLink.amount || 0),
+    currency: payment.currency || paymentLink.currency || "INR",
+    createdAt: payment.created_at || paymentLink.updated_at || paymentLink.created_at || null,
+  };
+};
+
+const reconcilePaidPaymentLink = async ({ kind, record }) => {
+  const paymentLinkId = String(record?.payment?.paymentLinkId || "").trim();
+
+  if (!paymentLinkId || record?.payment?.status === "paid") {
+    return false;
+  }
+
+  const paymentLink = await fetchRazorpayPaymentLink(paymentLinkId).catch(() => null);
+  const status = String(paymentLink?.status || "").trim().toLowerCase();
+
+  if (status !== "paid") {
+    return false;
+  }
+
+  const payment = getPaymentFromPaymentLink(paymentLink);
+
+  record.payment = {
+    ...(record.payment?.toObject?.() || record.payment || {}),
+    provider: "razorpay",
+    status: "paid",
+    amount: payment.amount ? payment.amount / 100 : Number(record.total || record.payment?.amount || 0),
+    currency: payment.currency || record.currency || record.payment?.currency || "INR",
+    paymentId: payment.id || record.payment?.paymentId || "",
+    paymentLinkId,
+    shortUrl: "",
+    paidAt: payment.createdAt ? new Date(Number(payment.createdAt) * 1000) : new Date(),
+  };
+
+  if (kind === "preorder") {
+    record.status =
+      record.status === "fulfilled" || record.status === "shipped"
+        ? record.status
+        : "confirmed";
+    await record.save();
+
+    if (record.preorderWindow) {
+      try {
+        await recalculatePreorderWindowRouteSnapshot({
+          preorderWindowId: record.preorderWindow,
+        });
+      } catch (routeError) {
+        console.error("Failed to refresh preorder delivery route snapshot", routeError);
+      }
+    }
+
+    if (
+      !record.notifications?.confirmationEmailSentAt ||
+      !record.notifications?.confirmationWhatsappSentAt
+    ) {
+      try {
+        await sendPreorderConfirmationNotifications({ preorder: record });
+      } catch (notificationError) {
+        console.error("Failed to send preorder confirmation notifications", notificationError);
+      }
+    }
+
+    if (!record.notifications?.adminOrderEmailSentAt) {
+      try {
+        await sendAdminPreorderConfirmedEmail({ preorder: record });
+        record.notifications = {
+          ...(record.notifications?.toObject?.() || record.notifications || {}),
+          adminOrderEmailSentAt: new Date(),
+        };
+        await record.save();
+      } catch (notificationError) {
+        console.error("Failed to send admin preorder confirmation email", notificationError);
+      }
+    }
+
+    return true;
+  }
+
+  record.status =
+    record.status === "fulfilled" || record.status === "cancelled"
+      ? record.status
+      : "active";
+  await record.save();
+
+  try {
+    await recalculateSubscriptionRouteSnapshots();
+  } catch (routeError) {
+    console.error("Failed to refresh delivery route snapshots", routeError);
+  }
+
+  if (!record.notifications?.confirmationEmailSentAt) {
+    try {
+      await sendOrderPlanConfirmationEmail({ orderPlan: record });
+      record.notifications = {
+        ...(record.notifications?.toObject?.() || record.notifications || {}),
+        confirmationEmailSentAt: new Date(),
+      };
+      await record.save();
+    } catch (notificationError) {
+      console.error("Failed to send order plan confirmation email", notificationError);
+    }
+  }
+
+  if (!record.notifications?.adminOrderEmailSentAt) {
+    try {
+      await sendAdminOrderPlanConfirmedEmail({ orderPlan: record });
+      record.notifications = {
+        ...(record.notifications?.toObject?.() || record.notifications || {}),
+        adminOrderEmailSentAt: new Date(),
+      };
+      await record.save();
+    } catch (notificationError) {
+      console.error("Failed to send admin order plan confirmation email", notificationError);
+    }
+  }
+
+  return true;
+};
+
 const ensurePaymentLink = async ({ kind, record }) => {
   if (record.payment?.shortUrl) {
+    const didReconcile = await reconcilePaidPaymentLink({ kind, record });
+
+    if (didReconcile) {
+      return "";
+    }
+
     return record.payment.shortUrl;
   }
 
@@ -91,6 +227,7 @@ const ensurePaymentLink = async ({ kind, record }) => {
   const fields = getRecordFields({ kind, record });
   const shortOrderId = String(fields.id || "").slice(-10);
   const shortTimestamp = Date.now().toString(36).slice(-8);
+  const paymentPageUrl = `https://${config.domainName}/pay/${kind}/${encodeURIComponent(fields.id || "")}`;
   const paymentLink = await createRazorpayPaymentLink({
     amount: Math.round(fields.total * 100),
     currency: fields.currency,
@@ -108,6 +245,7 @@ const ensurePaymentLink = async ({ kind, record }) => {
       razorpayOrderId: record.payment?.orderId || "",
       orderNumber: fields.orderNumber || "",
     },
+    callbackUrl: paymentPageUrl,
   });
 
   record.payment = {
