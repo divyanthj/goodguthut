@@ -5,7 +5,9 @@ import { isAdminEmail } from "@/libs/admin";
 import connectMongo from "@/libs/mongoose";
 import {
   getSubscriptionSettings,
+  getSettingsCategoryLeadTimes,
   sanitizeDeliveryDaysOfWeek,
+  sanitizeCategoryLeadTimes,
   sanitizeMinimumLeadDays,
   sanitizeRecurringMinTotalQuantity,
 } from "@/libs/subscription-settings";
@@ -36,7 +38,12 @@ export async function GET() {
   await connectMongo();
   const settings = await getSubscriptionSettings();
 
-  return NextResponse.json({ settings });
+  return NextResponse.json({
+    settings: {
+      ...settings.toJSON(),
+      categoryLeadTimes: getSettingsCategoryLeadTimes(settings),
+    },
+  });
 }
 
 export async function PUT(req) {
@@ -56,6 +63,7 @@ export async function PUT(req) {
     settings.recurringMinTotalQuantity = sanitizeRecurringMinTotalQuantity(
       body.recurringMinTotalQuantity
     );
+    settings.categoryLeadTimes = sanitizeCategoryLeadTimes(body.categoryLeadTimes);
     await settings.save();
     await recalculateSubscriptionRouteSnapshots();
     const refreshedSettings = await getSubscriptionSettings();
@@ -66,7 +74,12 @@ export async function PUT(req) {
       data: refreshedSettings,
     });
 
-    return NextResponse.json({ settings: refreshedSettings });
+    return NextResponse.json({
+      settings: {
+        ...refreshedSettings.toJSON(),
+        categoryLeadTimes: getSettingsCategoryLeadTimes(refreshedSettings),
+      },
+    });
   } catch (error) {
     console.error(error);
     return NextResponse.json({ error: error.message }, { status: 500 });

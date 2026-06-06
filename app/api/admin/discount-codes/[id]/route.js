@@ -58,6 +58,14 @@ export async function PUT(req, { params }) {
       return NextResponse.json({ error: "Choose an expiry date or mark the code perpetual." }, { status: 400 });
     }
 
+    if (payload.startsAt && payload.expiresAt && payload.startsAt.getTime() > payload.expiresAt.getTime()) {
+      return NextResponse.json({ error: "Start date must be before expiry date." }, { status: 400 });
+    }
+
+    if (payload.redemptionCount > payload.maxRedemptions && payload.maxRedemptions > 0) {
+      return NextResponse.json({ error: "Redemptions used cannot be greater than the redemption cap." }, { status: 400 });
+    }
+
     delete payload.code;
 
     const discountCode = await DiscountCode.findByIdAndUpdate(params.id, payload, {

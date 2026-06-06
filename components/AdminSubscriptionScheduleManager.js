@@ -12,10 +12,83 @@ import {
 } from "@/libs/subscription-schedule";
 import { sanitizeRecurringMinTotalQuantity } from "@/libs/order-quantity";
 
+const SKU_CATEGORY_OPTIONS = [
+  {
+    value: "kanji",
+    label: "Kanji",
+    description: "Traditional fermented kanji and bold daily drinks.",
+    defaultLeadTimeDays: 3,
+  },
+  {
+    value: "sparkle",
+    label: "Sparkle",
+    description: "Light fermented fizz and easy sipping bottles.",
+    defaultLeadTimeDays: 2,
+  },
+  {
+    value: "pickles",
+    label: "Pickles",
+    description: "Slow, spiced vegetable ferments and pickle jars.",
+    defaultLeadTimeDays: 7,
+  },
+  {
+    value: "gift_packs",
+    label: "Gift Packs",
+    description: "Curated packs for gifting, birthdays, and thank-yous.",
+    defaultLeadTimeDays: 3,
+  },
+  {
+    value: "subscriptions",
+    label: "Subscriptions",
+    description: "Products or packs best suited to recurring plans.",
+    defaultLeadTimeDays: 3,
+  },
+  {
+    value: "custom_orders",
+    label: "Custom Orders",
+    description: "Bulk, event, custom pack, and made-to-brief products.",
+    defaultLeadTimeDays: 5,
+  },
+  {
+    value: "other",
+    label: "Other",
+    description: "Products waiting to be categorized.",
+    defaultLeadTimeDays: 3,
+  },
+];
+
+const DEFAULT_CATEGORY_LEAD_TIMES = Object.fromEntries(
+  SKU_CATEGORY_OPTIONS.map((category) => [
+    category.value,
+    category.defaultLeadTimeDays,
+  ])
+);
+
+const sanitizeCategoryLeadTimes = (value = {}) => {
+  const source = value && typeof value === "object" ? value : {};
+
+  return Object.fromEntries(
+    SKU_CATEGORY_OPTIONS.map((category) => {
+      const rawValue = source[category.value];
+      const fallback = category.defaultLeadTimeDays;
+      const normalized = Number(rawValue);
+
+      return [
+        category.value,
+        Number.isFinite(normalized)
+          ? Math.max(0, Math.min(60, Math.round(normalized)))
+          : fallback,
+      ];
+    })
+  );
+};
+
 export default function AdminSubscriptionScheduleManager({
   initialDeliveryDaysOfWeek = [],
   initialMinimumLeadDays = 3,
   initialRecurringMinTotalQuantity = 6,
+  initialCategoryLeadTimes = DEFAULT_CATEGORY_LEAD_TIMES,
+  embedded = false,
 }) {
   const [deliveryDaysOfWeek, setDeliveryDaysOfWeek] = useState(initialDeliveryDaysOfWeek);
   const [minimumLeadDays, setMinimumLeadDays] = useState(
@@ -23,6 +96,9 @@ export default function AdminSubscriptionScheduleManager({
   );
   const [recurringMinTotalQuantity, setRecurringMinTotalQuantity] = useState(
     sanitizeRecurringMinTotalQuantity(initialRecurringMinTotalQuantity)
+  );
+  const [categoryLeadTimes, setCategoryLeadTimes] = useState(
+    sanitizeCategoryLeadTimes(initialCategoryLeadTimes)
   );
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -52,6 +128,7 @@ export default function AdminSubscriptionScheduleManager({
           deliveryDaysOfWeek,
           minimumLeadDays,
           recurringMinTotalQuantity,
+          categoryLeadTimes,
         }),
       });
       const data = await response.json();
@@ -65,6 +142,7 @@ export default function AdminSubscriptionScheduleManager({
       setRecurringMinTotalQuantity(
         sanitizeRecurringMinTotalQuantity(data.settings?.recurringMinTotalQuantity)
       );
+      setCategoryLeadTimes(sanitizeCategoryLeadTimes(data.settings?.categoryLeadTimes));
       setMessage("Subscription schedule settings updated.");
     } catch (saveError) {
       setError(saveError.message || "Could not save subscription schedule settings.");
@@ -73,9 +151,19 @@ export default function AdminSubscriptionScheduleManager({
     }
   };
 
-  return (
-    <section className="rounded-2xl bg-base-100 p-5 shadow-md">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+  const updateCategoryLeadTime = (category, value) => {
+    setCategoryLeadTimes((current) =>
+      sanitizeCategoryLeadTimes({
+        ...current,
+        [category]: value,
+      })
+    );
+  };
+
+  const content = (
+    <>
+      {!embedded && (
+        <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">Subscription delivery days</h2>
           <p className="text-sm opacity-70">
@@ -87,8 +175,9 @@ export default function AdminSubscriptionScheduleManager({
           <div className="badge badge-outline">{formatMinimumLeadDays(minimumLeadDays)} notice</div>
         </div>
       </div>
+      )}
 
-      <form onSubmit={onSave} className="mt-5 space-y-5">
+      <form onSubmit={onSave} className={`${embedded ? "" : "mt-5"} space-y-5`}>
         <div className="flex flex-wrap gap-3">
           {SUBSCRIPTION_WEEKDAY_OPTIONS.map((day) => {
             const isActive = deliveryDaysOfWeek.includes(day.value);
@@ -128,6 +217,38 @@ export default function AdminSubscriptionScheduleManager({
             </span>
           </div>
         </label>
+
+        <div className="rounded-2xl border border-base-300 bg-base-200 p-4">
+          <div>
+            <h3 className="text-base font-semibold">Category lead times</h3>
+            <p className="mt-1 text-sm opacity-70">
+              Used as the public/default lead time when a product does not have its own override.
+            </p>
+          </div>
+          <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {SKU_CATEGORY_OPTIONS.map((category) => (
+              <label key={category.value} className="form-control">
+                <div className="label">
+                  <span className="label-text">{category.label}</span>
+                </div>
+                <input
+                  type="number"
+                  min="0"
+                  max="60"
+                  step="1"
+                  className="input input-bordered"
+                  value={categoryLeadTimes[category.value] ?? 0}
+                  onChange={(event) =>
+                    updateCategoryLeadTime(category.value, event.target.value)
+                  }
+                />
+                <div className="label">
+                  <span className="label-text-alt">{category.description}</span>
+                </div>
+              </label>
+            ))}
+          </div>
+        </div>
 
         <label className="form-control max-w-xs">
           <div className="label">
@@ -173,7 +294,16 @@ export default function AdminSubscriptionScheduleManager({
           </div>
         )}
       </form>
+    </>
+  );
 
+  if (embedded) {
+    return content;
+  }
+
+  return (
+    <section className="rounded-2xl bg-base-100 p-5 shadow-md">
+      {content}
     </section>
   );
 }

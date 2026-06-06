@@ -36,6 +36,30 @@ const getStatusClassName = (status = "") => {
   return "badge-outline";
 };
 
+const getInvoiceEmailStatus = (invoice = {}) => {
+  const status = String(invoice.emailStatus || "").trim();
+
+  if (["pending", "sent", "skipped", "failed"].includes(status)) {
+    return status;
+  }
+
+  return invoice.emailSentAt ? "sent" : "pending";
+};
+
+const getRowClassName = (invoice = {}) => {
+  const status = getInvoiceEmailStatus(invoice);
+
+  if (status === "failed") {
+    return "bg-error/5";
+  }
+
+  if (status === "pending" || status === "skipped") {
+    return "bg-warning/5";
+  }
+
+  return "";
+};
+
 const getSourceLabel = (source = {}) => {
   if (source.type === "preorder") {
     return "Preorder";
@@ -75,7 +99,7 @@ export default function AdminInvoicesList({ initialInvoices = [] }) {
         invoice.source?.type,
         invoice.source?.label,
         invoice.source?.deliveryKey,
-        invoice.emailStatus,
+        getInvoiceEmailStatus(invoice),
         invoice.taxSummary?.gstTreatment,
         invoice.seller?.gstin,
         invoice.seller?.legalName || invoice.sellerName,
@@ -93,9 +117,10 @@ export default function AdminInvoicesList({ initialInvoices = [] }) {
   const summary = useMemo(
     () => ({
       total: filteredInvoices.length,
-      sent: filteredInvoices.filter((invoice) => invoice.emailStatus === "sent").length,
-      failed: filteredInvoices.filter((invoice) => invoice.emailStatus === "failed").length,
-      skipped: filteredInvoices.filter((invoice) => invoice.emailStatus === "skipped").length,
+      sent: filteredInvoices.filter((invoice) => getInvoiceEmailStatus(invoice) === "sent").length,
+      pending: filteredInvoices.filter((invoice) => getInvoiceEmailStatus(invoice) === "pending").length,
+      failed: filteredInvoices.filter((invoice) => getInvoiceEmailStatus(invoice) === "failed").length,
+      skipped: filteredInvoices.filter((invoice) => getInvoiceEmailStatus(invoice) === "skipped").length,
       tax: filteredInvoices.reduce(
         (sum, invoice) => sum + Number(invoice.taxSummary?.totalTaxAmount || 0),
         0
@@ -139,7 +164,7 @@ export default function AdminInvoicesList({ initialInvoices = [] }) {
 
   return (
     <section className="space-y-4">
-      <div className="grid gap-3 md:grid-cols-5">
+      <div className="grid gap-3 md:grid-cols-6">
         <div className="rounded-2xl bg-base-100 p-4 shadow-sm">
           <div className="text-sm opacity-70">Total</div>
           <div className="mt-1 text-2xl font-semibold">{summary.total}</div>
@@ -147,6 +172,10 @@ export default function AdminInvoicesList({ initialInvoices = [] }) {
         <div className="rounded-2xl bg-base-100 p-4 shadow-sm">
           <div className="text-sm opacity-70">Sent</div>
           <div className="mt-1 text-2xl font-semibold">{summary.sent}</div>
+        </div>
+        <div className="rounded-2xl bg-base-100 p-4 shadow-sm">
+          <div className="text-sm opacity-70">Pending</div>
+          <div className="mt-1 text-2xl font-semibold">{summary.pending}</div>
         </div>
         <div className="rounded-2xl bg-base-100 p-4 shadow-sm">
           <div className="text-sm opacity-70">Failed</div>
@@ -209,8 +238,11 @@ export default function AdminInvoicesList({ initialInvoices = [] }) {
             </tr>
           </thead>
           <tbody>
-            {filteredInvoices.map((invoice) => (
-              <tr key={invoice.id}>
+            {filteredInvoices.map((invoice) => {
+              const emailStatus = getInvoiceEmailStatus(invoice);
+
+              return (
+              <tr key={invoice.id} className={getRowClassName(invoice)}>
                 <td>
                   <div className="font-semibold">{invoice.invoiceNumber}</div>
                   <div className="mt-1 flex flex-wrap gap-1">
@@ -255,12 +287,17 @@ export default function AdminInvoicesList({ initialInvoices = [] }) {
                   </div>
                 </td>
                 <td>
-                  <div className={`badge ${getStatusClassName(invoice.emailStatus)}`}>
-                    {invoice.emailStatus}
+                  <div className={`badge ${getStatusClassName(emailStatus)}`}>
+                    {emailStatus}
                   </div>
                   <div className="mt-1 text-xs opacity-60">
                     Sent: {formatDateTime(invoice.emailSentAt)}
                   </div>
+                  {emailStatus !== "sent" && (
+                    <div className="mt-1 text-xs opacity-60">
+                      Last attempt: {formatDateTime(invoice.emailLastAttemptAt)}
+                    </div>
+                  )}
                   {invoice.emailError && (
                     <div className="mt-1 max-w-xs text-xs text-error">{invoice.emailError}</div>
                   )}
@@ -272,11 +309,12 @@ export default function AdminInvoicesList({ initialInvoices = [] }) {
                     disabled={resendingId === invoice.id || !invoice.customer?.email}
                     onClick={() => resendInvoice(invoice.id)}
                   >
-                    {resendingId === invoice.id ? "Sending..." : "Resend"}
+                    {resendingId === invoice.id ? "Sending..." : "Resend email"}
                   </button>
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>

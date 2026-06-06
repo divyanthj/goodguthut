@@ -1,30 +1,90 @@
 import DiscountCode from "@/models/DiscountCode";
 
+export const DISCOUNT_CAMPAIGN_TYPES = [
+  {
+    value: "general",
+    label: "General",
+    description: "A normal discount code for broad use.",
+  },
+  {
+    value: "weekly_offer",
+    label: "Weekly Offer",
+    description: "A short-running weekly offer, even if the discount is small.",
+  },
+  {
+    value: "birthday",
+    label: "Birthday",
+    description: "A birthday code to use once birthday collection exists.",
+  },
+  {
+    value: "winback",
+    label: "Win-back",
+    description: "A nudge for customers who have not ordered in a while.",
+  },
+];
+
+const CAMPAIGN_TYPE_VALUES = new Set(DISCOUNT_CAMPAIGN_TYPES.map((item) => item.value));
+
 export const normalizeDiscountCode = (value = "") =>
   String(value)
     .trim()
     .toUpperCase()
     .replace(/\s+/g, "");
 
+export const normalizeDiscountCampaignType = (value = "") => {
+  const normalized = String(value || "").trim().toLowerCase();
+  return CAMPAIGN_TYPE_VALUES.has(normalized) ? normalized : "general";
+};
+
+const normalizeDateValue = (value = "") => {
+  if (!value) {
+    return null;
+  }
+
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
 export const normalizeDiscountCodePayload = (body = {}) => {
   const isPerpetual = body.isPerpetual === true;
-  const expiresAtValue = body.expiresAt ? new Date(body.expiresAt) : null;
+  const startsAt = normalizeDateValue(body.startsAt);
+  const expiresAtValue = normalizeDateValue(body.expiresAt);
   const expiresAt =
     !isPerpetual && expiresAtValue && !Number.isNaN(expiresAtValue.getTime())
       ? expiresAtValue
       : null;
+  const maxRedemptions = Math.max(0, Math.round(Number(body.maxRedemptions || 0)));
+  const redemptionCount = Math.max(0, Math.round(Number(body.redemptionCount || 0)));
 
   return {
     code: normalizeDiscountCode(body.code || ""),
     amount: Math.max(0, Math.min(100, Number(body.amount || 0))),
+    campaignType: normalizeDiscountCampaignType(body.campaignType),
+    campaignName: String(body.campaignName || "").trim().slice(0, 120),
+    startsAt,
     isPerpetual,
     expiresAt,
+    maxRedemptions,
+    redemptionCount,
+    adminNotes: String(body.adminNotes || "").trim().slice(0, 500),
     status: body.status === "archived" ? "archived" : "active",
   };
 };
 
 export const isDiscountCodeActive = (discountCode, now = new Date()) => {
   if (!discountCode || discountCode.status !== "active") {
+    return false;
+  }
+
+  const isRedemptionCapOpen =
+    !discountCode.maxRedemptions ||
+    Number(discountCode.redemptionCount || 0) < Number(discountCode.maxRedemptions || 0);
+
+  if (!isRedemptionCapOpen) {
+    return false;
+  }
+
+  if (discountCode.startsAt && new Date(discountCode.startsAt).getTime() > now.getTime()) {
     return false;
   }
 
@@ -46,6 +106,17 @@ export const getDiscountCodeStatusLabel = (discountCode, now = new Date()) => {
 
   if (discountCode.status !== "active") {
     return "archived";
+  }
+
+  if (discountCode.startsAt && new Date(discountCode.startsAt).getTime() > now.getTime()) {
+    return "scheduled";
+  }
+
+  if (
+    discountCode.maxRedemptions &&
+    Number(discountCode.redemptionCount || 0) >= Number(discountCode.maxRedemptions || 0)
+  ) {
+    return "redeemed";
   }
 
   return isDiscountCodeActive(discountCode, now) ? "active" : "expired";
@@ -97,6 +168,8 @@ export const resolveDiscountCode = async ({ code = "", subtotal = 0, now = new D
       subtotalAfterDiscount,
       isPerpetual: discountCode.isPerpetual === true,
       expiresAt: discountCode.expiresAt || null,
+      campaignType: discountCode.campaignType || "general",
+      campaignName: discountCode.campaignName || "",
     },
   };
 };

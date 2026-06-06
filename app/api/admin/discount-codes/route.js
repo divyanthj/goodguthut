@@ -31,6 +31,8 @@ export async function GET() {
   await connectMongo();
   const discountCodes = await DiscountCode.find({}).sort({
     status: 1,
+    campaignType: 1,
+    startsAt: 1,
     expiresAt: 1,
     updatedAt: -1,
     createdAt: -1,
@@ -61,6 +63,14 @@ export async function POST(req) {
 
     if (!payload.isPerpetual && !payload.expiresAt) {
       return NextResponse.json({ error: "Choose an expiry date or mark the code perpetual." }, { status: 400 });
+    }
+
+    if (payload.startsAt && payload.expiresAt && payload.startsAt.getTime() > payload.expiresAt.getTime()) {
+      return NextResponse.json({ error: "Start date must be before expiry date." }, { status: 400 });
+    }
+
+    if (payload.redemptionCount > payload.maxRedemptions && payload.maxRedemptions > 0) {
+      return NextResponse.json({ error: "Redemptions used cannot be greater than the redemption cap." }, { status: 400 });
     }
 
     const existingDiscountCode = await DiscountCode.findOne({ code: payload.code });

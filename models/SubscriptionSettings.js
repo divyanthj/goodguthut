@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import toJSON from "./plugins/toJSON";
 import { DEFAULT_SUBSCRIPTION_MINIMUM_LEAD_DAYS } from "@/libs/subscription-schedule";
 import { DEFAULT_RECURRING_MIN_TOTAL_QTY, MAX_TOTAL_QTY } from "@/libs/order-quantity";
+import { DEFAULT_CATEGORY_LEAD_TIMES } from "@/libs/sku-catalog";
 
 const subscriptionSettingsSchema = mongoose.Schema(
   {
@@ -20,6 +21,15 @@ const subscriptionSettingsSchema = mongoose.Schema(
       min: 4,
       max: MAX_TOTAL_QTY,
       default: DEFAULT_RECURRING_MIN_TOTAL_QTY,
+    },
+    categoryLeadTimes: {
+      type: Map,
+      of: {
+        type: Number,
+        min: 0,
+        max: 60,
+      },
+      default: () => DEFAULT_CATEGORY_LEAD_TIMES,
     },
     deliveryRouteSnapshots: {
       type: [

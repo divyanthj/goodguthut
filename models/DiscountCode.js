@@ -16,6 +16,20 @@ const discountCodeSchema = mongoose.Schema(
       max: 100,
       required: true,
     },
+    campaignType: {
+      type: String,
+      enum: ["general", "weekly_offer", "birthday", "winback"],
+      default: "general",
+    },
+    campaignName: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    startsAt: {
+      type: Date,
+      default: null,
+    },
     isPerpetual: {
       type: Boolean,
       default: false,
@@ -23,6 +37,22 @@ const discountCodeSchema = mongoose.Schema(
     expiresAt: {
       type: Date,
       default: null,
+    },
+    maxRedemptions: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+    redemptionCount: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+    adminNotes: {
+      type: String,
+      trim: true,
+      maxlength: 500,
+      default: "",
     },
     status: {
       type: String,

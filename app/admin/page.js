@@ -1,6 +1,9 @@
 import AdminLoginButton from "@/components/AdminLoginButton";
 import AdminNav from "@/components/AdminNav";
 import AdminPreorderConsole from "@/components/AdminPreorderConsole";
+import AdminSettingsAccordion, {
+  AdminSettingsAccordionItem,
+} from "@/components/AdminSettingsAccordion";
 import AdminSkuCatalogManager from "@/components/AdminSkuCatalogManager";
 import AdminSubscriptionCombosManager from "@/components/AdminSubscriptionCombosManager";
 import AdminSubscriptionScheduleManager from "@/components/AdminSubscriptionScheduleManager";
@@ -9,10 +12,17 @@ import connectMongo from "@/libs/mongoose";
 import { createDefaultPreorderWindow } from "@/libs/preorder-catalog";
 import { getSkuMap, listSkuCatalog } from "@/libs/sku-catalog";
 import {
+  formatDeliveryDaysOfWeek,
+} from "@/libs/subscription-delivery-days";
+import {
   hydrateSubscriptionCombo,
   listSubscriptionCombos,
 } from "@/libs/subscription-combos";
-import { getSubscriptionSettings } from "@/libs/subscription-settings";
+import { formatMinimumLeadDays } from "@/libs/subscription-schedule";
+import {
+  getSettingsCategoryLeadTimes,
+  getSubscriptionSettings,
+} from "@/libs/subscription-settings";
 import PreorderWindow from "@/models/PreorderWindow";
 
 export default async function AdminPage() {
@@ -61,6 +71,11 @@ export default async function AdminPage() {
   const combos = comboDocs.map((combo) => hydrateSubscriptionCombo(combo, skuMap));
   const preorderWindows = JSON.parse(JSON.stringify(preorderWindowDocs || []));
   const defaultPreorderWindow = createDefaultPreorderWindow();
+  const deliveryDaysOfWeek = settings?.deliveryDaysOfWeek || [];
+  const minimumLeadDays = Number(settings?.minimumLeadDays || 3);
+  const recurringMinTotalQuantity = Number(settings?.recurringMinTotalQuantity || 6);
+  const activeSkuCount = skuCatalog.filter((sku) => sku.status === "active").length;
+  const activeComboCount = combos.filter((combo) => combo.status === "active").length;
 
   return (
     <main className="min-h-screen bg-base-200 px-4 py-10 md:px-6">
@@ -75,36 +90,59 @@ export default async function AdminPage() {
           <AdminNav active="settings" />
         </div>
 
-        <AdminSubscriptionScheduleManager
-          initialDeliveryDaysOfWeek={settings?.deliveryDaysOfWeek || []}
-          initialMinimumLeadDays={Number(settings?.minimumLeadDays || 3)}
-          initialRecurringMinTotalQuantity={Number(
-            settings?.recurringMinTotalQuantity || 6
-          )}
-        />
+        <AdminSettingsAccordion>
+          <AdminSettingsAccordionItem
+            title="Subscription delivery days"
+            description="Choose delivery weekdays, category lead times, and recurring minimums."
+            badges={[
+              formatDeliveryDaysOfWeek(deliveryDaysOfWeek),
+              `${formatMinimumLeadDays(minimumLeadDays)} notice`,
+            ]}
+            defaultOpen
+          >
+            <AdminSubscriptionScheduleManager
+              initialDeliveryDaysOfWeek={deliveryDaysOfWeek}
+              initialMinimumLeadDays={minimumLeadDays}
+              initialRecurringMinTotalQuantity={recurringMinTotalQuantity}
+              initialCategoryLeadTimes={getSettingsCategoryLeadTimes(settings)}
+              embedded
+            />
+          </AdminSettingsAccordionItem>
 
-        <section className="rounded-2xl bg-base-100 p-5 shadow-md">
-          <div className="mb-4">
-            <h2 className="text-lg font-semibold">Delivery Pricing & Slabs</h2>
-            <p className="text-sm opacity-70">
-              These settings are used directly when customers see delivery charges at checkout.
-            </p>
-          </div>
-          <AdminPreorderConsole
-            initialWindows={preorderWindows}
-            initialSkuCatalog={skuCatalog}
-            defaultWindow={defaultPreorderWindow}
-            adminEmail={session.user.email}
-            view="settings"
-          />
-        </section>
+          <AdminSettingsAccordionItem
+            title="Delivery Pricing & Slabs"
+            description="Manage pickup, delivery windows, distance pricing, and free-delivery rules."
+            badges={[`${preorderWindows.length} window${preorderWindows.length === 1 ? "" : "s"}`]}
+          >
+            <AdminPreorderConsole
+              initialWindows={preorderWindows}
+              initialSkuCatalog={skuCatalog}
+              defaultWindow={defaultPreorderWindow}
+              adminEmail={session.user.email}
+              view="settings"
+            />
+          </AdminSettingsAccordionItem>
 
-        <AdminSkuCatalogManager />
+          <AdminSettingsAccordionItem
+            title="Products"
+            description="Manage SKU categories, descriptions, lead time overrides, pricing, and tax fields."
+            badges={[`${activeSkuCount} active`]}
+          >
+            <AdminSkuCatalogManager embedded />
+          </AdminSettingsAccordionItem>
 
-        <AdminSubscriptionCombosManager
-          initialCombos={combos}
-          initialSkuCatalog={skuCatalog}
-        />
+          <AdminSettingsAccordionItem
+            title="Sets"
+            description="Build fixed bottle sets that customers can choose at checkout."
+            badges={[`${activeComboCount} active`]}
+          >
+            <AdminSubscriptionCombosManager
+              initialCombos={combos}
+              initialSkuCatalog={skuCatalog}
+              embedded
+            />
+          </AdminSettingsAccordionItem>
+        </AdminSettingsAccordion>
       </div>
     </main>
   );

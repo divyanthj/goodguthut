@@ -459,7 +459,11 @@ export default function SubscriptionForm({
         .map((item) => ({
           sku: item.sku,
           name: item.name,
-          note: item.notes || "",
+          note: item.shortDescription || item.notes || "",
+          categoryLabel: item.categoryLabel || "",
+          benefits: item.benefits || "",
+          leadTimeDays: Number(item.effectiveLeadTimeDays || item.leadTimeDays || 0),
+          packLabel: item.packLabel || "",
           unitPrice: Number(item.unitPrice || 0),
           skuType: item.skuType || "perennial",
           recurringCutoffDate: String(item.recurringCutoffDate || "").trim(),
@@ -1681,10 +1685,34 @@ export default function SubscriptionForm({
                 >
                   <div className="flex h-full flex-col">
                     <div className="flex-1">
+                      <div className="mb-2 flex flex-wrap gap-2">
+                        {drink.categoryLabel && (
+                          <span className="rounded-full bg-[#f1e8d8] px-3 py-1 text-xs font-semibold text-[#5f7068]">
+                            {drink.categoryLabel}
+                          </span>
+                        )}
+                        {drink.packLabel && (
+                          <span className="rounded-full bg-[#eef4ee] px-3 py-1 text-xs font-semibold text-[#2f5d49]">
+                            {drink.packLabel}
+                          </span>
+                        )}
+                      </div>
                       <h3 className="text-lg font-semibold text-[#2f4a3e]">{drink.name}</h3>
-                      <p className="mt-2 text-sm leading-7 text-[#53675d]">{drink.note}</p>
-                      <div className="mt-3 text-sm font-medium text-[#5f7068]">
-                        {currency} {drink.unitPrice.toFixed(2)}
+                      <p className="mt-2 text-sm leading-7 text-[#53675d]">
+                        {drink.note || "Fresh small-batch ferment from the GGH kitchen."}
+                      </p>
+                      {drink.benefits && (
+                        <p className="mt-2 text-xs leading-6 text-[#5f7068]">
+                          {drink.benefits}
+                        </p>
+                      )}
+                      <div className="mt-3 flex flex-wrap items-center gap-2 text-sm font-medium text-[#5f7068]">
+                        <span>{currency} {drink.unitPrice.toFixed(2)}</span>
+                        {Number(drink.leadTimeDays || 0) > 0 && (
+                          <span className="rounded-full border border-[#d8cdbb] px-3 py-1 text-xs">
+                            {Number(drink.leadTimeDays || 0)} day lead
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div className="mt-5 flex justify-end">
@@ -2313,15 +2341,15 @@ export default function SubscriptionForm({
 
           {didEmailChange && (
             <div className="rounded-2xl border border-[#ddcfb6] bg-[#f7f1e6] px-4 py-4 text-sm text-[#52655b]">
-              We’ve sent a fresh update link to your new email address.
+              We have sent a fresh update link to your new email address.
             </div>
           )}
 
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="text-sm text-[#5f7068]">
               {isOneTimeMode
-                ? "No login needed. Complete checkout to confirm your one-time order."
-                : "No login needed. We’ll email you a secure link so you can update or cancel your plan anytime."}
+                ? "Quick checkout. Complete your order and we will send the confirmation by email."
+                : "Easy plan care. We will email you a secure link so you can update or cancel anytime."}
             </div>
             <div className="flex flex-wrap gap-3">
               {mode === "edit" && !isCancelled && (

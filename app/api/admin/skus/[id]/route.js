@@ -5,6 +5,7 @@ import { isAdminEmail } from "@/libs/admin";
 import connectMongo from "@/libs/mongoose";
 import Sku from "@/models/Sku";
 import SubscriptionCombo from "@/models/SubscriptionCombo";
+import { normalizeSkuPublicMetadata } from "@/libs/sku-catalog";
 import {
   removeCollatoKnowledgeDocument,
   syncCollatoKnowledgeDocument,
@@ -37,6 +38,7 @@ const getAdminSession = async () => {
 const normalizeSkuUpdatePayload = (body = {}) => ({
   name: (body.name || "").trim(),
   notes: (body.notes || "").trim(),
+  ...normalizeSkuPublicMetadata(body),
   unitPrice: Math.max(0, Number(body.unitPrice || 0)),
   hsnCode: String(body.hsnCode || "").trim(),
   gstRate: normalizeGstRate(body.gstRate),
