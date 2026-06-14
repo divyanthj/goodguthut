@@ -3,6 +3,9 @@ import { formatDeliveryDaysOfWeek } from "@/libs/subscription-delivery-days";
 import { formatMinimumLeadDays } from "@/libs/subscription-settings";
 import { getSubscriptionSetupContext } from "@/libs/subscription-request";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export default async function SubscriptionEditRoute({ searchParams }) {
   const {
     skuCatalog,

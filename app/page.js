@@ -2,6 +2,9 @@ import Image from "next/image";
 import UnifiedOrderCheckout from "@/components/UnifiedOrderCheckout";
 import { getSubscriptionSetupContext } from "@/libs/subscription-request";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export default async function HomePage() {
   const {
     skuCatalog,
