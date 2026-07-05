@@ -564,6 +564,12 @@ export default function AdminPreordersList({ initialPreorders }) {
                     <div className="text-xs uppercase tracking-[0.16em] opacity-60">Subtotal</div>
                     <div className="mt-1">{formatCurrency(preorder.currency, preorder.subtotal)}</div>
                   </div>
+                  {Number(preorder.smallCartFee || 0) > 0 && (
+                    <div>
+                      <div className="text-xs uppercase tracking-[0.16em] opacity-60">Small cart fee</div>
+                      <div className="mt-1">{formatCurrency(preorder.currency, preorder.smallCartFee)}</div>
+                    </div>
+                  )}
                   <div>
                     <div className="text-xs uppercase tracking-[0.16em] opacity-60">Discount</div>
                     <div className="mt-1">

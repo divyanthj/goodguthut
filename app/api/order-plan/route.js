@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import connectMongo from "@/libs/mongoose";
 import { buildOrderPlanRequest } from "@/libs/order-plan-request";
+import { getAdminSessionState } from "@/libs/admin-auth";
 import { sendOrderPlanConfirmationEmail } from "@/libs/order-plan-notifications";
 import { recalculateSubscriptionRouteSnapshots } from "@/libs/subscription-route-planner";
 import {
@@ -34,8 +35,6 @@ import OrderPlan from "@/models/OrderPlan";
 import { syncCollatoKnowledgeDocument } from "@/libs/collato-knowledge";
 
 const serializeOrderPlan = (orderPlan) => JSON.parse(JSON.stringify(orderPlan));
-const isManualOrderWithoutPaymentEnabled =
-  process.env.NEXT_PUBLIC_ENABLE_MANUAL_ORDER_WITHOUT_PAYMENT === "true";
 
 const refreshRouteSnapshots = async () => {
   try {
@@ -134,18 +133,30 @@ export async function POST(req) {
     const orderPlanRequest = await buildOrderPlanRequest(body);
     await connectMongo();
 
-    if (body.manualWithoutPayment === true && !isManualOrderWithoutPaymentEnabled) {
-      return jsonError("Manual order creation without Razorpay is disabled.", 403);
+    const isManualAdminOrder = body.manualWithoutPayment === true;
+    let manualAdminSession = null;
+
+    if (isManualAdminOrder) {
+      manualAdminSession = await getAdminSessionState();
+
+      if (!manualAdminSession.session?.user || !manualAdminSession.isAdmin) {
+        return jsonError("Manual order creation is only available to admins.", 403);
+      }
     }
 
-    if (body.manualWithoutPayment === true && orderPlanRequest.mode !== "one_time") {
-      return jsonError("Manual order creation without Razorpay is only available for one-time orders.", 400);
+    if (isManualAdminOrder && orderPlanRequest.mode !== "one_time") {
+      return jsonError("Manual order creation is only available for one-time orders.", 400);
     }
 
     const allowManualWithoutPayment =
       orderPlanRequest.mode === "one_time" &&
-      body.manualWithoutPayment === true &&
-      isManualOrderWithoutPaymentEnabled;
+      isManualAdminOrder &&
+      manualAdminSession?.isAdmin;
+    const manualPaymentAction = ["collect_later", "never_collect"].includes(
+      body.manualPaymentAction
+    )
+      ? body.manualPaymentAction
+      : "mark_paid";
 
     const orderPlan = await OrderPlan.create({
       orderNumber: await reserveNextOrderNumber({
@@ -175,27 +186,46 @@ export async function POST(req) {
       totalQuantity: orderPlanRequest.totalQuantity,
       subtotal: orderPlanRequest.subtotal,
       discount: orderPlanRequest.discount,
+      smallCartFee: orderPlanRequest.smallCartFee,
       deliveryFee: orderPlanRequest.deliveryFee,
       deliveryFeeBeforePerks: orderPlanRequest.deliveryFeeBeforePerks,
       appliedPerks: orderPlanRequest.appliedPerks,
       deliveryDistanceKm: orderPlanRequest.deliveryDistanceKm,
       total: orderPlanRequest.total,
       status: "new",
-      source: allowManualWithoutPayment ? "manual" : "landing",
+      source: allowManualWithoutPayment ? "admin" : "landing",
     });
 
     let checkoutPayload = null;
 
     if (allowManualWithoutPayment) {
-      orderPlan.payment = {
-        provider: "manual",
-        status: "paid",
-        amount: Number(orderPlan.total || 0),
-        currency: orderPlan.currency || "INR",
-        paymentId: `manual_${Date.now()}`,
-        paidAt: new Date(),
-      };
-      orderPlan.status = "confirmed";
+      if (manualPaymentAction === "never_collect") {
+        orderPlan.payment = {
+          provider: "manual",
+          status: "not_required",
+          amount: 0,
+          currency: orderPlan.currency || "INR",
+        };
+        orderPlan.status = "confirmed";
+      } else if (manualPaymentAction === "collect_later") {
+        orderPlan.payment = {
+          provider: "manual",
+          status: "pending",
+          amount: Number(orderPlan.total || 0),
+          currency: orderPlan.currency || "INR",
+        };
+        orderPlan.status = "confirmed";
+      } else {
+        orderPlan.payment = {
+          provider: "manual",
+          status: "paid",
+          amount: Number(orderPlan.total || 0),
+          currency: orderPlan.currency || "INR",
+          paymentId: `manual_${Date.now()}`,
+          paidAt: new Date(),
+        };
+        orderPlan.status = "confirmed";
+      }
       await orderPlan.save();
       await refreshRouteSnapshots();
     } else if (isRazorpayConfigured() && Number(orderPlan.total || 0) > 0) {
@@ -342,7 +372,11 @@ export async function POST(req) {
           ? checkoutPayload?.checkoutToken
             ? "Order created. Complete payment to confirm your delivery."
             : allowManualWithoutPayment
-              ? "Order created without Razorpay. Payment is marked confirmed for testing."
+              ? manualPaymentAction === "never_collect"
+                ? "Admin order created. Payment will not be collected."
+                : manualPaymentAction === "collect_later"
+                  ? "Admin order created. Payment is marked to collect later."
+                  : "Admin order created and marked paid."
               : "Order created and confirmed."
           : checkoutPayload?.checkoutToken
             ? "Plan created. Complete Razorpay setup to activate recurring auto-pay."

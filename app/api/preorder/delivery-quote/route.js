@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import connectMongo from "@/libs/mongoose";
 import { calculateDeliveryQuote, isGoogleMapsConfigured } from "@/libs/delivery";
 import { applyDeliveryFeePerksToQuote } from "@/libs/geo-perks";
+import { calculateSmallCartFee } from "@/libs/cart-fee";
 import { getPlaceDetails } from "@/libs/places";
 import PreorderWindow from "@/models/PreorderWindow";
 import { getActiveWindowFilter } from "@/libs/preorder-windows";
@@ -47,6 +48,7 @@ export async function POST(req) {
       body.orderSubtotal === "" || body.orderSubtotal === null || body.orderSubtotal === undefined
         ? null
         : Number(body.orderSubtotal);
+    const totalQuantity = Math.max(0, Number(body.totalQuantity || 0));
 
     if (!address && !placeId) {
       logAbuseEvent("delivery-quote-missing-address", req);
@@ -107,6 +109,7 @@ export async function POST(req) {
       distanceKm: quote.distanceKm,
       deliveryFee: quote.deliveryFee,
       deliveryFeeBeforePerks: quote.deliveryFeeBeforePerks,
+      smallCartFee: calculateSmallCartFee(totalQuantity),
       normalizedAddress: quote.normalizedAddress,
       matchedBand: quote.matchedBand,
       currency: preorderWindow.currency || "INR",

@@ -24,6 +24,7 @@ import {
 import { getSkuMap } from "@/libs/sku-catalog";
 import { getDefaultSubscriptionStartDate } from "@/libs/subscription-schedule";
 import { MAX_TOTAL_QTY, ONE_TIME_MIN_TOTAL_QTY } from "@/libs/order-quantity";
+import { calculateSmallCartFee } from "@/libs/cart-fee";
 
 const buildOneTimeRequest = async (body = {}) => {
   const name = normalizeName(body.name || "");
@@ -120,13 +121,16 @@ const buildOneTimeRequest = async (body = {}) => {
 
   const subtotal = items.reduce((sum, item) => sum + item.lineTotal, 0);
   const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
+  const smallCartFee = calculateSmallCartFee(totalQuantity);
   const { discount } = await resolveDiscountCode({
     code: body.discountCode || "",
     subtotal,
   });
 
   if (totalQuantity < ONE_TIME_MIN_TOTAL_QTY) {
-    throw new Error(`Orders must include at least ${ONE_TIME_MIN_TOTAL_QTY} bottles.`);
+    throw new Error(
+      `Orders must include at least ${ONE_TIME_MIN_TOTAL_QTY} bottle${ONE_TIME_MIN_TOTAL_QTY === 1 ? "" : "s"}.`
+    );
   }
 
   if (totalQuantity > MAX_TOTAL_QTY) {
@@ -206,11 +210,12 @@ const buildOneTimeRequest = async (body = {}) => {
     totalQuantity,
     subtotal,
     discount,
+    smallCartFee,
     deliveryFee,
     deliveryFeeBeforePerks,
     appliedPerks,
     deliveryDistanceKm,
-    total: discount.subtotalAfterDiscount + deliveryFee,
+    total: discount.subtotalAfterDiscount + deliveryFee + smallCartFee,
     addressSessionToken: sessionToken,
     deliveryPlaceId: placeId,
   };

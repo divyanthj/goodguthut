@@ -100,6 +100,9 @@ export const buildPreorderConfirmationNotifications = ({ preorder }) => {
     preorder?.discount?.discountAmount > 0
       ? `Discount (${preorder.discount.code}): -${formatMoney(preorder?.currency, preorder.discount.discountAmount)}`
       : "",
+    Number(preorder?.smallCartFee || 0) > 0
+      ? `Small cart fee: ${formatMoney(preorder?.currency, preorder.smallCartFee)}`
+      : "",
     `${isPickup ? "Pickup" : "Delivery"}: ${formatMoney(preorder?.currency, preorder?.deliveryFee)}`,
     `Total: ${totalAmount}`,
   ]
@@ -149,6 +152,14 @@ export const buildPreorderConfirmationNotifications = ({ preorder }) => {
                       ? `<tr>
                     <td>Discount (${escapeHtml(preorder.discount.code)})</td>
                     <td>-${escapeHtml(formatMoney(preorder?.currency, preorder.discount.discountAmount))}</td>
+                  </tr>`
+                      : ""
+                  }
+                  ${
+                    Number(preorder?.smallCartFee || 0) > 0
+                      ? `<tr>
+                    <td>Small cart fee</td>
+                    <td>${escapeHtml(formatMoney(preorder?.currency, preorder.smallCartFee))}</td>
                   </tr>`
                       : ""
                   }

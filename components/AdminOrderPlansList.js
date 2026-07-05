@@ -337,6 +337,12 @@ export default function AdminOrderPlansList({ initialOrderPlans = [] }) {
                           <div className="text-xs uppercase tracking-[0.16em] opacity-60">Subtotal</div>
                           <div className="mt-1">{formatCurrency(plan.currency, plan.subtotal)}</div>
                         </div>
+                        {Number(plan.smallCartFee || 0) > 0 && (
+                          <div>
+                            <div className="text-xs uppercase tracking-[0.16em] opacity-60">Small cart fee</div>
+                            <div className="mt-1">{formatCurrency(plan.currency, plan.smallCartFee)}</div>
+                          </div>
+                        )}
                         <div>
                           <div className="text-xs uppercase tracking-[0.16em] opacity-60">Delivery fee</div>
                           <div className="mt-1">
@@ -613,6 +619,12 @@ export default function AdminOrderPlansList({ initialOrderPlans = [] }) {
                                 <div className="text-xs uppercase tracking-[0.16em] opacity-60">Subtotal</div>
                                 <div className="mt-1">{formatCurrency(plan.currency, plan.subtotal)}</div>
                               </div>
+                              {Number(plan.smallCartFee || 0) > 0 && (
+                                <div>
+                                  <div className="text-xs uppercase tracking-[0.16em] opacity-60">Small cart fee</div>
+                                  <div className="mt-1">{formatCurrency(plan.currency, plan.smallCartFee)}</div>
+                                </div>
+                              )}
                               <div>
                                 <div className="text-xs uppercase tracking-[0.16em] opacity-60">Delivery fee</div>
                                 <div className="mt-1">{formatCurrency(plan.currency, plan.deliveryFee)}</div>

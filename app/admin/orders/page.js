@@ -7,6 +7,7 @@ import {
   normalizeAdminOrderFromOrderPlan,
   sortAdminOrdersByCreatedAtDesc,
 } from "@/libs/admin-orders";
+import { getSubscriptionSetupContext } from "@/libs/subscription-request";
 import connectMongo from "@/libs/mongoose";
 import { ensureOrderNumbersForDocuments } from "@/libs/order-numbers";
 import OrderPlan from "@/models/OrderPlan";
@@ -48,9 +49,10 @@ export default async function AdminOrdersPage() {
   }
 
   await connectMongo();
-  const [orderPlanDocs, legacyPreorderDocs] = await Promise.all([
+  const [orderPlanDocs, legacyPreorderDocs, orderEntryConfig] = await Promise.all([
     OrderPlan.find({}).sort({ createdAt: -1 }).limit(300),
     Preorder.find({}).sort({ createdAt: -1 }).limit(200),
+    getSubscriptionSetupContext(),
   ]);
   const [orderPlansWithNumbers, legacyPreordersWithNumbers] = await Promise.all([
     ensureOrderNumbersForDocuments(orderPlanDocs),
@@ -78,7 +80,23 @@ export default async function AdminOrdersPage() {
           <AdminNav active="orders" />
         </div>
 
-        <AdminOrdersList initialOrders={orders} />
+        <AdminOrdersList
+          initialOrders={orders}
+          orderEntryConfig={{
+            catalogItems: orderEntryConfig.skuCatalog,
+            comboOptions: orderEntryConfig.comboCatalog,
+            deliveryWindowId: orderEntryConfig.deliveryWindowId,
+            pickupAddress: orderEntryConfig.pickupAddress,
+            deliveryBands: orderEntryConfig.deliveryBands,
+            deliveryDaysOfWeek: orderEntryConfig.deliveryDaysOfWeek,
+            minimumLeadDays: orderEntryConfig.minimumLeadDays,
+            recurringMinTotalQuantity: orderEntryConfig.recurringMinTotalQuantity,
+            freeDeliveryThreshold: orderEntryConfig.freeDeliveryThreshold,
+            availableStartDates: orderEntryConfig.availableStartDates,
+            defaultStartDate: orderEntryConfig.defaultStartDate,
+            currency: orderEntryConfig.currency,
+          }}
+        />
       </div>
     </main>
   );

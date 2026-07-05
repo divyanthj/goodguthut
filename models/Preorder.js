@@ -312,6 +312,11 @@ const preorderSchema = mongoose.Schema(
       type: [preorderAppliedPerkSchema],
       default: [],
     },
+    smallCartFee: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
     deliveryDistanceKm: {
       type: Number,
       min: 0,

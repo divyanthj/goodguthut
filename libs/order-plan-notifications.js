@@ -63,6 +63,9 @@ export const sendOrderPlanConfirmationEmail = async ({ orderPlan }) => {
     isRecurring && nextDeliveryLabel ? `Next delivery: ${nextDeliveryLabel}` : "",
     `Delivery address: ${orderPlan.normalizedDeliveryAddress || orderPlan.address}`,
     itemSummaryText ? `Lineup: ${itemSummaryText}` : "",
+    !isRecurring && Number(orderPlan.smallCartFee || 0) > 0
+      ? `Small cart fee: ${orderPlan.currency || "INR"} ${Number(orderPlan.smallCartFee || 0).toFixed(2)}`
+      : "",
     `Total: ${orderPlan.currency || "INR"} ${Number(orderPlan.total || 0).toFixed(2)}`,
   ]
     .filter(Boolean)
@@ -91,6 +94,11 @@ export const sendOrderPlanConfirmationEmail = async ({ orderPlan }) => {
           <tr><td>First delivery</td><td>${escapeHtml(firstDeliveryLabel || "-")}</td></tr>
           ${isRecurring ? `<tr><td>Next delivery</td><td>${escapeHtml(nextDeliveryLabel || "-")}</td></tr>` : ""}
           <tr><td>Delivery address</td><td>${escapeHtml(orderPlan.normalizedDeliveryAddress || orderPlan.address || "-")}</td></tr>
+          ${
+            !isRecurring && Number(orderPlan.smallCartFee || 0) > 0
+              ? `<tr><td>Small cart fee</td><td>${escapeHtml(`${orderPlan.currency || "INR"} ${Number(orderPlan.smallCartFee || 0).toFixed(2)}`)}</td></tr>`
+              : ""
+          }
           <tr><td>Total</td><td>${escapeHtml(`${orderPlan.currency || "INR"} ${Number(orderPlan.total || 0).toFixed(2)}`)}</td></tr>
         </table>
         ${itemSummaryHtml ? `<h2 class="section-title">What's in your set</h2><ul class="item-list">${itemSummaryHtml}</ul>` : ""}

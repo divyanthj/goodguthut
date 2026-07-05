@@ -5,6 +5,7 @@ import {
   normalizeAdminOrderFromLegacyPreorder,
   normalizeAdminOrderFromOrderPlan,
 } from "@/libs/admin-orders";
+import SubscriptionForm from "@/components/SubscriptionForm";
 import { isRecurringOrderPlanPaymentConfirmed } from "@/libs/order-plans";
 import { getRazorpayArtifactRows } from "@/libs/razorpay-dashboard-links";
 import { formatSubscriptionCadence, formatSubscriptionDuration } from "@/libs/subscriptions";
@@ -225,9 +226,14 @@ ${sparkleEmoji} We are brewing, bottling, and getting everything ready for deliv
 
 const isPaymentOrMandateSetupPending = (order = {}) => {
   const paymentStatus = String(order.payment?.status || "").trim();
+  const paymentProvider = String(order.payment?.provider || "").trim();
 
   if (order.sourceType === "order_plan" && order.mode === "recurring") {
     return paymentStatus === "created";
+  }
+
+  if (paymentProvider === "manual") {
+    return false;
   }
 
   return ["pending", "order_created", "created"].includes(paymentStatus);
@@ -306,7 +312,7 @@ const renderRazorpayArtifacts = (payment = {}) => {
   );
 };
 
-export default function AdminOrdersList({ initialOrders = [] }) {
+export default function AdminOrdersList({ initialOrders = [], orderEntryConfig = null }) {
   const [orders, setOrders] = useState(() => initialOrders || []);
   const [savingId, setSavingId] = useState("");
   const [deletingId, setDeletingId] = useState("");
@@ -349,6 +355,25 @@ export default function AdminOrdersList({ initialOrders = [] }) {
         entry.id === normalized.id && entry.sourceType === sourceType
           ? normalized
           : entry
+      )
+    );
+  };
+
+  const addOrderToState = (nextRecord) => {
+    if (!nextRecord?.id) {
+      return;
+    }
+
+    const normalized = normalizeAdminOrderFromOrderPlan({
+      ...nextRecord,
+      sourceType: "order_plan",
+    });
+
+    setOrders((current) =>
+      [normalized, ...current.filter((entry) => entry.id !== normalized.id)].sort(
+        (left, right) =>
+          new Date(right.createdAt || 0).getTime() -
+          new Date(left.createdAt || 0).getTime()
       )
     );
   };
@@ -900,6 +925,12 @@ export default function AdminOrdersList({ initialOrders = [] }) {
                   <div className="text-xs uppercase tracking-[0.16em] opacity-60">Subtotal</div>
                   <div className="mt-1">{formatCurrency(order.currency, order.subtotal)}</div>
                 </div>
+                {Number(order.smallCartFee || 0) > 0 && (
+                  <div>
+                    <div className="text-xs uppercase tracking-[0.16em] opacity-60">Small cart fee</div>
+                    <div className="mt-1">{formatCurrency(order.currency, order.smallCartFee)}</div>
+                  </div>
+                )}
                 {isLegacy && (
                   <div>
                     <div className="text-xs uppercase tracking-[0.16em] opacity-60">Discount</div>
@@ -1204,6 +1235,22 @@ export default function AdminOrdersList({ initialOrders = [] }) {
         <div className="alert alert-success">
           <span>{message}</span>
         </div>
+      )}
+
+      {orderEntryConfig && (
+        <details className="rounded-2xl bg-base-100 p-4 shadow-sm">
+          <summary className="cursor-pointer text-lg font-semibold">
+            Add phone or face-to-face order
+          </summary>
+          <div className="mt-4">
+            <SubscriptionForm
+              {...orderEntryConfig}
+              initialSelectionMode="custom"
+              enableAdminManualOrders
+              onOrderSaved={addOrderToState}
+            />
+          </div>
+        </details>
       )}
 
       {activeOrders.map((order) => renderOrderCard(order))}

@@ -30,9 +30,14 @@ const buildItemSummaryHtml = (items = []) =>
 
 const isPendingPaymentOrSetup = (order = {}) => {
   const paymentStatus = String(order.payment?.status || "").trim();
+  const paymentProvider = String(order.payment?.provider || "").trim();
 
   if (order.mode === "recurring") {
     return paymentStatus === "created";
+  }
+
+  if (paymentProvider === "manual") {
+    return false;
   }
 
   return ["pending", "order_created", "created"].includes(paymentStatus);

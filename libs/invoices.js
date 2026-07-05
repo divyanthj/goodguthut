@@ -299,6 +299,11 @@ const buildInvoiceHtml = (invoice) => {
             : ""
         }
         ${
+          Number(invoice.smallCartFee || 0) > 0
+            ? `<tr><td>Small cart fee</td><td>${escapeHtml(formatMoney(invoice.currency, invoice.smallCartFee))}</td></tr>`
+            : ""
+        }
+        ${
           isGstReadySnapshot
             ? `<tr><td>${escapeHtml(`${deliveryLabel} (${deliveryTax.hsnSac || "HSN/SAC not set"}, GST ${Number(deliveryTax.gstRate || 0)}%)`)}</td><td>${escapeHtml(formatMoney(invoice.currency, invoice.deliveryFee))}</td></tr>
         <tr><td>CGST</td><td>${escapeHtml(formatMoney(invoice.currency, taxSummary.cgstAmount))}</td></tr>
@@ -364,6 +369,9 @@ const buildInvoiceText = (invoice) =>
     Number(invoice.discountAmount || 0) > 0
       ? `Discount: -${formatMoney(invoice.currency, invoice.discountAmount)}`
       : "",
+    Number(invoice.smallCartFee || 0) > 0
+      ? `Small cart fee: ${formatMoney(invoice.currency, invoice.smallCartFee)}`
+      : "",
     isGstReadySnapshot
       ? `${deliveryLabel} (${deliveryTax.hsnSac || "HSN/SAC not set"}, GST ${Number(deliveryTax.gstRate || 0)}%): ${formatMoney(invoice.currency, invoice.deliveryFee)}`
       : `${deliveryLabel}: ${formatMoney(invoice.currency, invoice.deliveryFee)}`,
@@ -420,6 +428,7 @@ const createInvoiceFromSnapshot = async ({
   items = [],
   subtotal = 0,
   discountAmount = 0,
+  smallCartFee = 0,
   deliveryFee = 0,
   deliveryFeeBeforePerks = 0,
   appliedPerks = [],
@@ -524,6 +533,7 @@ const createInvoiceFromSnapshot = async ({
     items: invoiceItems,
     subtotal: Number(subtotal || 0),
     discountAmount: Number(discountAmount || 0),
+    smallCartFee: Number(smallCartFee || 0),
     deliveryFee: Number(deliveryFee || 0),
     deliveryFeeBeforePerks: Number(deliveryFeeBeforePerks || deliveryFee || 0),
     appliedPerks: Array.isArray(appliedPerks) ? appliedPerks : [],
@@ -562,6 +572,7 @@ export const createAndSendPreorderInvoice = async ({ preorder }) => {
     items: preorder.items || [],
     subtotal: preorder.subtotal,
     discountAmount: preorder.discount?.discountAmount || 0,
+    smallCartFee: preorder.smallCartFee || 0,
     deliveryFee: preorder.deliveryFee,
     deliveryFeeBeforePerks: preorder.deliveryFeeBeforePerks,
     appliedPerks: preorder.appliedPerks,
@@ -592,6 +603,8 @@ export const createAndSendOrderPlanInvoice = async ({ orderPlan, deliveryDate = 
     currency: orderPlan.currency || orderPlan.payment?.currency || "INR",
     items: orderPlan.items || [],
     subtotal: orderPlan.subtotal,
+    discountAmount: orderPlan.discount?.discountAmount || 0,
+    smallCartFee: orderPlan.smallCartFee || 0,
     deliveryFee: orderPlan.deliveryFee,
     deliveryFeeBeforePerks: orderPlan.deliveryFeeBeforePerks,
     appliedPerks: orderPlan.appliedPerks,

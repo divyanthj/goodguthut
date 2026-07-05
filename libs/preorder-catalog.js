@@ -22,7 +22,7 @@ export const createDefaultPreorderWindow = () => {
     closesAt: null,
     deliveryDate: deliveryDate.toISOString(),
     currency: "INR",
-    minimumOrderQuantity: 4,
+    minimumOrderQuantity: 1,
     pickupAddress: "",
     pickupDoorNumber: "",
     allowFreePickup: false,

@@ -360,6 +360,11 @@ const invoiceSchema = mongoose.Schema(
       type: [invoiceAppliedPerkSchema],
       default: [],
     },
+    smallCartFee: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
     deliveryTax: {
       type: invoiceDeliveryTaxSchema,
       default: () => ({}),

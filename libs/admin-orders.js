@@ -12,6 +12,21 @@ const getLegacyPreorderPaymentBadgeLabel = (preorder = {}) => {
 
 export const getOrderPlanPaymentBadgeLabel = (plan = {}) => {
   const status = String(plan.payment?.status || "").trim();
+  const provider = String(plan.payment?.provider || "").trim();
+
+  if (provider === "manual") {
+    if (status === "not_required") {
+      return "payment: never collect";
+    }
+
+    if (status === "pending") {
+      return "payment: collect later";
+    }
+
+    if (status === "paid") {
+      return "payment: manually paid";
+    }
+  }
 
   if (plan.mode === "recurring") {
     if (status === "created") {
@@ -94,6 +109,7 @@ export const normalizeAdminOrderFromOrderPlan = (plan = {}) => {
     items: Array.isArray(plan.items) ? plan.items : [],
     totalQuantity: Number(plan.totalQuantity || 0),
     subtotal: Number(plan.subtotal || 0),
+    smallCartFee: Number(plan.smallCartFee || 0),
     deliveryFee: Number(plan.deliveryFee || 0),
     deliveryFeeBeforePerks: Number(plan.deliveryFeeBeforePerks || 0),
     appliedPerks: Array.isArray(plan.appliedPerks) ? plan.appliedPerks : [],
@@ -136,6 +152,7 @@ export const normalizeAdminOrderFromLegacyPreorder = (preorder = {}) => ({
   items: Array.isArray(preorder.items) ? preorder.items : [],
   totalQuantity: Number(preorder.totalQuantity || 0),
   subtotal: Number(preorder.subtotal || 0),
+  smallCartFee: Number(preorder.smallCartFee || 0),
   deliveryFee: Number(preorder.deliveryFee || 0),
   deliveryFeeBeforePerks: Number(preorder.deliveryFeeBeforePerks || 0),
   appliedPerks: Array.isArray(preorder.appliedPerks) ? preorder.appliedPerks : [],

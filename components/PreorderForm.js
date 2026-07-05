@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRazorpayCheckout } from "@/components/RazorpayCheckout";
+import { calculateSmallCartFee, SMALL_CART_FEE_MAX_QTY } from "@/libs/cart-fee";
 
 const initialCustomer = {
   customerName: "",
@@ -118,7 +119,6 @@ export default function PreorderForm({
   freeDeliveryThreshold = null,
   onOrderPlaced,
   updateQty,
-  minTotalQuantity,
   allowTestPreorder = false,
 }) {
   const [customer, setCustomer] = useState(initialCustomer);
@@ -165,10 +165,13 @@ export default function PreorderForm({
   const hasFreeDeliveryThreshold =
     Number.isFinite(numericFreeDeliveryThreshold) && numericFreeDeliveryThreshold > 0;
   const qualifiesForFreeDelivery = hasFreeDeliveryThreshold && subtotal >= numericFreeDeliveryThreshold;
-  const total = discountedSubtotal + Number(isPickup ? 0 : deliveryQuote?.deliveryFee || 0);
+  const smallCartFee = calculateSmallCartFee(totalQuantity);
+  const bottlesToWaiveSmallCartFee = Math.max(0, SMALL_CART_FEE_MAX_QTY + 1 - totalQuantity);
+  const total = discountedSubtotal + Number(isPickup ? 0 : deliveryQuote?.deliveryFee || 0) + smallCartFee;
+  const minimumQuantityRequired = 1;
   const hasMandatoryFields =
     customer.customerName.trim() && customer.phone.trim() && (isPickup || customer.address.trim());
-  const meetsMinQty = totalQuantity >= minTotalQuantity;
+  const meetsMinQty = totalQuantity >= minimumQuantityRequired;
   const needsAddressSelection =
     requiresSelectedAddress && customer.address.trim() && !selectedPlace;
   const isBlockedByDelivery =
@@ -351,6 +354,7 @@ export default function PreorderForm({
             placeId: selectedPlace.placeId,
             sessionToken: addressSessionToken,
             orderSubtotal: subtotal,
+            totalQuantity,
           }),
         });
 
@@ -375,7 +379,7 @@ export default function PreorderForm({
     }, 200);
 
     return () => clearTimeout(timeoutId);
-  }, [selectedPlace, preorderWindowId, deliveryConfigured, addressSessionToken, fullAddress, isPickup, subtotal]);
+  }, [selectedPlace, preorderWindowId, deliveryConfigured, addressSessionToken, fullAddress, isPickup, subtotal, totalQuantity]);
 
   const handleAddressInputChange = (value) => {
     setCustomer((prev) => ({ ...prev, address: value }));
@@ -452,7 +456,7 @@ export default function PreorderForm({
     }
 
     if (!meetsMinQty) {
-      setError(`Minimum preorder quantity is ${minTotalQuantity}.`);
+      setError("Please add at least one bottle.");
       return;
     }
 
@@ -828,7 +832,9 @@ export default function PreorderForm({
               </ul>
             )}
             <div className="text-sm opacity-80">Total quantity: {totalQuantity}</div>
-            <div className="text-sm opacity-80">Minimum quantity required: {minTotalQuantity}</div>
+            {minimumQuantityRequired > 1 && (
+              <div className="text-sm opacity-80">Minimum quantity required: {minimumQuantityRequired}</div>
+            )}
             <div className="text-sm font-medium opacity-90">Subtotal: {currency} {subtotal.toFixed(2)}</div>
             <div className="rounded-xl border border-base-300 bg-base-100 p-3">
               <div className="flex flex-col gap-3 md:flex-row md:items-end">
@@ -874,6 +880,16 @@ export default function PreorderForm({
             {discountAmount > 0 && (
               <div className="text-sm font-medium opacity-90">
                 Subtotal after discount: {currency} {discountedSubtotal.toFixed(2)}
+              </div>
+            )}
+            {smallCartFee > 0 && (
+              <div className="text-sm font-medium opacity-90">
+                Small cart fee: {currency} {smallCartFee.toFixed(2)}
+                {bottlesToWaiveSmallCartFee > 0 && (
+                  <span className="block text-xs font-normal opacity-70">
+                    Add {bottlesToWaiveSmallCartFee} more bottle{bottlesToWaiveSmallCartFee === 1 ? "" : "s"} to waive this fee.
+                  </span>
+                )}
               </div>
             )}
             <div className="text-sm font-medium opacity-90">

@@ -32,6 +32,7 @@ const buildPreorderPayload = (orderRequest, paymentResult) => ({
   totalQuantity: orderRequest.totalQuantity,
   subtotal: orderRequest.subtotal,
   discount: orderRequest.discount,
+  smallCartFee: orderRequest.smallCartFee,
   deliveryFee: orderRequest.deliveryFee,
   deliveryFeeBeforePerks: orderRequest.deliveryFeeBeforePerks,
   appliedPerks: orderRequest.appliedPerks,

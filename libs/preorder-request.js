@@ -8,6 +8,7 @@ import {
   formatPickupAddress,
   MAX_PER_ORDER_LIMIT,
 } from "@/libs/preorder-windows";
+import { calculateSmallCartFee } from "@/libs/cart-fee";
 import { getSkuMap, listSkuCatalog, normalizeAllowedItemRefs } from "@/libs/sku-catalog";
 import {
   isValidAddress,
@@ -143,11 +144,7 @@ export const buildPreorderRequest = async (body = {}) => {
 
   const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
   const subtotal = items.reduce((sum, item) => sum + item.lineTotal, 0);
-  const minimumOrderQuantity = Math.max(1, Number(preorderWindow?.minimumOrderQuantity || 1));
-
-  if (totalQuantity < minimumOrderQuantity) {
-    throw new Error(`Minimum preorder quantity is ${minimumOrderQuantity}.`);
-  }
+  const smallCartFee = calculateSmallCartFee(totalQuantity);
 
   const { discount } = await resolveDiscountCode({
     code: discountCodeInput,
@@ -197,7 +194,7 @@ export const buildPreorderRequest = async (body = {}) => {
     appliedPerks = deliveryQuote.appliedPerks || [];
   }
 
-  const total = discount.subtotalAfterDiscount + deliveryFee;
+  const total = discount.subtotalAfterDiscount + deliveryFee + smallCartFee;
 
   return {
     customerName,
@@ -226,6 +223,7 @@ export const buildPreorderRequest = async (body = {}) => {
     totalQuantity,
     subtotal,
     discount,
+    smallCartFee,
     deliveryFee,
     deliveryFeeBeforePerks,
     appliedPerks,

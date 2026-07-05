@@ -19,6 +19,7 @@ import {
   listAvailableSubscriptionStartDates,
 } from "@/libs/subscription-schedule";
 import { MAX_TOTAL_QTY, ONE_TIME_MIN_TOTAL_QTY } from "@/libs/order-quantity";
+import { calculateSmallCartFee, SMALL_CART_FEE_MAX_QTY } from "@/libs/cart-fee";
 
 const MAX_QTY = MAX_TOTAL_QTY;
 const LOCKED_SUBSCRIPTION_CADENCE = "weekly";
@@ -280,9 +281,9 @@ export default function SubscriptionForm({
   initialSelectionMode = "combo",
   mode = "create",
   token = "",
+  enableAdminManualOrders = false,
+  onOrderSaved,
 }) {
-  const manualOrderWithoutPaymentEnabled =
-    process.env.NEXT_PUBLIC_ENABLE_MANUAL_ORDER_WITHOUT_PAYMENT === "true";
   const [wantsRecurring, setWantsRecurring] = useState(mode === "edit");
   const isRecurringMode = mode === "edit" || wantsRecurring;
   const isOneTimeMode = !isRecurringMode;
@@ -362,6 +363,7 @@ export default function SubscriptionForm({
   const [appliedDiscount, setAppliedDiscount] = useState(null);
   const [discountError, setDiscountError] = useState("");
   const [isApplyingDiscount, setIsApplyingDiscount] = useState(false);
+  const [adminManualPaymentAction, setAdminManualPaymentAction] = useState("mark_paid");
   const initialEmailRef = useRef(initialValues?.email || "");
   const isCompletingPaymentRef = useRef(false);
   const selectionSectionRef = useRef(null);
@@ -557,7 +559,9 @@ export default function SubscriptionForm({
   const discountedSubtotal = Math.max(0, subtotal - discountAmount);
   const hasDeliveryQuote = Boolean(deliveryQuote && deliveryQuote.isDeliverable !== false);
   const effectiveDeliveryFee = isRecurringMode || !hasDeliveryQuote ? 0 : Number(deliveryQuote.deliveryFee || 0);
-  const total = discountedSubtotal + effectiveDeliveryFee;
+  const smallCartFee = isOneTimeMode ? calculateSmallCartFee(totalQuantity) : 0;
+  const bottlesToWaiveSmallCartFee = Math.max(0, SMALL_CART_FEE_MAX_QTY + 1 - totalQuantity);
+  const total = discountedSubtotal + effectiveDeliveryFee + smallCartFee;
   const needsAddressSelection =
     deliveryConfigured && customer.address.trim() && !selectedPlace && !hasVerifiedAddress;
   const durationOptions = getSubscriptionDurationOptions(cadence);
@@ -587,7 +591,7 @@ export default function SubscriptionForm({
     selectedItems.length > 0 &&
     recurringEligibility.isEligible;
   const canCreateManualOrderWithoutPayment =
-    manualOrderWithoutPaymentEnabled && mode === "create" && isOneTimeMode;
+    enableAdminManualOrders && mode === "create" && isOneTimeMode;
   const effectiveStartDate = startDate || fallbackStartDate;
   const selectedStartDateOption = effectiveStartDateOptions.find(
     (option) => option.value === effectiveStartDate
@@ -600,21 +604,10 @@ export default function SubscriptionForm({
       return { message: "", tone: "" };
     }
 
-    if (totalQuantity < ONE_TIME_MIN_TOTAL_QTY) {
-      const remaining = ONE_TIME_MIN_TOTAL_QTY - totalQuantity;
-      return {
-        message: `${remaining} more bottle${remaining === 1 ? "" : "s"} to place this order.`,
-        tone: "text-[#8a5a20]",
-      };
-    }
-
     if (totalQuantity < recurringMinTotalQuantity) {
       const recurringRemaining = recurringMinTotalQuantity - totalQuantity;
       return {
-        message:
-          totalQuantity === ONE_TIME_MIN_TOTAL_QTY
-            ? `Order minimum reached. Add ${recurringRemaining} more for recurring.`
-            : `Add ${recurringRemaining} more for recurring.`,
+        message: `Add ${recurringRemaining} more for recurring.`,
         tone: "text-[#8a5a20]",
       };
     }
@@ -1048,6 +1041,7 @@ export default function SubscriptionForm({
             placeId: selectedPlace.placeId,
             sessionToken: addressSessionToken,
             orderSubtotal: subtotal,
+            totalQuantity,
           }),
         });
         const data = await response.json();
@@ -1079,6 +1073,7 @@ export default function SubscriptionForm({
     hasVerifiedAddress,
     selectedPlace,
     subtotal,
+    totalQuantity,
   ]);
 
   const updateQty = (sku, nextQty) => {
@@ -1304,6 +1299,10 @@ export default function SubscriptionForm({
             discountCode: isOneTimeMode ? normalizedDiscountCode : "",
             manualWithoutPayment:
               nextSubmitAction === "manual_without_payment" && canCreateManualOrderWithoutPayment,
+            manualPaymentAction:
+              nextSubmitAction === "manual_without_payment" && canCreateManualOrderWithoutPayment
+                ? adminManualPaymentAction
+                : "",
             token,
           }),
         }
@@ -1333,6 +1332,7 @@ export default function SubscriptionForm({
       }
 
       setSuccessMessage(data.message || "Order saved.");
+      onOrderSaved?.(data.orderPlan || data.subscription || null);
 
       if (mode === "create") {
         resetForCreate();
@@ -1662,7 +1662,7 @@ export default function SubscriptionForm({
                 Custom Orders
               </div>
               <p className="mt-2 max-w-2xl text-sm leading-7 text-[#53675d]">
-                Choose any mix of drinks you like, with at least 4 bottles and up to {MAX_TOTAL_QTY} bottles in each delivery.
+                Choose any mix of drinks you like, up to {MAX_TOTAL_QTY} bottles in each delivery. Orders of 3 bottles or fewer include a small cart fee.
               </p>
             </div>
             <div className="badge border-[#d1c4b0] bg-[#f7f1e6] text-[#2f5d49]">
@@ -2217,6 +2217,19 @@ export default function SubscriptionForm({
                   <span>{currency} {discountedSubtotal.toFixed(2)}</span>
                 </div>
               )}
+              {isOneTimeMode && smallCartFee > 0 && (
+                <div className="flex justify-between">
+                  <span>
+                    Small cart fee
+                    {bottlesToWaiveSmallCartFee > 0 && (
+                      <span className="block text-xs text-[#6b7d74]">
+                        Add {bottlesToWaiveSmallCartFee} more bottle{bottlesToWaiveSmallCartFee === 1 ? "" : "s"} to waive this fee.
+                      </span>
+                    )}
+                  </span>
+                  <span>{currency} {smallCartFee.toFixed(2)}</span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span>Delivery</span>
                 <span>
@@ -2335,17 +2348,52 @@ export default function SubscriptionForm({
                 </button>
               )}
               {canCreateManualOrderWithoutPayment && (
-                <button
-                  type="submit"
-                  value="manual_without_payment"
-                  disabled={!canAttemptSubmit}
-                  className="btn btn-outline min-w-[220px]"
-                  onClick={() => setActiveSubmitAction("manual_without_payment")}
-                >
-                  {isSubmitting && activeSubmitAction === "manual_without_payment"
-                    ? "Adding order..."
-                    : "Add order without payment"}
-                </button>
+                <div className="flex flex-col gap-3 rounded-2xl border border-[#ddcfb6] bg-[#fffaf1] p-3">
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className={`btn btn-sm ${
+                        adminManualPaymentAction === "mark_paid" ? "btn-primary" : "btn-outline"
+                      }`}
+                      onClick={() => setAdminManualPaymentAction("mark_paid")}
+                    >
+                      Mark paid
+                    </button>
+                    <button
+                      type="button"
+                      className={`btn btn-sm ${
+                        adminManualPaymentAction === "collect_later" ? "btn-primary" : "btn-outline"
+                      }`}
+                      onClick={() => setAdminManualPaymentAction("collect_later")}
+                    >
+                      Collect later
+                    </button>
+                    <button
+                      type="button"
+                      className={`btn btn-sm ${
+                        adminManualPaymentAction === "never_collect" ? "btn-primary" : "btn-outline"
+                      }`}
+                      onClick={() => setAdminManualPaymentAction("never_collect")}
+                    >
+                      Never collect
+                    </button>
+                  </div>
+                  <button
+                    type="submit"
+                    value="manual_without_payment"
+                    disabled={!canAttemptSubmit}
+                    className="btn btn-outline min-w-[220px]"
+                    onClick={() => setActiveSubmitAction("manual_without_payment")}
+                  >
+                    {isSubmitting && activeSubmitAction === "manual_without_payment"
+                      ? "Adding order..."
+                      : adminManualPaymentAction === "collect_later"
+                        ? "Create order, collect later"
+                        : adminManualPaymentAction === "never_collect"
+                          ? "Create sample/promo order"
+                        : "Create paid admin order"}
+                  </button>
+                </div>
               )}
               <button
                 type="submit"
