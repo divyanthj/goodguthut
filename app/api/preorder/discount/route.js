@@ -9,6 +9,7 @@ import {
   isValidObjectId,
   jsonError,
   logAbuseEvent,
+  normalizePhone,
   readJsonBody,
 } from "@/libs/request-protection";
 
@@ -23,6 +24,7 @@ export async function POST(req) {
     const body = await readJsonBody(req, { maxBytes: 12 * 1024 });
     const preorderWindowId = body.preorderWindowId?.trim() || "";
     const requestItems = sanitizePreorderItems(body.items);
+    const phone = normalizePhone(body.phone || "");
 
     if (preorderWindowId && !isValidObjectId(preorderWindowId)) {
       return NextResponse.json({ error: "Invalid preorder window." }, { status: 400 });
@@ -70,6 +72,7 @@ export async function POST(req) {
     const { discount } = await resolveDiscountCode({
       code: body.discountCode || "",
       subtotal,
+      phone,
     });
 
     return NextResponse.json({

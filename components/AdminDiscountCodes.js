@@ -19,6 +19,7 @@ const createEmptyDiscountForm = () => ({
   code: "",
   amount: 0,
   isPerpetual: true,
+  isNumberRestricted: false,
   expiresAt: "",
   status: "active",
 });
@@ -58,6 +59,7 @@ export default function AdminDiscountCodes({ initialDiscountCodes }) {
       code: discountCode.code,
       amount: Number(discountCode.amount || 0),
       isPerpetual: discountCode.isPerpetual === true,
+      isNumberRestricted: discountCode.isNumberRestricted === true,
       expiresAt: toDateInputValue(discountCode.expiresAt),
       status: discountCode.status || "active",
     });
@@ -167,6 +169,11 @@ export default function AdminDiscountCodes({ initialDiscountCodes }) {
                 <div className="mt-3 text-xs opacity-70">
                   {discountCode.isPerpetual ? "Perpetual" : `Expires ${formatDate(discountCode.expiresAt)}`}
                 </div>
+                {discountCode.isNumberRestricted && (
+                  <div className="mt-2">
+                    <span className="badge badge-sm badge-warning">Number restricted</span>
+                  </div>
+                )}
               </button>
             );
           })
@@ -260,6 +267,23 @@ export default function AdminDiscountCodes({ initialDiscountCodes }) {
                   <span className="label-text">Keep this code perpetual</span>
                 </label>
               </div>
+
+              <label className="label cursor-pointer justify-start gap-3 md:col-span-2">
+                <input
+                  type="checkbox"
+                  className="checkbox checkbox-sm"
+                  checked={discountForm.isNumberRestricted}
+                  onChange={(event) =>
+                    setDiscountForm((current) => ({
+                      ...current,
+                      isNumberRestricted: event.target.checked,
+                    }))
+                  }
+                />
+                <span className="label-text">
+                  Number restricted
+                </span>
+              </label>
             </div>
 
             <div className="card-actions items-center justify-between">

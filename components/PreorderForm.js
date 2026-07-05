@@ -231,6 +231,7 @@ export default function PreorderForm({
             preorderWindowId,
             items: selectedItems,
             discountCode: normalizedCode,
+            phone: customer.phone,
           }),
         });
         const data = await response.json();
@@ -252,7 +253,7 @@ export default function PreorderForm({
         }
       }
     },
-    [discountCodeInput, preorderWindowId, selectedItems]
+    [customer.phone, discountCodeInput, preorderWindowId, selectedItems]
   );
 
   useEffect(() => {

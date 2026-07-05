@@ -827,6 +827,7 @@ export default function SubscriptionForm({
           body: JSON.stringify({
             items: selectedItems,
             discountCode: normalizedCode,
+            phone: customer.phone,
           }),
         });
         const data = await response.json();
@@ -848,7 +849,7 @@ export default function SubscriptionForm({
         }
       }
     },
-    [discountCodeInput, isOneTimeMode, selectedItems]
+    [customer.phone, discountCodeInput, isOneTimeMode, selectedItems]
   );
 
   useEffect(() => {
@@ -2332,7 +2333,9 @@ export default function SubscriptionForm({
 
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="text-sm text-[#5f7068]">
-              {isOneTimeMode
+              {canCreateManualOrderWithoutPayment
+                ? "Admin order entry. Choose how this order should be treated for payment."
+                : isOneTimeMode
                 ? "No login needed. Complete checkout to confirm your one-time order."
                 : "No login needed. We’ll email you a secure link so you can update or cancel your plan anytime."}
             </div>
@@ -2395,27 +2398,29 @@ export default function SubscriptionForm({
                   </button>
                 </div>
               )}
-              <button
-                type="submit"
-                value="checkout"
-                disabled={!canAttemptSubmit}
-                className="btn btn-primary min-w-[220px]"
-                onClick={() => setActiveSubmitAction("checkout")}
-              >
-                {isSubmitting
-                  ? activeSubmitAction === "manual_without_payment"
-                    ? "Adding order..."
+              {!canCreateManualOrderWithoutPayment && (
+                <button
+                  type="submit"
+                  value="checkout"
+                  disabled={!canAttemptSubmit}
+                  className="btn btn-primary min-w-[220px]"
+                  onClick={() => setActiveSubmitAction("checkout")}
+                >
+                  {isSubmitting
+                    ? activeSubmitAction === "manual_without_payment"
+                      ? "Adding order..."
+                      : mode === "edit"
+                      ? "Saving..."
+                      : "Taking you to payment..."
+                    : isCancelled
+                      ? "Plan cancelled"
                     : mode === "edit"
-                    ? "Saving..."
-                    : "Taking you to payment..."
-                  : isCancelled
-                    ? "Plan cancelled"
-                  : mode === "edit"
-                    ? "Save updates"
-                    : isOneTimeMode
-                      ? "Continue to payment"
-                      : "Continue"}
-              </button>
+                      ? "Save updates"
+                      : isOneTimeMode
+                        ? "Continue to payment"
+                        : "Continue"}
+                </button>
+              )}
             </div>
           </div>
         </div>

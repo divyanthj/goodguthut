@@ -149,6 +149,7 @@ export const buildPreorderRequest = async (body = {}) => {
   const { discount } = await resolveDiscountCode({
     code: discountCodeInput,
     subtotal,
+    phone,
   });
 
   let deliveryFee = 0;

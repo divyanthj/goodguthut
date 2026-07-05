@@ -20,6 +20,10 @@ const discountCodeSchema = mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    isNumberRestricted: {
+      type: Boolean,
+      default: false,
+    },
     expiresAt: {
       type: Date,
       default: null,

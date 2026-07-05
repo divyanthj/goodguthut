@@ -125,6 +125,7 @@ const buildOneTimeRequest = async (body = {}) => {
   const { discount } = await resolveDiscountCode({
     code: body.discountCode || "",
     subtotal,
+    phone,
   });
 
   if (totalQuantity < ONE_TIME_MIN_TOTAL_QTY) {
