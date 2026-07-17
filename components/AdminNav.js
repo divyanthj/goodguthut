@@ -6,6 +6,7 @@ export default function AdminNav({ active = "settings" }) {
   const discountsClass = active === "discounts" ? "btn btn-primary" : "btn btn-ghost";
   const geoPerksClass = active === "geo-perks" ? "btn btn-primary" : "btn btn-ghost";
   const ordersClass = active === "orders" ? "btn btn-primary" : "btn btn-ghost";
+  const customersClass = active === "customers" ? "btn btn-primary" : "btn btn-ghost";
   const invoicesClass = active === "invoices" ? "btn btn-primary" : "btn btn-ghost";
   const nudgesClass = active === "nudges" ? "btn btn-primary" : "btn btn-ghost";
   const productionClass = active === "production" ? "btn btn-primary" : "btn btn-ghost";
@@ -22,6 +23,9 @@ export default function AdminNav({ active = "settings" }) {
       </Link>
       <Link href="/admin/orders" className={ordersClass}>
         Orders
+      </Link>
+      <Link href="/admin/customers" className={customersClass}>
+        Customers
       </Link>
       <Link href="/admin/invoices" className={invoicesClass}>
         Invoices
