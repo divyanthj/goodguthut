@@ -765,7 +765,7 @@ export default function SubscriptionForm({
       addError("name", "Please enter your name.");
     }
 
-    if (!customer.email.trim()) {
+    if (!customer.email.trim() && !canCreateManualOrderWithoutPayment) {
       addError("email", "Please enter your email address.");
     }
 
@@ -907,7 +907,7 @@ export default function SubscriptionForm({
       remove("duration", isOneTimeMode || durationIsValid);
       remove("deliveryDate", Boolean(effectiveStartDate));
       remove("name", Boolean(customer.name.trim()));
-      remove("email", Boolean(customer.email.trim()));
+      remove("email", canCreateManualOrderWithoutPayment || Boolean(customer.email.trim()));
       remove("phone", Boolean(customer.phone.trim()));
       remove("address", Boolean(customer.address.trim()));
       remove(
@@ -923,6 +923,7 @@ export default function SubscriptionForm({
     customer.email,
     customer.name,
     customer.phone,
+    canCreateManualOrderWithoutPayment,
     deliveryConfigured,
     deliveryError,
     durationIsValid,
@@ -1916,7 +1917,9 @@ export default function SubscriptionForm({
             </label>
             <label className="form-control">
               <div className="label">
-                <span className="label-text text-[#365244]">Email *</span>
+                <span className="label-text text-[#365244]">
+                  Email {canCreateManualOrderWithoutPayment ? "(optional)" : "*"}
+                </span>
               </div>
               <input
                 ref={emailInputRef}
@@ -1927,7 +1930,7 @@ export default function SubscriptionForm({
                   setCustomer((prev) => ({ ...prev, email: event.target.value }));
                   clearFieldErrors("email");
                 }}
-                required
+                required={!canCreateManualOrderWithoutPayment}
                 disabled={billingLocked}
               />
               {fieldErrors.email && (

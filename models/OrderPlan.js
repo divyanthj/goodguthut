@@ -310,7 +310,7 @@ const orderPlanSchema = mongoose.Schema(
       type: String,
       trim: true,
       lowercase: true,
-      required: true,
+      default: "",
     },
     address: {
       type: String,

@@ -130,9 +130,6 @@ export async function POST(req) {
   }
 
   try {
-    const orderPlanRequest = await buildOrderPlanRequest(body);
-    await connectMongo();
-
     const isManualAdminOrder = body.manualWithoutPayment === true;
     let manualAdminSession = null;
 
@@ -143,6 +140,11 @@ export async function POST(req) {
         return jsonError("Manual order creation is only available to admins.", 403);
       }
     }
+
+    const orderPlanRequest = await buildOrderPlanRequest(body, {
+      allowMissingEmail: Boolean(isManualAdminOrder && manualAdminSession?.isAdmin),
+    });
+    await connectMongo();
 
     if (isManualAdminOrder && orderPlanRequest.mode !== "one_time") {
       return jsonError("Manual order creation is only available for one-time orders.", 400);

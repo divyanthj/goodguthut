@@ -70,14 +70,18 @@ export async function PATCH(req, { params }) {
       const notificationScaffold = await preparePreorderShippedNotifications({ preorder });
       let emailDelivery = { status: "manual" };
 
-      try {
-        emailDelivery = await sendPreorderShippedEmail({ preorder });
-      } catch (emailError) {
-        console.error("Failed to send preorder shipped email", emailError);
-        emailDelivery = {
-          status: "failed",
-          error: emailError.message || "Could not send shipped email.",
-        };
+      if (body.sendEmail === false) {
+        emailDelivery = { status: "skipped", reason: "admin_disabled" };
+      } else {
+        try {
+          emailDelivery = await sendPreorderShippedEmail({ preorder });
+        } catch (emailError) {
+          console.error("Failed to send preorder shipped email", emailError);
+          emailDelivery = {
+            status: "failed",
+            error: emailError.message || "Could not send shipped email.",
+          };
+        }
       }
       await syncCollatoKnowledgeDocument({
         sourceType: "preorder",
@@ -126,7 +130,10 @@ export async function PATCH(req, { params }) {
       }
 
       if (nextStatus === "fulfilled") {
-        const invoiceDelivery = await createAndSendPreorderInvoice({ preorder });
+        const invoiceDelivery = await createAndSendPreorderInvoice({
+          preorder,
+          sendEmail: body.sendEmail !== false,
+        });
         await syncCollatoKnowledgeDocument({
           sourceType: "preorder",
           id: preorder.id,
@@ -187,7 +194,10 @@ export async function PATCH(req, { params }) {
       }
     }
 
-    const invoiceDelivery = await createAndSendPreorderInvoice({ preorder });
+    const invoiceDelivery = await createAndSendPreorderInvoice({
+      preorder,
+      sendEmail: body.sendEmail !== false,
+    });
     await syncCollatoKnowledgeDocument({
       sourceType: "preorder",
       id: preorder.id,

@@ -421,6 +421,14 @@ export const sendInvoiceEmail = async ({ invoice }) => {
   }
 };
 
+const skipInvoiceEmail = async ({ invoice }) => {
+  invoice.emailStatus = "skipped";
+  invoice.emailError = "Email disabled by admin.";
+  invoice.emailLastAttemptAt = new Date();
+  await invoice.save();
+  return { status: "skipped", reason: "admin_disabled" };
+};
+
 const createInvoiceFromSnapshot = async ({
   source,
   customer,
@@ -550,7 +558,7 @@ const createInvoiceFromSnapshot = async ({
   return { invoice, created: true };
 };
 
-export const createAndSendPreorderInvoice = async ({ preorder }) => {
+export const createAndSendPreorderInvoice = async ({ preorder, sendEmail = true }) => {
   const deliveredAt = preorder.deliveredAt || new Date();
   const { invoice, created } = await createInvoiceFromSnapshot({
     source: {
@@ -579,12 +587,20 @@ export const createAndSendPreorderInvoice = async ({ preorder }) => {
     total: preorder.total || preorder.payment?.amount || preorder.subtotal,
     deliveredAt,
   });
-  const emailDelivery = created ? await sendInvoiceEmail({ invoice }) : { status: "already_created" };
+  const emailDelivery = created
+    ? sendEmail
+      ? await sendInvoiceEmail({ invoice })
+      : await skipInvoiceEmail({ invoice })
+    : { status: "already_created" };
 
   return { invoice, created, emailDelivery };
 };
 
-export const createAndSendOrderPlanInvoice = async ({ orderPlan, deliveryDate = "" }) => {
+export const createAndSendOrderPlanInvoice = async ({
+  orderPlan,
+  deliveryDate = "",
+  sendEmail = true,
+}) => {
   const deliveredAt = orderPlan.deliveredAt || new Date();
   const recurringDeliveryKey = toDateKey(deliveryDate || orderPlan.nextDeliveryDate || deliveredAt);
   const { invoice, created } = await createInvoiceFromSnapshot({
@@ -611,7 +627,11 @@ export const createAndSendOrderPlanInvoice = async ({ orderPlan, deliveryDate = 
     total: orderPlan.total || orderPlan.payment?.amount || orderPlan.subtotal,
     deliveredAt,
   });
-  const emailDelivery = created ? await sendInvoiceEmail({ invoice }) : { status: "already_created" };
+  const emailDelivery = created
+    ? sendEmail
+      ? await sendInvoiceEmail({ invoice })
+      : await skipInvoiceEmail({ invoice })
+    : { status: "already_created" };
 
   return { invoice, created, emailDelivery };
 };

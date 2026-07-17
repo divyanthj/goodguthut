@@ -176,6 +176,10 @@ const getModeBadgeClassName = (order = {}) => {
 
 const getTrackingInputId = (order = {}) => `tracking-link-${order.sourceType}-${order.id}`;
 const getDeliveredAtInputId = (order = {}) => `delivered-at-${order.sourceType}-${order.id}`;
+const getSkipShippedEmailInputId = (order = {}) =>
+  `skip-shipped-email-${order.sourceType}-${order.id}`;
+const getSkipDeliveredEmailInputId = (order = {}) =>
+  `skip-delivered-email-${order.sourceType}-${order.id}`;
 const GOOD_GUT_HUT_BASE_URL = "https://goodguthut.com";
 
 const buildPaymentRedirectUrl = (order = {}) => {
@@ -456,7 +460,9 @@ export default function AdminOrdersList({ initialOrders = [], orderEntryConfig =
             : emailStatus === "already_sent"
               ? " Shipped email was already sent earlier."
               : emailStatus === "skipped"
-                ? " No shipped email was sent because this order has no email address."
+                ? data.emailDelivery?.reason === "admin_disabled"
+                  ? " Shipped email was not sent."
+                  : " No shipped email was sent because this order has no email address."
                 : emailStatus === "failed"
                   ? " Shipped email failed to send."
                   : "";
@@ -466,6 +472,18 @@ export default function AdminOrdersList({ initialOrders = [], orderEntryConfig =
         if (emailStatus === "failed") {
           setError(data.emailDelivery?.error || "Shipped email failed to send.");
         }
+      } else if (payload.markDelivered || payload.deliveredAt) {
+        const emailDelivery = data.invoiceDelivery?.emailDelivery;
+        const emailSummary =
+          emailDelivery?.status === "sent"
+            ? " Invoice email sent."
+            : emailDelivery?.status === "skipped" &&
+                emailDelivery?.reason === "admin_disabled"
+              ? " Invoice email was not sent."
+              : emailDelivery?.status === "skipped"
+                ? " No invoice email was sent because this order has no email address."
+                : "";
+        setMessage(`Order marked as delivered.${emailSummary}`);
       }
     } catch (updateError) {
       setError(updateError.message || fallbackError);
@@ -513,9 +531,11 @@ export default function AdminOrdersList({ initialOrders = [], orderEntryConfig =
     }
   };
 
-  const markShipped = async (order, trackingLink) => {
+  const markShipped = async (order, trackingLink, skipEmail = false) => {
     const shouldMarkShipped = window.confirm(
-      "Are you sure you want to mark this order as shipped? This will send the customer an email and open WhatsApp with the shipping message."
+      skipEmail
+        ? "Are you sure you want to mark this order as shipped without sending an email? WhatsApp will still open with the shipping message."
+        : "Are you sure you want to mark this order as shipped? This will send the customer an email and open WhatsApp with the shipping message."
     );
 
     if (!shouldMarkShipped) {
@@ -548,6 +568,7 @@ export default function AdminOrdersList({ initialOrders = [], orderEntryConfig =
       {
         markShipped: true,
         trackingLink: trackingLinkValue,
+        sendEmail: !skipEmail,
       },
       "Could not mark order as shipped.",
       {
@@ -703,9 +724,11 @@ export default function AdminOrdersList({ initialOrders = [], orderEntryConfig =
     }
   };
 
-  const markDelivered = async (order, deliveredAt) => {
+  const markDelivered = async (order, deliveredAt, skipEmail = false) => {
     const shouldMarkDelivered = window.confirm(
-      "Are you sure you want to mark this order as delivered?"
+      skipEmail
+        ? "Are you sure you want to mark this order as delivered without sending the invoice email?"
+        : "Are you sure you want to mark this order as delivered? This will send the invoice email."
     );
 
     if (!shouldMarkDelivered) {
@@ -714,8 +737,8 @@ export default function AdminOrdersList({ initialOrders = [], orderEntryConfig =
 
     const payload =
       order.sourceType === "legacy_preorder"
-        ? { deliveredAt }
-        : { markDelivered: true, deliveredAt };
+        ? { deliveredAt, sendEmail: !skipEmail }
+        : { markDelivered: true, deliveredAt, sendEmail: !skipEmail };
 
     await patchOrder(order, payload, "Could not mark order as delivered.");
   };
@@ -803,6 +826,8 @@ export default function AdminOrdersList({ initialOrders = [], orderEntryConfig =
   const renderOneTimeOrder = (order) => {
     const trackingInputId = getTrackingInputId(order);
     const deliveredAtInputId = getDeliveredAtInputId(order);
+    const skipShippedEmailInputId = getSkipShippedEmailInputId(order);
+    const skipDeliveredEmailInputId = getSkipDeliveredEmailInputId(order);
     const isLegacy = order.sourceType === "legacy_preorder";
     const isRecurringOrderPlan =
       order.sourceType === "order_plan" && order.mode === "recurring";
@@ -1079,7 +1104,8 @@ export default function AdminOrdersList({ initialOrders = [], orderEntryConfig =
               }
               onClick={() => {
                 const element = document.getElementById(trackingInputId);
-                markShipped(order, element?.value || "");
+                const skipEmailElement = document.getElementById(skipShippedEmailInputId);
+                markShipped(order, element?.value || "", Boolean(skipEmailElement?.checked));
               }}
             >
               {savingId === `${order.sourceType}:${order.id}`
@@ -1088,6 +1114,14 @@ export default function AdminOrdersList({ initialOrders = [], orderEntryConfig =
                   ? "Mark ready for pickup"
                   : "Mark as shipped"}
             </button>
+            <label className="label cursor-pointer gap-2 py-0">
+              <input
+                type="checkbox"
+                className="checkbox checkbox-sm"
+                id={skipShippedEmailInputId}
+              />
+              <span className="label-text">Don&apos;t send shipped email</span>
+            </label>
             <label className="form-control">
               <div className="label py-0">
                 <span className="label-text">Delivered at</span>
@@ -1109,11 +1143,20 @@ export default function AdminOrdersList({ initialOrders = [], orderEntryConfig =
               }
               onClick={() => {
                 const element = document.getElementById(deliveredAtInputId);
-                markDelivered(order, element?.value || "");
+                const skipEmailElement = document.getElementById(skipDeliveredEmailInputId);
+                markDelivered(order, element?.value || "", Boolean(skipEmailElement?.checked));
               }}
             >
               {savingId === `${order.sourceType}:${order.id}` ? "Saving..." : "Mark as delivered"}
             </button>
+            <label className="label cursor-pointer gap-2 py-0">
+              <input
+                type="checkbox"
+                className="checkbox checkbox-sm"
+                id={skipDeliveredEmailInputId}
+              />
+              <span className="label-text">Don&apos;t send invoice email</span>
+            </label>
           </div>
         </div>
       </>

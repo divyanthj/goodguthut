@@ -197,7 +197,9 @@ export async function PATCH(req, { params }) {
 
     let emailDelivery = null;
 
-    if (body?.markShipped) {
+    if (body?.markShipped && body?.sendEmail === false) {
+      emailDelivery = { status: "skipped", reason: "admin_disabled" };
+    } else if (body?.markShipped) {
       try {
         emailDelivery = await sendOrderPlanShippedEmail({ orderPlan });
       } catch (emailError) {
@@ -213,6 +215,7 @@ export async function PATCH(req, { params }) {
       const invoiceDelivery = await createAndSendOrderPlanInvoice({
         orderPlan,
         deliveryDate: invoiceDeliveryDate,
+        sendEmail: body?.sendEmail !== false,
       });
       await syncCollatoKnowledgeDocument({
         sourceType: "order_plan",

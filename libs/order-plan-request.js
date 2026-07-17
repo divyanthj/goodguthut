@@ -26,7 +26,7 @@ import { getDefaultSubscriptionStartDate } from "@/libs/subscription-schedule";
 import { MAX_TOTAL_QTY, ONE_TIME_MIN_TOTAL_QTY } from "@/libs/order-quantity";
 import { calculateSmallCartFee } from "@/libs/cart-fee";
 
-const buildOneTimeRequest = async (body = {}) => {
+const buildOneTimeRequest = async (body = {}, { allowMissingEmail = false } = {}) => {
   const name = normalizeName(body.name || "");
   const email = normalizeEmail(body.email || "");
   const phone = normalizePhone(body.phone || "");
@@ -41,7 +41,7 @@ const buildOneTimeRequest = async (body = {}) => {
     throw new Error("Enter a valid name.");
   }
 
-  if (!isValidEmail(email)) {
+  if ((!allowMissingEmail || email) && !isValidEmail(email)) {
     throw new Error("Enter a valid email address.");
   }
 
@@ -222,7 +222,7 @@ const buildOneTimeRequest = async (body = {}) => {
   };
 };
 
-export const buildOrderPlanRequest = async (body = {}) => {
+export const buildOrderPlanRequest = async (body = {}, options = {}) => {
   const mode = String(body.mode || "one_time").trim().toLowerCase();
 
   if (mode === "recurring") {
@@ -238,6 +238,6 @@ export const buildOrderPlanRequest = async (body = {}) => {
     throw new Error("Select a valid order mode.");
   }
 
-  return buildOneTimeRequest(body);
+  return buildOneTimeRequest(body, options);
 };
 
