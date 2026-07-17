@@ -37,18 +37,24 @@ const buildWhatsAppUrl = (phone, message) => {
 
 const copyToClipboard = async (value) => {
   if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(value);
-    return;
+    try {
+      await navigator.clipboard.writeText(value);
+      return true;
+    } catch (clipboardError) {
+      console.warn("Clipboard API was unavailable; using the browser fallback.", clipboardError);
+    }
   }
 
   const textarea = document.createElement("textarea");
   textarea.value = value;
-  textarea.style.position = "fixed";
-  textarea.style.opacity = "0";
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "absolute";
+  textarea.style.left = "-9999px";
   document.body.appendChild(textarea);
   textarea.select();
-  document.execCommand("copy");
+  const copied = document.execCommand("copy");
   document.body.removeChild(textarea);
+  return copied;
 };
 
 const ChannelIcon = ({ channel }) =>
@@ -196,12 +202,22 @@ export default function AdminCustomersList({ initialCustomers = [] }) {
   };
 
   const openWhatsApp = async () => {
-    const targetWindow = window.open("", "_blank");
     setIsSending(true);
     setNotice("");
     setError("");
+    let whatsappOpened = false;
 
     try {
+      const copied = await copyToClipboard(message);
+
+      if (!copied) {
+        throw new Error("We could not copy the message. Please copy it manually and try again.");
+      }
+
+      const whatsappUrl = buildWhatsAppUrl(selectedCustomer.phone, message);
+      window.open(whatsappUrl, "_blank", "noopener,noreferrer");
+      whatsappOpened = true;
+
       const response = await fetch("/api/admin/customer-nudges", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -210,16 +226,16 @@ export default function AdminCustomersList({ initialCustomers = [] }) {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "WhatsApp could not be opened.");
 
-      await copyToClipboard(message);
-      const whatsappUrl = buildWhatsAppUrl(selectedCustomer.phone, message);
-      if (targetWindow) targetWindow.location.href = whatsappUrl;
-      else window.open(whatsappUrl, "_blank", "noopener,noreferrer");
-
       updateCustomerHistory(selectedCustomer.customerKey, data.nudge);
       setNotice("Message copied and WhatsApp opened with it ready to send.");
     } catch (sendError) {
-      targetWindow?.close();
-      setError(sendError.message || "WhatsApp could not be opened.");
+      setError(
+        whatsappOpened
+          ? `WhatsApp opened and the message was copied, but nudge history could not be saved. ${
+              sendError.message || "Please refresh and try again."
+            }`
+          : sendError.message || "WhatsApp could not be opened."
+      );
     } finally {
       setIsSending(false);
     }
