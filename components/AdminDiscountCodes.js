@@ -14,19 +14,62 @@ const formatDate = (value) => {
   });
 };
 
+const CAMPAIGN_TYPES = [
+  { value: "general", label: "General" },
+  { value: "weekly_offer", label: "Weekly Offer" },
+  { value: "birthday", label: "Birthday" },
+  { value: "winback", label: "Win-back" },
+];
+
+const getCampaignLabel = (value = "") =>
+  CAMPAIGN_TYPES.find((item) => item.value === value)?.label || "General";
+
 const createEmptyDiscountForm = () => ({
   id: "",
   code: "",
   amount: 0,
+  campaignType: "general",
+  campaignName: "",
+  startsAt: "",
   isPerpetual: true,
   isNumberRestricted: false,
   expiresAt: "",
+  maxRedemptions: 0,
+  redemptionCount: 0,
+  adminNotes: "",
   status: "active",
+});
+
+const hydrateDiscountForm = (discountCode = {}) => ({
+  id: discountCode.id,
+  code: discountCode.code,
+  amount: Number(discountCode.amount || 0),
+  campaignType: discountCode.campaignType || "general",
+  campaignName: discountCode.campaignName || "",
+  startsAt: toDateInputValue(discountCode.startsAt),
+  isPerpetual: discountCode.isPerpetual === true,
+  isNumberRestricted: discountCode.isNumberRestricted === true,
+  expiresAt: toDateInputValue(discountCode.expiresAt),
+  maxRedemptions: Number(discountCode.maxRedemptions || 0),
+  redemptionCount: Number(discountCode.redemptionCount || 0),
+  adminNotes: discountCode.adminNotes || "",
+  status: discountCode.status || "active",
 });
 
 const getDiscountTimingLabel = (discountCode) => {
   if (discountCode.status !== "active") {
     return "archived";
+  }
+
+  if (discountCode.startsAt && new Date(discountCode.startsAt).getTime() > Date.now()) {
+    return "scheduled";
+  }
+
+  if (
+    Number(discountCode.maxRedemptions || 0) > 0 &&
+    Number(discountCode.redemptionCount || 0) >= Number(discountCode.maxRedemptions || 0)
+  ) {
+    return "redeemed";
   }
 
   if (discountCode.isPerpetual) {
@@ -54,15 +97,7 @@ export default function AdminDiscountCodes({ initialDiscountCodes }) {
 
   const selectDiscountCode = (discountCode) => {
     clearFeedback();
-    setDiscountForm({
-      id: discountCode.id,
-      code: discountCode.code,
-      amount: Number(discountCode.amount || 0),
-      isPerpetual: discountCode.isPerpetual === true,
-      isNumberRestricted: discountCode.isNumberRestricted === true,
-      expiresAt: toDateInputValue(discountCode.expiresAt),
-      status: discountCode.status || "active",
-    });
+    setDiscountForm(hydrateDiscountForm(discountCode));
   };
 
   const refreshData = async (preferredId = "") => {
@@ -166,7 +201,18 @@ export default function AdminDiscountCodes({ initialDiscountCodes }) {
                   </div>
                   <div className="badge badge-outline">{timingLabel}</div>
                 </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <div className="badge badge-outline">
+                    {getCampaignLabel(discountCode.campaignType)}
+                  </div>
+                  {Number(discountCode.maxRedemptions || 0) > 0 && (
+                    <div className="badge badge-outline">
+                      {Number(discountCode.redemptionCount || 0)}/{Number(discountCode.maxRedemptions || 0)} used
+                    </div>
+                  )}
+                </div>
                 <div className="mt-3 text-xs opacity-70">
+                  {discountCode.startsAt ? `Starts ${formatDate(discountCode.startsAt)} · ` : ""}
                   {discountCode.isPerpetual ? "Perpetual" : `Expires ${formatDate(discountCode.expiresAt)}`}
                 </div>
                 {discountCode.isNumberRestricted && (
@@ -221,6 +267,41 @@ export default function AdminDiscountCodes({ initialDiscountCodes }) {
                     setDiscountForm((current) => ({
                       ...current,
                       amount: Number(event.target.value || 0),
+                    }))
+                  }
+                />
+              </label>
+
+              <label className="form-control w-full">
+                <div className="label"><span className="label-text">Campaign type</span></div>
+                <select
+                  className="select select-bordered"
+                  value={discountForm.campaignType}
+                  onChange={(event) =>
+                    setDiscountForm((current) => ({
+                      ...current,
+                      campaignType: event.target.value,
+                    }))
+                  }
+                >
+                  {CAMPAIGN_TYPES.map((campaignType) => (
+                    <option key={campaignType.value} value={campaignType.value}>
+                      {campaignType.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="form-control w-full">
+                <div className="label"><span className="label-text">Campaign name</span></div>
+                <input
+                  className="input input-bordered"
+                  value={discountForm.campaignName}
+                  placeholder="June weekly offer"
+                  onChange={(event) =>
+                    setDiscountForm((current) => ({
+                      ...current,
+                      campaignName: event.target.value,
                     }))
                   }
                 />
@@ -283,6 +364,74 @@ export default function AdminDiscountCodes({ initialDiscountCodes }) {
                 <span className="label-text">
                   Number restricted
                 </span>
+              </label>
+
+              <label className="form-control w-full">
+                <div className="label"><span className="label-text">Start date</span></div>
+                <input
+                  type="date"
+                  className="input input-bordered"
+                  value={discountForm.startsAt}
+                  onChange={(event) =>
+                    setDiscountForm((current) => ({ ...current, startsAt: event.target.value }))
+                  }
+                />
+                <div className="label">
+                  <span className="label-text-alt">Leave blank to make the code available immediately.</span>
+                </div>
+              </label>
+
+              <label className="form-control w-full">
+                <div className="label"><span className="label-text">Redemption cap</span></div>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  className="input input-bordered"
+                  value={discountForm.maxRedemptions}
+                  onChange={(event) =>
+                    setDiscountForm((current) => ({
+                      ...current,
+                      maxRedemptions: Number(event.target.value || 0),
+                    }))
+                  }
+                />
+                <div className="label">
+                  <span className="label-text-alt">0 means unlimited redemptions.</span>
+                </div>
+              </label>
+
+              <label className="form-control w-full">
+                <div className="label"><span className="label-text">Redemptions used</span></div>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  className="input input-bordered"
+                  value={discountForm.redemptionCount}
+                  onChange={(event) =>
+                    setDiscountForm((current) => ({
+                      ...current,
+                      redemptionCount: Number(event.target.value || 0),
+                    }))
+                  }
+                />
+              </label>
+
+              <label className="form-control w-full md:col-span-2">
+                <div className="label"><span className="label-text">Admin notes</span></div>
+                <textarea
+                  className="textarea textarea-bordered"
+                  rows={3}
+                  value={discountForm.adminNotes}
+                  placeholder="Audience, send plan, WhatsApp copy, or lifecycle notes"
+                  onChange={(event) =>
+                    setDiscountForm((current) => ({
+                      ...current,
+                      adminNotes: event.target.value,
+                    }))
+                  }
+                />
               </label>
             </div>
 

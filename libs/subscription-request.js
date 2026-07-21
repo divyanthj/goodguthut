@@ -2,10 +2,15 @@ import connectMongo from "@/libs/mongoose";
 import { calculateDeliveryQuote } from "@/libs/delivery";
 import { getPlaceDetails } from "@/libs/places";
 import { getActiveWindowFilter, MAX_PER_ORDER_LIMIT } from "@/libs/preorder-windows";
-import { getSkuMap, listSkuCatalog } from "@/libs/sku-catalog";
+import {
+  getEffectiveSkuLeadTimeDays,
+  getSkuMap,
+  listSkuCatalog,
+} from "@/libs/sku-catalog";
 import { hydrateSubscriptionCombo, listSubscriptionCombos } from "@/libs/subscription-combos";
 import {
   getSubscriptionSettings,
+  getSettingsCategoryLeadTimes,
   sanitizeDeliveryDaysOfWeek,
   sanitizeMinimumLeadDays,
   sanitizeRecurringMinTotalQuantity,
@@ -55,7 +60,12 @@ export const getSubscriptionSetupContext = async () => {
     listSubscriptionCombos({ includeArchived: false }),
     getSubscriptionSettings(),
   ]);
-  const skuMap = getSkuMap(skuCatalog);
+  const categoryLeadTimes = getSettingsCategoryLeadTimes(subscriptionSettings);
+  const effectiveSkuCatalog = skuCatalog.map((item) => ({
+    ...item,
+    effectiveLeadTimeDays: getEffectiveSkuLeadTimeDays(item, categoryLeadTimes),
+  }));
+  const skuMap = getSkuMap(effectiveSkuCatalog);
   const activeWindow = await PreorderWindow.findOne(getActiveWindowFilter()).sort({
     opensAt: -1,
     updatedAt: -1,
@@ -72,10 +82,12 @@ export const getSubscriptionSetupContext = async () => {
         createdAt: -1,
       });
   const deliveryWindow = activeWindow || fallbackWindow;
-  const customOrderCatalog = skuCatalog.filter(
+  const customOrderCatalog = effectiveSkuCatalog.filter(
     (item) => item?.sku && item.status !== "archived"
   );
-  const serializedSkuCatalog = JSON.parse(JSON.stringify(customOrderCatalog));
+  const serializedSkuCatalog = JSON.parse(
+    JSON.stringify(customOrderCatalog)
+  );
   const serializedDeliveryWindow = deliveryWindow
     ? JSON.parse(JSON.stringify(deliveryWindow))
     : null;
@@ -96,6 +108,7 @@ export const getSubscriptionSetupContext = async () => {
     recurringMinTotalQuantity: sanitizeRecurringMinTotalQuantity(
       subscriptionSettings?.recurringMinTotalQuantity
     ),
+    categoryLeadTimes,
     availableStartDates: listAvailableSubscriptionStartDates({
       deliveryDaysOfWeek: sanitizeDeliveryDaysOfWeek(subscriptionSettings?.deliveryDaysOfWeek),
       minimumLeadDays: sanitizeMinimumLeadDays(subscriptionSettings?.minimumLeadDays),

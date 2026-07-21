@@ -20,6 +20,50 @@ const skuSchema = mongoose.Schema(
       trim: true,
       default: "",
     },
+    category: {
+      type: String,
+      enum: [
+        "kanji",
+        "sparkle",
+        "pickles",
+        "gift_packs",
+        "subscriptions",
+        "custom_orders",
+        "other",
+      ],
+      default: "other",
+    },
+    imageUrl: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    shortDescription: {
+      type: String,
+      trim: true,
+      maxlength: 240,
+      default: "",
+    },
+    benefits: {
+      type: String,
+      trim: true,
+      maxlength: 500,
+      default: "",
+    },
+    leadTimeDays: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+    displayOrder: {
+      type: Number,
+      default: 0,
+    },
+    packLabel: {
+      type: String,
+      trim: true,
+      default: "",
+    },
     unitPrice: {
       type: Number,
       min: 0,

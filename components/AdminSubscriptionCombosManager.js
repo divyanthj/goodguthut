@@ -19,6 +19,7 @@ const getTotalQuantity = (items = []) =>
 export default function AdminSubscriptionCombosManager({
   initialCombos = [],
   initialSkuCatalog = [],
+  embedded = false,
 }) {
   const [combos, setCombos] = useState(initialCombos);
   const [skuCatalog, setSkuCatalog] = useState(initialSkuCatalog);
@@ -226,9 +227,10 @@ export default function AdminSubscriptionCombosManager({
     }
   };
 
-  return (
-    <section className="rounded-2xl bg-base-100 p-5 shadow-md">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+  const content = (
+    <>
+      {!embedded && (
+        <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">Sets</h2>
           <p className="text-sm opacity-70">
@@ -239,6 +241,15 @@ export default function AdminSubscriptionCombosManager({
           New set
         </button>
       </div>
+      )}
+
+      {embedded && (
+        <div className="flex justify-end">
+          <button type="button" className="btn btn-primary btn-sm" onClick={startNewCombo}>
+            New set
+          </button>
+        </div>
+      )}
 
       <div className="mt-5 grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
         <aside className="space-y-3">
@@ -477,6 +488,16 @@ export default function AdminSubscriptionCombosManager({
           )}
         </form>
       </div>
+    </>
+  );
+
+  if (embedded) {
+    return content;
+  }
+
+  return (
+    <section className="rounded-2xl bg-base-100 p-5 shadow-md">
+      {content}
     </section>
   );
 }

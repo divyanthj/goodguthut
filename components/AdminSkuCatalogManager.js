@@ -7,6 +7,13 @@ const createEmptySkuForm = () => ({
   sku: "",
   name: "",
   notes: "",
+  category: "other",
+  imageUrl: "",
+  shortDescription: "",
+  benefits: "",
+  leadTimeDays: 0,
+  displayOrder: 0,
+  packLabel: "",
   unitPrice: 0,
   hsnCode: "",
   gstRate: 0,
@@ -15,18 +22,49 @@ const createEmptySkuForm = () => ({
   recurringCutoffDate: "",
 });
 
+const CATEGORY_OPTIONS = [
+  { value: "kanji", label: "Kanji" },
+  { value: "sparkle", label: "Sparkle" },
+  { value: "pickles", label: "Pickles" },
+  { value: "gift_packs", label: "Gift Packs" },
+  { value: "subscriptions", label: "Subscriptions" },
+  { value: "custom_orders", label: "Custom Orders" },
+  { value: "other", label: "Other" },
+];
+
+const hydrateSkuForm = (skuItem = {}) => ({
+  id: skuItem.id || "",
+  sku: skuItem.sku || "",
+  name: skuItem.name || "",
+  notes: skuItem.notes || "",
+  category: skuItem.category || "other",
+  imageUrl: skuItem.imageUrl || "",
+  shortDescription: skuItem.shortDescription || "",
+  benefits: skuItem.benefits || "",
+  leadTimeDays: Number(skuItem.leadTimeDays || 0),
+  displayOrder: Number(skuItem.displayOrder || 0),
+  packLabel: skuItem.packLabel || "",
+  unitPrice: Number(skuItem.unitPrice || 0),
+  hsnCode: skuItem.hsnCode || "",
+  gstRate: Number(skuItem.gstRate || 0),
+  status: skuItem.status || "active",
+  isSeasonal: skuItem.isSeasonal === true || skuItem.skuType === "seasonal",
+  recurringCutoffDate: String(skuItem.recurringCutoffDate || "").trim(),
+});
+
 const getDefaultSeasonalCutoffDate = (now = new Date()) => {
   const next = new Date(now);
   next.setMonth(next.getMonth() + 3);
   return next.toISOString().slice(0, 10);
 };
 
-export default function AdminSkuCatalogManager() {
+export default function AdminSkuCatalogManager({ embedded = false }) {
   const [skuCatalog, setSkuCatalog] = useState([]);
   const [skuForm, setSkuForm] = useState(createEmptySkuForm);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const editorRef = useRef(null);
@@ -63,36 +101,13 @@ export default function AdminSkuCatalogManager() {
       if (preferredSkuId) {
         const nextSku = nextCatalog.find((item) => item.id === preferredSkuId);
         if (nextSku) {
-          setSkuForm({
-            id: nextSku.id,
-            sku: nextSku.sku,
-            name: nextSku.name,
-            notes: nextSku.notes || "",
-            unitPrice: Number(nextSku.unitPrice || 0),
-            hsnCode: nextSku.hsnCode || "",
-            gstRate: Number(nextSku.gstRate || 0),
-            status: nextSku.status || "active",
-            isSeasonal:
-              nextSku.isSeasonal === true || nextSku.skuType === "seasonal",
-            recurringCutoffDate: String(nextSku.recurringCutoffDate || "").trim(),
-          });
+          setSkuForm(hydrateSkuForm(nextSku));
           return;
         }
       }
 
       const first = nextCatalog[0];
-      setSkuForm({
-        id: first.id,
-        sku: first.sku,
-        name: first.name,
-        notes: first.notes || "",
-        unitPrice: Number(first.unitPrice || 0),
-        hsnCode: first.hsnCode || "",
-        gstRate: Number(first.gstRate || 0),
-        status: first.status || "active",
-        isSeasonal: first.isSeasonal === true || first.skuType === "seasonal",
-        recurringCutoffDate: String(first.recurringCutoffDate || "").trim(),
-      });
+      setSkuForm(hydrateSkuForm(first));
     } catch (loadError) {
       setError(loadError.message || "Could not load products.");
     } finally {
@@ -109,18 +124,7 @@ export default function AdminSkuCatalogManager() {
   const selectSku = (skuItem) => {
     setError("");
     setMessage("");
-    setSkuForm({
-      id: skuItem.id,
-      sku: skuItem.sku,
-      name: skuItem.name,
-      notes: skuItem.notes || "",
-      unitPrice: Number(skuItem.unitPrice || 0),
-      hsnCode: skuItem.hsnCode || "",
-      gstRate: Number(skuItem.gstRate || 0),
-      status: skuItem.status || "active",
-      isSeasonal: skuItem.isSeasonal === true || skuItem.skuType === "seasonal",
-      recurringCutoffDate: String(skuItem.recurringCutoffDate || "").trim(),
-    });
+    setSkuForm(hydrateSkuForm(skuItem));
 
   };
 
@@ -208,9 +212,46 @@ export default function AdminSkuCatalogManager() {
     }
   };
 
-  return (
-    <section className="rounded-2xl bg-base-100 p-5 shadow-md">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+  const onUploadImage = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!file) {
+      return;
+    }
+
+    setError("");
+    setMessage("");
+    setIsUploadingImage(true);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("sku", skuForm.sku || skuForm.name || "product");
+
+      const response = await fetch("/api/admin/skus/upload-image", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Could not upload image.");
+      }
+
+      setSkuForm((current) => ({ ...current, imageUrl: data.url || "" }));
+      setMessage("Image uploaded. Save the product to keep this image.");
+    } catch (uploadError) {
+      setError(uploadError.message || "Could not upload image.");
+    } finally {
+      setIsUploadingImage(false);
+    }
+  };
+
+  const content = (
+    <>
+      {!embedded && (
+        <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-2xl font-semibold">Products</h2>
           <p className="text-sm opacity-75">
@@ -224,9 +265,18 @@ export default function AdminSkuCatalogManager() {
           </button>
         </div>
       </div>
+      )}
+
+      {embedded && (
+        <div className="flex justify-end">
+          <button type="button" className="btn btn-outline" onClick={startNewSku}>
+            New product
+          </button>
+        </div>
+      )}
 
       {isLoading ? (
-        <div className="mt-4 rounded-2xl bg-base-200 p-4 text-sm opacity-70">Loading products...</div>
+        <div className={`${embedded ? "mt-3" : "mt-4"} rounded-2xl bg-base-200 p-4 text-sm opacity-70`}>Loading products...</div>
       ) : (
         <div className="mt-5 grid gap-6 lg:grid-cols-[340px_minmax(0,1fr)]">
           <aside className="space-y-3">
@@ -258,9 +308,25 @@ export default function AdminSkuCatalogManager() {
                     </div>
                   </div>
                   <div className="mt-2 text-xs uppercase tracking-[0.16em] opacity-70">
+                    {skuItem.categoryLabel || "Other"} ·{" "}
                     {skuItem.isSeasonal === true || skuItem.skuType === "seasonal"
                       ? "seasonal"
                       : "perennial"}
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {skuItem.packLabel && (
+                      <div className="badge badge-outline">{skuItem.packLabel}</div>
+                    )}
+                    {Number(skuItem.leadTimeDays || 0) > 0 && (
+                      <div className="badge badge-outline">
+                        {Number(skuItem.leadTimeDays || 0)} day lead
+                      </div>
+                    )}
+                    {Number(skuItem.displayOrder || 0) !== 0 && (
+                      <div className="badge badge-outline">
+                        Order {Number(skuItem.displayOrder || 0)}
+                      </div>
+                    )}
                   </div>
                   {(skuItem.isSeasonal === true || skuItem.skuType === "seasonal") &&
                     skuItem.recurringCutoffDate && (
@@ -268,7 +334,9 @@ export default function AdminSkuCatalogManager() {
                         Subscription end date: {skuItem.recurringCutoffDate}
                       </div>
                     )}
-                  <div className="mt-2 text-sm opacity-75">{skuItem.notes || "No description yet."}</div>
+                  <div className="mt-2 text-sm opacity-75">
+                    {skuItem.shortDescription || skuItem.notes || "No description yet."}
+                  </div>
                   <div className="mt-3 text-sm font-medium">INR {Number(skuItem.unitPrice || 0).toFixed(2)}</div>
                   <div className="mt-1 text-xs opacity-70">
                     HSN {skuItem.hsnCode || "-"} · GST {Number(skuItem.gstRate || 0)}%
@@ -373,6 +441,37 @@ export default function AdminSkuCatalogManager() {
                 />
               </label>
               <label className="form-control w-full">
+                <div className="label"><span className="label-text">Public category</span></div>
+                <select
+                  className="select select-bordered"
+                  value={skuForm.category}
+                  onChange={(event) =>
+                    setSkuForm((current) => ({ ...current, category: event.target.value }))
+                  }
+                >
+                  {CATEGORY_OPTIONS.map((category) => (
+                    <option key={category.value} value={category.value}>
+                      {category.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="form-control w-full">
+                <div className="label"><span className="label-text">Display order</span></div>
+                <input
+                  type="number"
+                  step="1"
+                  className="input input-bordered"
+                  value={skuForm.displayOrder}
+                  onChange={(event) =>
+                    setSkuForm((current) => ({
+                      ...current,
+                      displayOrder: Number(event.target.value || 0),
+                    }))
+                  }
+                />
+              </label>
+              <label className="form-control w-full">
                 <div className="label"><span className="label-text">Price</span></div>
                 <input
                   type="number"
@@ -415,8 +514,113 @@ export default function AdminSkuCatalogManager() {
                   }
                 />
               </label>
+              <label className="form-control w-full">
+                <div className="label"><span className="label-text">Product lead time override (days)</span></div>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  className="input input-bordered"
+                  value={skuForm.leadTimeDays}
+                  onChange={(event) =>
+                    setSkuForm((current) => ({
+                      ...current,
+                      leadTimeDays: Number(event.target.value || 0),
+                    }))
+                  }
+                />
+                <div className="label">
+                  <span className="label-text-alt">
+                    Leave as 0 to use the category default from schedule settings.
+                  </span>
+                </div>
+              </label>
+              <label className="form-control w-full">
+                <div className="label"><span className="label-text">Pack label</span></div>
+                <input
+                  className="input input-bordered"
+                  value={skuForm.packLabel}
+                  placeholder="Starter pack, party pack, gift box"
+                  onChange={(event) =>
+                    setSkuForm((current) => ({ ...current, packLabel: event.target.value }))
+                  }
+                />
+              </label>
+              <div className="md:col-span-2">
+                <div className="label">
+                  <span className="label-text">Product image</span>
+                </div>
+                <div className="grid gap-4 rounded-2xl border border-base-300 bg-base-100 p-4 md:grid-cols-[180px_minmax(0,1fr)]">
+                  <div
+                    aria-label={skuForm.imageUrl ? "Current product image preview" : "No product image preview"}
+                    className="aspect-square rounded-xl border border-base-300 bg-base-200 bg-cover bg-center"
+                    style={{
+                      backgroundImage: skuForm.imageUrl
+                        ? `url("${skuForm.imageUrl}")`
+                        : "url(\"/images/logo.jpg\")",
+                    }}
+                  />
+                  <div className="space-y-3">
+                    <input
+                      type="file"
+                      className="file-input file-input-bordered w-full"
+                      accept="image/jpeg,image/png,image/webp,image/gif"
+                      disabled={isUploadingImage || isSaving || isDeleting}
+                      onChange={onUploadImage}
+                    />
+                    <p className="text-xs opacity-70">
+                      Upload JPG, PNG, WebP, or GIF images up to 5 MB. Save the product after upload.
+                    </p>
+                    <label className="form-control">
+                      <div className="label">
+                        <span className="label-text">Image URL</span>
+                      </div>
+                      <input
+                        className="input input-bordered"
+                        value={skuForm.imageUrl}
+                        placeholder="Upload an image or paste an image URL"
+                        onChange={(event) =>
+                          setSkuForm((current) => ({ ...current, imageUrl: event.target.value }))
+                        }
+                      />
+                    </label>
+                    {isUploadingImage && (
+                      <div className="text-sm font-medium opacity-70">Uploading image...</div>
+                    )}
+                  </div>
+                </div>
+              </div>
               <label className="form-control w-full md:col-span-2">
-                <div className="label"><span className="label-text">Description</span></div>
+                <div className="label"><span className="label-text">Short public description</span></div>
+                <textarea
+                  className="textarea textarea-bordered"
+                  rows={2}
+                  value={skuForm.shortDescription}
+                  maxLength={240}
+                  onChange={(event) =>
+                    setSkuForm((current) => ({ ...current, shortDescription: event.target.value }))
+                  }
+                />
+                <div className="label">
+                  <span className="label-text-alt">
+                    Used on the website product showcase. Keep it skimmable.
+                  </span>
+                </div>
+              </label>
+              <label className="form-control w-full md:col-span-2">
+                <div className="label"><span className="label-text">What it does / benefits</span></div>
+                <textarea
+                  className="textarea textarea-bordered"
+                  rows={3}
+                  value={skuForm.benefits}
+                  maxLength={500}
+                  onChange={(event) =>
+                    setSkuForm((current) => ({ ...current, benefits: event.target.value }))
+                  }
+                />
+              </label>
+              <label className="form-control w-full md:col-span-2">
+                <div className="label"><span className="label-text">Internal / checkout description</span></div>
                 <textarea
                   className="textarea textarea-bordered"
                   rows={3}
@@ -461,6 +665,16 @@ export default function AdminSkuCatalogManager() {
           </form>
         </div>
       )}
+    </>
+  );
+
+  if (embedded) {
+    return content;
+  }
+
+  return (
+    <section className="rounded-2xl bg-base-100 p-5 shadow-md">
+      {content}
     </section>
   );
 }

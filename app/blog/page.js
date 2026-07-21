@@ -5,9 +5,9 @@ import config from "@/config";
 import { getSEOTags } from "@/libs/seo";
 
 export const metadata = getSEOTags({
-  title: `${config.appName} Blog | Stripe Chargeback Protection`,
+  title: `${config.appName} Fermentation Notes`,
   description:
-    "Learn how to prevent chargebacks, how to accept payments online, and keep your Stripe account in good standing",
+    "Learn about kanji, fermented drinks, pickles, small batches, and how to bring Good Gut Hut ferments into your routine.",
   canonicalUrlRelative: "/blog",
 });
 
@@ -19,11 +19,11 @@ export default async function Blog() {
     <>
       <section className="text-center max-w-xl mx-auto mt-12 mb-24 md:mb-32">
         <h1 className="font-extrabold text-3xl lg:text-5xl tracking-tight mb-6">
-          The {config.appName} Blog
+          Fermentation Notes
         </h1>
         <p className="text-lg opacity-80 leading-relaxed">
-          Learn how to ship your startup in days, not weeks. And get the latest
-          updates about the boilerplate
+          Practical guides to kanji, pickles, fermented drinks, small batches,
+          and everyday gut-friendly rituals from {config.appName}.
         </p>
       </section>
 

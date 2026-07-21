@@ -8,17 +8,22 @@ import Image from "next/image";
 import logo from "@/app/logo.jpg";
 import config from "@/config";
 import { categories } from "../content";
-import ButtonSignin from "@/components/ButtonSignin";
 
 const links = [
   {
     href: "/blog/",
-    label: "All Posts",
+    label: "All Notes",
+  },
+  {
+    href: "/#products",
+    label: "Products",
   },
 ];
 
 const cta = (
-  <ButtonSignin text="Prevent disputes" extraStyle="btn-primary md:btn-sm" />
+  <Link href="/#order-flow" className="btn btn-primary md:btn-sm">
+    Order ferments
+  </Link>
 );
 
 const ButtonPopoverCategories = () => {
@@ -156,7 +161,7 @@ const HeaderBlog = () => {
           <Link
             className="flex items-center gap-2 shrink-0 "
             href="/"
-            title={`${config.appName} hompage`}
+            title={`${config.appName} homepage`}
           >
             <Image
               src={logo}
@@ -223,7 +228,7 @@ const HeaderBlog = () => {
           <div className="flex items-center justify-between">
             <Link
               className="flex items-center gap-2 shrink-0 "
-              title={`${config.appName} hompage`}
+              title={`${config.appName} homepage`}
               href="/"
             >
               <Image
