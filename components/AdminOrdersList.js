@@ -1185,6 +1185,11 @@ export default function AdminOrdersList({ initialOrders = [], orderEntryConfig =
                 <p className="mt-1 text-sm font-medium opacity-80">
                   {order.orderNumber || "Order number pending"}
                 </p>
+                {order.adminOrderKind ? (
+                  <span className={`badge badge-sm mt-2 ${order.adminOrderKind === "sample" ? "badge-warning" : "badge-info"}`}>
+                    {order.adminOrderKind === "sample" ? "Sample / promo" : "Manual order"}
+                  </span>
+                ) : null}
               </div>
               <div>
                 <div className="text-xs uppercase tracking-[0.16em] opacity-60">Delivery date</div>

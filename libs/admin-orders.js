@@ -98,6 +98,8 @@ export const normalizeAdminOrderFromOrderPlan = (plan = {}) => {
   return {
     id: plan.id,
     orderNumber: plan.orderNumber || "",
+    adminOrderKind: plan.adminOrderKind || "",
+    createdByAdmin: plan.createdByAdmin || "",
     sourceType: "order_plan",
     sourceLabel: "unified order",
     customerName: plan.name || "",
@@ -141,6 +143,8 @@ export const normalizeAdminOrderFromOrderPlan = (plan = {}) => {
 export const normalizeAdminOrderFromLegacyPreorder = (preorder = {}) => ({
   id: preorder.id,
   orderNumber: preorder.orderNumber || "",
+  adminOrderKind: "",
+  createdByAdmin: "",
   sourceType: "legacy_preorder",
   sourceLabel: "legacy preorder",
   customerName: preorder.customerName || "",

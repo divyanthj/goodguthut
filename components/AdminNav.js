@@ -1,6 +1,7 @@
 import Link from "next/link";
 
-export default function AdminNav({ active = "settings" }) {
+export default function AdminNav({ active = "settings", compact = false }) {
+  const assistantClass = active === "assistant" ? "btn btn-primary" : "btn btn-ghost";
   const settingsClass = active === "settings" ? "btn btn-primary" : "btn btn-ghost";
   const statsClass = active === "stats" ? "btn btn-primary" : "btn btn-ghost";
   const discountsClass = active === "discounts" ? "btn btn-primary" : "btn btn-ghost";
@@ -14,7 +15,10 @@ export default function AdminNav({ active = "settings" }) {
   const knowledgeClass = active === "knowledge" ? "btn btn-primary" : "btn btn-ghost";
 
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className={`flex gap-2 ${compact ? "flex-nowrap overflow-x-auto pb-1 [&_.btn]:btn-sm [&_.btn]:min-h-9 [&_.btn]:whitespace-nowrap" : "flex-wrap"}`}>
+      <Link href="/admin/assistant" className={assistantClass}>
+        Assistant
+      </Link>
       <Link href="/admin" className={settingsClass}>
         Settings
       </Link>

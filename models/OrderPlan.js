@@ -304,7 +304,7 @@ const orderPlanSchema = mongoose.Schema(
     phone: {
       type: String,
       trim: true,
-      required: true,
+      default: "",
     },
     email: {
       type: String,
@@ -315,7 +315,7 @@ const orderPlanSchema = mongoose.Schema(
     address: {
       type: String,
       trim: true,
-      required: true,
+      default: "",
     },
     deliveryPlaceId: {
       type: String,
@@ -446,6 +446,18 @@ const orderPlanSchema = mongoose.Schema(
       type: String,
       enum: ["landing", "admin", "manual"],
       default: "landing",
+    },
+    adminOrderKind: {
+      type: String,
+      enum: ["", "manual", "sample"],
+      default: "",
+      index: true,
+    },
+    createdByAdmin: {
+      type: String,
+      trim: true,
+      lowercase: true,
+      default: "",
     },
     status: {
       type: String,

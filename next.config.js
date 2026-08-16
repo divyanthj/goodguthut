@@ -1,5 +1,8 @@
 const nextConfig = {
   reactStrictMode: true,
+  experimental: {
+    serverComponentsExternalPackages: ["@vercel/blob", "undici"],
+  },
   images: {
     domains: [
       // NextJS <Image> component needs to whitelist domains for src={}
