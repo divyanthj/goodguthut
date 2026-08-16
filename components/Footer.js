@@ -88,7 +88,7 @@ const Footer = () => {
               Think in Public
             </a>
             <a
-              href="https://www.facebook.com/profile.php?id=61584966604788"
+              href="https://www.facebook.com/profile.php?id=61590344084615"
               target="_blank"
               rel="noreferrer"
               className="transition hover:text-primary"

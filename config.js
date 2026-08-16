@@ -1,5 +1,7 @@
 const config = {
   appName: "Good Gut Hut",
+  // Set to false to restore the complete public landing page and site chrome.
+  landingPageUnderConstruction: true,
   appDescription:
     "Good Gut Hut crafts fermented non-alcoholic drinks that are slowly brewed and made with care.",
   domainName: "goodguthut.com",

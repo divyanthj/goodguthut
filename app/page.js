@@ -8,6 +8,15 @@ const SUPPORT_PHONE_WHATSAPP = "919916331569";
 const whatsappHref = `https://wa.me/${SUPPORT_PHONE_WHATSAPP}?text=${encodeURIComponent(
   "Hi Good Gut Hut, I would like to know more about your ferments."
 )}`;
+const whatsappOrderHref = `https://wa.me/${SUPPORT_PHONE_WHATSAPP}?text=${encodeURIComponent(
+  "Hi Good Gut Hut, I would like to place an order."
+)}`;
+const whatsappGroupHref = `https://wa.me/${SUPPORT_PHONE_WHATSAPP}?text=${encodeURIComponent(
+  "Hi Good Gut Hut, I would love to join the WhatsApp group and stay updated."
+)}`;
+const instagramHref = "https://instagram.com/goodguthut";
+const facebookHref = "https://www.facebook.com/profile.php?id=61590344084615";
+const thinkInPublicHref = "https://thinkinpublic.app/thinker/goodguthut";
 
 const productCategories = [
   {
@@ -154,6 +163,117 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export default async function HomePage() {
+  if (config.landingPageUnderConstruction) {
+    return (
+      <main className="page-shell landing-page relative isolate min-h-screen overflow-hidden bg-[#f7f1e6] text-[#213a2f]">
+        <div aria-hidden="true" className="page-sparkles pointer-events-none fixed inset-0" />
+
+        <section className="relative z-10 min-h-screen overflow-hidden bg-[#f7f1e6]">
+          <div className="absolute inset-0 opacity-[0.07]">
+            <Image
+              src="/images/ggh2.png"
+              alt=""
+              fill
+              priority
+              sizes="100vw"
+              className="object-cover object-center"
+            />
+          </div>
+          <div className="relative mx-auto grid min-h-screen max-w-6xl items-center gap-10 px-6 py-16 md:grid-cols-[1.1fr_0.9fr] md:py-20">
+            <div className="max-w-3xl">
+              <p className="text-sm font-semibold uppercase tracking-[0.28em] text-[#8b5d39]">
+                Fermented | Small batch | Made with care
+              </p>
+              <h1 className="mt-5 text-5xl font-black leading-[0.95] text-[#213a2f] md:text-7xl">
+                The Good Gut Hut
+              </h1>
+              <p className="mt-6 text-2xl font-bold leading-tight text-[#40584c] md:text-3xl">
+                We&apos;re upgrading our website.
+              </p>
+              <p className="mt-4 max-w-2xl text-base leading-7 text-[#51685d] md:text-lg">
+                For now, we&apos;re accepting orders only through WhatsApp. DM us
+                directly to place your order.
+              </p>
+              <div className="mt-6 flex flex-wrap items-center gap-4">
+                <a
+                  className="btn btn-primary"
+                  href={whatsappOrderHref}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Order on WhatsApp
+                </a>
+                <a
+                  className="text-lg font-black text-[#355a45] underline decoration-[#c97754] underline-offset-4 hover:text-[#7a3f28]"
+                  href={whatsappOrderHref}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {SUPPORT_PHONE_DISPLAY}
+                </a>
+              </div>
+              <p className="mt-7 text-sm font-semibold text-[#51685d]">
+                We&apos;re still active—join the community and follow along.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-3">
+                <a
+                  className="btn border-[#355a45] bg-[#fffdf8] text-[#355a45] hover:border-[#355a45] hover:bg-[#eef3e8]"
+                  href={whatsappGroupHref}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Join our WhatsApp group
+                </a>
+                <a
+                  className="btn border-[#c97754] bg-[#fff4ed] text-[#7a3f28] hover:border-[#c97754] hover:bg-[#ffe9db]"
+                  href={instagramHref}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Follow us on Instagram
+                </a>
+              </div>
+              <p className="mt-5 text-sm text-[#6b7d74]">
+                You can also find us on{" "}
+                <a
+                  className="font-semibold underline decoration-[#c97754] underline-offset-4 hover:text-[#7a3f28]"
+                  href={facebookHref}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Facebook
+                </a>{" "}
+                and{" "}
+                <a
+                  className="font-semibold underline decoration-[#c97754] underline-offset-4 hover:text-[#7a3f28]"
+                  href={thinkInPublicHref}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Think in Public
+                </a>
+                .
+              </p>
+            </div>
+
+            <div className="relative mx-auto w-full max-w-sm md:max-w-md">
+              <div className="aspect-square overflow-hidden rounded-lg border border-[#d1c4b0] bg-[#fffdf8] shadow-xl">
+                <Image
+                  src="/images/logo.jpg"
+                  alt="Good Gut Hut logo"
+                  width={900}
+                  height={900}
+                  priority
+                  className="h-full w-full object-cover"
+                />
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
   const {
     skuCatalog,
     comboCatalog,
