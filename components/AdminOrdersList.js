@@ -10,6 +10,11 @@ import { isRecurringOrderPlanPaymentConfirmed } from "@/libs/order-plans";
 import { getRazorpayArtifactRows } from "@/libs/razorpay-dashboard-links";
 import { formatSubscriptionCadence, formatSubscriptionDuration } from "@/libs/subscriptions";
 import { formatSubscriptionDate } from "@/libs/subscription-schedule";
+import {
+  getMadeToOrderItems,
+  hasMadeToOrderDemand,
+} from "@/libs/order-production";
+import { formatInventoryBatchCode } from "@/libs/inventory-batch-codes";
 
 const formatCurrency = (currency, amount) => {
   return new Intl.NumberFormat("en-IN", {
@@ -324,6 +329,7 @@ export default function AdminOrdersList({ initialOrders = [], orderEntryConfig =
   const [error, setError] = useState("");
   const [showFulfilledOrders, setShowFulfilledOrders] = useState(false);
   const [expandedOrders, setExpandedOrders] = useState({});
+  const [inventoryDrafts, setInventoryDrafts] = useState({});
 
   const activeOrders = useMemo(
     () => orders.filter((order) => order.status !== "fulfilled"),
@@ -380,6 +386,78 @@ export default function AdminOrdersList({ initialOrders = [], orderEntryConfig =
           new Date(left.createdAt || 0).getTime()
       )
     );
+  };
+
+  const getInventoryDraft = (order) => {
+    const key = `${order.sourceType}:${order.id}`;
+    return (
+      inventoryDrafts[key] ||
+      Object.fromEntries((order.items || []).map((item) => [item.sku, Number(item.quantity || 0)]))
+    );
+  };
+
+  const setInventoryDraftQuantity = (order, sku, quantity) => {
+    const key = `${order.sourceType}:${order.id}`;
+    setInventoryDrafts((current) => ({
+      ...current,
+      [key]: {
+        ...(current[key] || getInventoryDraft(order)),
+        [sku]: Math.max(0, Math.min(10, Number(quantity || 0))),
+      },
+    }));
+  };
+
+  const runInventoryAction = async (order, action, payload = {}) => {
+    const key = `${order.sourceType}:${order.id}`;
+    setSavingId(key);
+    setMessage("");
+    setError("");
+
+    try {
+      const response = await fetch(`/api/admin/order-plans/${order.id}/inventory`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, ...payload }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Could not update order inventory.");
+      }
+
+      if (data.orderPlan) {
+        updateOrderInState("order_plan", data.orderPlan);
+        setInventoryDrafts((current) => {
+          const next = { ...current };
+          delete next[key];
+          return next;
+        });
+      }
+      setMessage(
+        action === "mark_paid"
+          ? data.inventory?.status === "shortfall"
+            ? "Payment recorded, but this order needs an inventory adjustment."
+            : "Payment recorded and held stock committed."
+          : action === "cancel_release"
+            ? "Order cancelled and held stock released."
+            : action === "edit_hold"
+              ? "Order items and inventory hold updated."
+              : data.inventory?.status === "shortfall"
+                ? "Inventory is still short. Adjust stock and retry."
+                : "Inventory commitment completed."
+      );
+    } catch (inventoryError) {
+      setError(inventoryError.message || "Could not update order inventory.");
+    } finally {
+      setSavingId("");
+    }
+  };
+
+  const saveHeldOrderItems = async (order) => {
+    const draft = getInventoryDraft(order);
+    const items = Object.entries(draft)
+      .map(([sku, quantity]) => ({ sku, quantity: Number(quantity || 0) }))
+      .filter((item) => item.quantity > 0);
+    await runInventoryAction(order, "edit_hold", { items });
   };
 
   const patchOrder = async (order, payload, fallbackError, options = {}) => {
@@ -594,7 +672,11 @@ export default function AdminOrdersList({ initialOrders = [], orderEntryConfig =
     setMessage("");
     setError("");
 
-    const whatsappMessage = buildProductionWhatsAppMessage(order);
+    const productionOrder = {
+      ...order,
+      items: getMadeToOrderItems(order),
+    };
+    const whatsappMessage = buildProductionWhatsAppMessage(productionOrder);
     let clipboardCopied = false;
 
     try {
@@ -832,6 +914,15 @@ export default function AdminOrdersList({ initialOrders = [], orderEntryConfig =
     const isRecurringOrderPlan =
       order.sourceType === "order_plan" && order.mode === "recurring";
     const isPickup = order.fulfillmentMethod === "pickup";
+    const inventoryStatus = order.inventory?.status || "not_tracked";
+    const inventoryBlocksFulfillment = ["held", "shortfall"].includes(inventoryStatus);
+    const needsProduction = hasMadeToOrderDemand(order);
+    const isManualUnpaidHold =
+      order.sourceType === "order_plan" &&
+      order.adminOrderKind === "manual" &&
+      order.payment?.provider === "manual" &&
+      order.payment?.status === "pending" &&
+      inventoryStatus !== "released";
     const canManageRecurringDelivery =
       isRecurringOrderPlan &&
       isRecurringOrderPlanPaymentConfirmed(order.payment);
@@ -841,11 +932,11 @@ export default function AdminOrdersList({ initialOrders = [], orderEntryConfig =
       order.status === "pending" &&
       order.payment?.provider !== "razorpay";
     const canMarkShipped = isRecurringOrderPlan
-      ? canManageRecurringDelivery && ["new", "active"].includes(order.status)
-      : order.status === "confirmed";
+      ? canManageRecurringDelivery && ["new", "active"].includes(order.status) && !inventoryBlocksFulfillment
+      : order.status === "confirmed" && !inventoryBlocksFulfillment;
     const canMarkDelivered = isRecurringOrderPlan
-      ? canManageRecurringDelivery && ["new", "active", "shipped"].includes(order.status)
-      : order.status === "confirmed" || order.status === "shipped";
+      ? canManageRecurringDelivery && ["new", "active", "shipped"].includes(order.status) && !inventoryBlocksFulfillment
+      : (order.status === "confirmed" || order.status === "shipped") && !inventoryBlocksFulfillment;
 
     return (
       <>
@@ -1030,6 +1121,147 @@ export default function AdminOrdersList({ initialOrders = [], orderEntryConfig =
           </div>
         </div>
 
+        {(order.sourceType === "order_plan" && inventoryStatus !== "not_tracked") || isManualUnpaidHold ? (
+          <div className="mt-4 rounded-xl border border-base-300 bg-base-200 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="font-medium">Inventory allocation</div>
+                <div className="mt-1 text-xs opacity-70">
+                  {inventoryStatus === "held"
+                    ? "Stock is held and cannot be sold to another customer."
+                    : inventoryStatus === "allocated"
+                      ? "The full recurring plan quantity is allocated."
+                      : inventoryStatus === "partially_committed"
+                        ? "Some recurring cycles are consumed; the remaining cycles stay allocated."
+                        : inventoryStatus === "committed"
+                          ? "Inventory has been committed to this order."
+                          : inventoryStatus === "shortfall"
+                            ? "Payment is recorded, but available physical stock is short."
+                            : inventoryStatus === "released" || inventoryStatus === "expired"
+                              ? "This order no longer holds inventory."
+                              : "This order contains made-to-order items only."}
+                </div>
+              </div>
+              <div
+                className={`badge ${
+                  inventoryStatus === "shortfall"
+                    ? "badge-error"
+                    : inventoryStatus === "held"
+                      ? "badge-warning"
+                      : inventoryStatus === "committed"
+                        ? "badge-success"
+                        : "badge-info"
+                }`}
+              >
+                {inventoryStatus.replaceAll("_", " ")}
+              </div>
+            </div>
+
+            {Array.isArray(order.inventory?.items) && order.inventory.items.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                {order.inventory.items.map((item) => (
+                  <span key={`inventory-${order.id}-${item.sku}`} className="badge badge-outline">
+                    {item.sku}: {Number(item.reservedQuantity || 0)} held ·{" "}
+                    {Number(item.committedQuantity || 0)} committed
+                    {Array.isArray(item.committedBatches) && item.committedBatches.length > 0
+                      ? ` (${item.committedBatches
+                          .map((batch) =>
+                            batch.batchCode
+                              ? `${formatInventoryBatchCode(batch.batchCode)} × ${batch.quantity}`
+                              : `Legacy × ${batch.quantity}`
+                          )
+                          .join(", ")})`
+                      : ""}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {isManualUnpaidHold && (
+              <div className="mt-4 rounded-xl bg-base-100 p-4">
+                <div className="font-medium">Edit unpaid WhatsApp order</div>
+                <div className="mt-1 text-xs opacity-70">
+                  Changes reserve or release only the difference. Existing item prices stay unchanged.
+                </div>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {(orderEntryConfig?.catalogItems || [])
+                    .filter((item) => item.status === "active")
+                    .map((item) => (
+                      <label key={`hold-edit-${order.id}-${item.sku}`} className="form-control">
+                        <div className="label py-1">
+                          <span className="label-text text-xs">{item.name}</span>
+                          <span className="label-text-alt">{item.sku}</span>
+                        </div>
+                        <input
+                          type="number"
+                          min="0"
+                          max="10"
+                          step="1"
+                          className="input input-bordered input-sm"
+                          value={Number(getInventoryDraft(order)[item.sku] || 0)}
+                          disabled={savingId === `${order.sourceType}:${order.id}`}
+                          onChange={(event) =>
+                            setInventoryDraftQuantity(order, item.sku, event.target.value)
+                          }
+                        />
+                      </label>
+                    ))}
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    disabled={savingId === `${order.sourceType}:${order.id}`}
+                    onClick={() => saveHeldOrderItems(order)}
+                  >
+                    Save item changes
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-success btn-sm"
+                    disabled={savingId === `${order.sourceType}:${order.id}`}
+                    onClick={() => {
+                      if (window.confirm("Confirm that the external payment has been received?")) {
+                        runInventoryAction(order, "mark_paid");
+                      }
+                    }}
+                  >
+                    Mark paid and commit
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-error btn-sm"
+                    disabled={savingId === `${order.sourceType}:${order.id}`}
+                    onClick={() => {
+                      if (window.confirm("Cancel this order and release all held stock?")) {
+                        runInventoryAction(order, "cancel_release");
+                      }
+                    }}
+                  >
+                    Cancel and release
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {inventoryStatus === "shortfall" && (
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-error/10 p-3">
+                <div className="text-sm">
+                  Adjust the affected SKU stock, then retry this commitment. Fulfillment stays blocked meanwhile.
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-error btn-sm"
+                  disabled={savingId === `${order.sourceType}:${order.id}`}
+                  onClick={() => runInventoryAction(order, "retry_commit")}
+                >
+                  Retry inventory commitment
+                </button>
+              </div>
+            )}
+          </div>
+        ) : null}
+
         <div className="mt-4 rounded-xl bg-base-200 p-4">
           <div className="flex flex-wrap items-end gap-3">
             {!isPickup ? (
@@ -1082,18 +1314,22 @@ export default function AdminOrdersList({ initialOrders = [], orderEntryConfig =
                     : "Nudge payment"}
               </button>
             )}
-            <button
-              type="button"
-              className="btn btn-outline btn-sm"
-              disabled={
-                savingId === `${order.sourceType}:${order.id}` ||
-                deletingId === `${order.sourceType}:${order.id}` ||
-                !order.phone
-              }
-              onClick={() => confirmProduction(order)}
-            >
-              {savingId === `${order.sourceType}:${order.id}` ? "Sending..." : "Confirm production"}
-            </button>
+            {needsProduction && (
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                disabled={
+                  savingId === `${order.sourceType}:${order.id}` ||
+                  deletingId === `${order.sourceType}:${order.id}` ||
+                  !order.phone
+                }
+                onClick={() => confirmProduction(order)}
+              >
+                {savingId === `${order.sourceType}:${order.id}`
+                  ? "Sending..."
+                  : "Confirm production"}
+              </button>
+            )}
             <button
               type="button"
               className="btn btn-secondary btn-sm"
@@ -1228,6 +1464,23 @@ export default function AdminOrdersList({ initialOrders = [], orderEntryConfig =
           <div className={getModeBadgeClassName(order)}>{getModeLabel(order)}</div>
           <div className="badge badge-outline">{order.status}</div>
           <div className="badge badge-outline">{order.paymentBadgeLabel}</div>
+          {order.sourceType === "order_plan" &&
+            order.inventory?.status &&
+            order.inventory.status !== "not_tracked" && (
+              <div
+                className={`badge ${
+                  order.inventory.status === "shortfall"
+                    ? "badge-error"
+                    : order.inventory.status === "held"
+                      ? "badge-warning"
+                      : order.inventory.status === "committed"
+                        ? "badge-success"
+                        : "badge-info"
+                }`}
+              >
+                inventory: {order.inventory.status.replaceAll("_", " ")}
+              </div>
+            )}
           {order.sourceType === "legacy_preorder" ? (
             <div className="badge badge-outline">
               {order.fulfillmentMethod === "pickup" ? "pickup" : "delivery"}

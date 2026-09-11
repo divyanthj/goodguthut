@@ -137,6 +137,7 @@ export const normalizeAdminOrderFromOrderPlan = (plan = {}) => {
     preorderWindowLabel: "",
     discount: null,
     confirmationLabel: "",
+    inventory: plan.inventory || { status: "not_tracked", items: [], shortfalls: [] },
   };
 };
 
@@ -182,6 +183,7 @@ export const normalizeAdminOrderFromLegacyPreorder = (preorder = {}) => ({
   preorderWindowLabel: preorder.preorderWindowLabel || "",
   discount: preorder.discount || {},
   confirmationLabel: getLegacyPreorderConfirmationLabel(preorder),
+  inventory: { status: "not_tracked", items: [], shortfalls: [] },
 });
 
 export const sortAdminOrdersByCreatedAtDesc = (orders = []) =>

@@ -8,15 +8,6 @@ const SUPPORT_PHONE_WHATSAPP = "919916331569";
 const whatsappHref = `https://wa.me/${SUPPORT_PHONE_WHATSAPP}?text=${encodeURIComponent(
   "Hi Good Gut Hut, I would like to know more about your ferments."
 )}`;
-const whatsappOrderHref = `https://wa.me/${SUPPORT_PHONE_WHATSAPP}?text=${encodeURIComponent(
-  "Hi Good Gut Hut, I would like to place an order."
-)}`;
-const whatsappGroupHref = `https://wa.me/${SUPPORT_PHONE_WHATSAPP}?text=${encodeURIComponent(
-  "Hi Good Gut Hut, I would love to join the WhatsApp group and stay updated."
-)}`;
-const instagramHref = "https://instagram.com/goodguthut";
-const facebookHref = "https://www.facebook.com/profile.php?id=61590344084615";
-const thinkInPublicHref = "https://thinkinpublic.app/thinker/goodguthut";
 
 const productCategories = [
   {
@@ -68,19 +59,6 @@ const productCategories = [
     notes: ["WhatsApp-first", "Made to brief", "Good for teams and gifting"],
   },
 ];
-
-const fallbackCategory = {
-  value: "other",
-  name: "Seasonal Specials",
-  eyebrow: "Small surprises",
-  description:
-    "Limited batch ferments and kitchen experiments that are available only when the timing is right.",
-  notes: ["Limited availability", "Small-batch only", "Fresh from the kitchen"],
-};
-
-const categoryByValue = new Map(
-  [...productCategories, fallbackCategory].map((category) => [category.value, category])
-);
 
 const values = [
   {
@@ -145,135 +123,44 @@ const groupCatalogByCategory = (items = []) => {
   const grouped = new Map();
 
   items.forEach((item) => {
-    const category = categoryByValue.has(item.category) ? item.category : "other";
+    const category = String(item.category || "other");
     const current = grouped.get(category) || [];
     current.push(item);
     grouped.set(category, current);
   });
 
-  return [...productCategories, fallbackCategory]
+  const configuredGroups = productCategories
     .map((category) => ({
       ...category,
       items: grouped.get(category.value) || [],
     }))
-    .filter((category) => category.value !== "other" || category.items.length > 0);
+    .filter((category) => category.items.length > 0);
+
+  const configuredValues = new Set(productCategories.map((category) => category.value));
+  const catalogGroups = [...grouped.entries()]
+    .filter(([category]) => !configuredValues.has(category))
+    .map(([category, categoryItems]) => ({
+      value: category,
+      name:
+        categoryItems.find((item) => item.categoryLabel)?.categoryLabel ||
+        category
+          .split("_")
+          .filter(Boolean)
+          .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+          .join(" "),
+      eyebrow: "",
+      description: "",
+      notes: [],
+      items: categoryItems,
+    }));
+
+  return [...configuredGroups, ...catalogGroups];
 };
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export default async function HomePage() {
-  if (config.landingPageUnderConstruction) {
-    return (
-      <main className="page-shell landing-page relative isolate min-h-screen overflow-hidden bg-[#f7f1e6] text-[#213a2f]">
-        <div aria-hidden="true" className="page-sparkles pointer-events-none fixed inset-0" />
-
-        <section className="relative z-10 min-h-screen overflow-hidden bg-[#f7f1e6]">
-          <div className="absolute inset-0 opacity-[0.07]">
-            <Image
-              src="/images/ggh2.png"
-              alt=""
-              fill
-              priority
-              sizes="100vw"
-              className="object-cover object-center"
-            />
-          </div>
-          <div className="relative mx-auto grid min-h-screen max-w-6xl items-center gap-10 px-6 py-16 md:grid-cols-[1.1fr_0.9fr] md:py-20">
-            <div className="max-w-3xl">
-              <p className="text-sm font-semibold uppercase tracking-[0.28em] text-[#8b5d39]">
-                Fermented | Small batch | Made with care
-              </p>
-              <h1 className="mt-5 text-5xl font-black leading-[0.95] text-[#213a2f] md:text-7xl">
-                The Good Gut Hut
-              </h1>
-              <p className="mt-6 text-2xl font-bold leading-tight text-[#40584c] md:text-3xl">
-                We&apos;re upgrading our website.
-              </p>
-              <p className="mt-4 max-w-2xl text-base leading-7 text-[#51685d] md:text-lg">
-                For now, we&apos;re accepting orders only through WhatsApp. DM us
-                directly to place your order.
-              </p>
-              <div className="mt-6 flex flex-wrap items-center gap-4">
-                <a
-                  className="btn btn-primary"
-                  href={whatsappOrderHref}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Order on WhatsApp
-                </a>
-                <a
-                  className="text-lg font-black text-[#355a45] underline decoration-[#c97754] underline-offset-4 hover:text-[#7a3f28]"
-                  href={whatsappOrderHref}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  {SUPPORT_PHONE_DISPLAY}
-                </a>
-              </div>
-              <p className="mt-7 text-sm font-semibold text-[#51685d]">
-                We&apos;re still active—join the community and follow along.
-              </p>
-              <div className="mt-3 flex flex-wrap gap-3">
-                <a
-                  className="btn border-[#355a45] bg-[#fffdf8] text-[#355a45] hover:border-[#355a45] hover:bg-[#eef3e8]"
-                  href={whatsappGroupHref}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Join our WhatsApp group
-                </a>
-                <a
-                  className="btn border-[#c97754] bg-[#fff4ed] text-[#7a3f28] hover:border-[#c97754] hover:bg-[#ffe9db]"
-                  href={instagramHref}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Follow us on Instagram
-                </a>
-              </div>
-              <p className="mt-5 text-sm text-[#6b7d74]">
-                You can also find us on{" "}
-                <a
-                  className="font-semibold underline decoration-[#c97754] underline-offset-4 hover:text-[#7a3f28]"
-                  href={facebookHref}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Facebook
-                </a>{" "}
-                and{" "}
-                <a
-                  className="font-semibold underline decoration-[#c97754] underline-offset-4 hover:text-[#7a3f28]"
-                  href={thinkInPublicHref}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Think in Public
-                </a>
-                .
-              </p>
-            </div>
-
-            <div className="relative mx-auto w-full max-w-sm md:max-w-md">
-              <div className="aspect-square overflow-hidden rounded-lg border border-[#d1c4b0] bg-[#fffdf8] shadow-xl">
-                <Image
-                  src="/images/logo.jpg"
-                  alt="Good Gut Hut logo"
-                  width={900}
-                  height={900}
-                  priority
-                  className="h-full w-full object-cover"
-                />
-              </div>
-            </div>
-          </div>
-        </section>
-      </main>
-    );
-  }
-
   const {
     skuCatalog,
     comboCatalog,
@@ -312,7 +199,8 @@ export default async function HomePage() {
     <main className="page-shell landing-page relative isolate overflow-hidden bg-base-200 text-[#213a2f]">
       <div aria-hidden="true" className="page-sparkles pointer-events-none fixed inset-0" />
 
-      <section className="relative z-10 overflow-hidden border-b border-[#ddcfb6] bg-[#f7f1e6]">
+      {/* Temporarily hidden while the product-led homepage layout is evaluated. */}
+      <section className="relative z-10 hidden overflow-hidden border-b border-[#ddcfb6] bg-[#f7f1e6]">
         <div className="absolute inset-0 opacity-[0.07]">
           <Image
             src="/images/ggh2.png"
@@ -379,28 +267,37 @@ export default async function HomePage() {
             </p>
           </div>
 
-          <div className="mt-10 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <div className="mt-10 space-y-8">
             {catalogCategoryGroups.map((category) => (
               <article key={category.name} className="rounded-lg border border-[#ddcfb6] bg-[#f8f4ea] p-5 shadow-sm">
-                <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#9b6042]">
-                  {category.eyebrow}
-                </p>
-                <h3 className="mt-3 text-2xl font-black text-[#213a2f]">{category.name}</h3>
-                <p className="mt-3 min-h-[96px] text-sm leading-6 text-[#51685d]">
-                  {category.description}
-                </p>
-                {category.items.length > 0 ? (
-                  <div className="mt-5 space-y-3">
-                    {category.items.slice(0, 3).map((item) => (
-                      <div key={item.sku} className="overflow-hidden rounded-lg border border-[#d8c5a7] bg-[#fffdf8]">
+                {category.value !== "other" && (
+                  <div>
+                    {category.eyebrow && (
+                      <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#9b6042]">
+                        {category.eyebrow}
+                      </p>
+                    )}
+                    <h3 className={`${category.eyebrow ? "mt-3" : ""} text-2xl font-black text-[#213a2f]`}>
+                      {category.name}
+                    </h3>
+                    {category.description && (
+                      <p className="mt-3 max-w-3xl text-sm leading-6 text-[#51685d]">
+                        {category.description}
+                      </p>
+                    )}
+                  </div>
+                )}
+                <div className={`${category.value === "other" ? "" : "mt-5"} grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4`}>
+                    {category.items.map((item) => (
+                      <div key={item.sku} className="flex h-full flex-col overflow-hidden rounded-lg border border-[#d8c5a7] bg-[#fffdf8]">
                         <div
                           aria-hidden="true"
-                          className="h-28 bg-[#eef3e8] bg-cover bg-center"
+                          className="aspect-square w-full bg-[#eef3e8] bg-cover bg-center"
                           style={{
                             backgroundImage: `url("${item.imageUrl || "/images/logo.jpg"}")`,
                           }}
                         />
-                        <div className="p-4">
+                        <div className="flex flex-1 flex-col p-4">
                           <div className="flex items-start justify-between gap-3">
                             <div>
                               <h4 className="font-black text-[#213a2f]">{item.name}</h4>
@@ -414,39 +311,25 @@ export default async function HomePage() {
                               {currency} {Number(item.unitPrice || 0).toFixed(0)}
                             </span>
                           </div>
-                          <p className="mt-3 text-sm leading-6 text-[#51685d]">
+                          <p className="mt-3 flex-1 text-sm leading-6 text-[#51685d]">
                             {item.shortDescription || item.notes || "A fresh small-batch ferment from the GGH kitchen."}
                           </p>
-                          <div className="mt-3 flex flex-wrap gap-2">
+                          <div className="mt-3 flex flex-wrap gap-2 pt-1">
                             {Number(item.effectiveLeadTimeDays || item.leadTimeDays || 0) > 0 && (
                               <span className="rounded-full border border-[#d8c5a7] bg-[#f7f1e6] px-3 py-1 text-xs font-semibold text-[#4a5d54]">
                                 {Number(item.effectiveLeadTimeDays || item.leadTimeDays || 0)} day lead
                               </span>
                             )}
-                      {item.benefits && (
-                        <span className="rounded-full border border-[#cad8c5] bg-[#eef3e8] px-3 py-1 text-xs font-semibold text-[#355a45]">
+                            {item.benefits && (
+                              <span className="rounded-full border border-[#cad8c5] bg-[#eef3e8] px-3 py-1 text-xs font-semibold text-[#355a45]">
                                 Why people love it
-                        </span>
-                      )}
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>
                     ))}
-                    {category.items.length > 3 && (
-                      <p className="text-sm font-semibold text-[#51685d]">
-                        +{category.items.length - 3} more in checkout
-                      </p>
-                    )}
-                  </div>
-                ) : (
-                  <div className="mt-5 flex flex-wrap gap-2">
-                    {category.notes.map((note) => (
-                      <span key={note} className="rounded-full border border-[#d8c5a7] bg-[#fffdf8] px-3 py-1 text-xs font-semibold text-[#4a5d54]">
-                        {note}
-                      </span>
-                    ))}
-                  </div>
-                )}
+                </div>
               </article>
             ))}
           </div>
@@ -465,38 +348,6 @@ export default async function HomePage() {
                 <a href="#order-flow" className="btn btn-sm btn-primary">
                   Build your order
                 </a>
-              </div>
-              <div className="mt-5 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-                {visibleCatalogItems.slice(0, 6).map((item) => (
-                  <div key={item.sku} className="rounded-lg border border-[#cad8c5] bg-[#fffdf8] p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <h4 className="font-bold text-[#213a2f]">{item.name}</h4>
-                        <p className="mt-1 text-xs font-semibold uppercase tracking-[0.18em] text-[#6b7d74]">
-                          {item.categoryLabel || item.sku}
-                        </p>
-                      </div>
-                      <span className="rounded-full bg-[#f4d8c8] px-3 py-1 text-xs font-bold text-[#7a3f28]">
-                        {currency} {Number(item.unitPrice || 0).toFixed(0)}
-                      </span>
-                    </div>
-                    <p className="mt-3 text-sm leading-6 text-[#51685d]">
-                      {item.shortDescription || item.notes || "A fresh small-batch ferment from the GGH kitchen."}
-                    </p>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {item.packLabel && (
-                        <span className="rounded-full border border-[#d8c5a7] bg-[#f7f1e6] px-3 py-1 text-xs font-semibold text-[#4a5d54]">
-                          {item.packLabel}
-                        </span>
-                      )}
-                      {Number(item.effectiveLeadTimeDays || item.leadTimeDays || 0) > 0 && (
-                        <span className="rounded-full border border-[#cad8c5] bg-[#eef3e8] px-3 py-1 text-xs font-semibold text-[#355a45]">
-                          {Number(item.effectiveLeadTimeDays || item.leadTimeDays || 0)} day lead
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                ))}
               </div>
             </div>
           )}

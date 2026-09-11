@@ -2,6 +2,10 @@ import config from "@/config";
 import { normalizeAdminOrderFromLegacyPreorder, normalizeAdminOrderFromOrderPlan } from "@/libs/admin-orders";
 import { emailTemplate } from "@/libs/emailTemplate";
 import { sendResendEmail } from "@/libs/resend";
+import {
+  getMadeToOrderItems,
+  getMadeToOrderQuantity,
+} from "@/libs/order-production";
 
 const escapeHtml = (value = "") =>
   String(value)
@@ -71,7 +75,12 @@ export const normalizeProductionConfirmationOrder = ({ sourceType, record }) => 
     return normalizeAdminOrderFromLegacyPreorder(record);
   }
 
-  return normalizeAdminOrderFromOrderPlan(record);
+  const order = normalizeAdminOrderFromOrderPlan(record);
+  return {
+    ...order,
+    items: getMadeToOrderItems(order),
+    totalQuantity: getMadeToOrderQuantity(order),
+  };
 };
 
 export const buildProductionConfirmationMessage = (order = {}) => {

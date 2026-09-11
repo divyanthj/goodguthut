@@ -16,19 +16,24 @@ import {
   removeCollatoKnowledgeDocument,
   syncCollatoKnowledgeDocument,
 } from "@/libs/collato-knowledge";
+import {
+  canFulfillOrderInventory,
+  deleteOrderPlanWithInventory,
+  releaseOrderInventory,
+} from "@/libs/inventory";
 
 const ensureAdmin = async () => {
   const { session, isAdmin } = await getAdminSessionState();
 
   if (!session?.user) {
-    return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
+    return { error: NextResponse.json({ error: "Not authenticated." }, { status: 401 }) };
   }
 
   if (!isAdmin) {
-    return NextResponse.json({ error: "Forbidden." }, { status: 403 });
+    return { error: NextResponse.json({ error: "Forbidden." }, { status: 403 }) };
   }
 
-  return null;
+  return { session };
 };
 
 const refreshRouteSnapshots = async () => {
@@ -74,7 +79,7 @@ const isRecurringDeliveryActionAllowed = (orderPlan, allowedStatuses = []) => {
 };
 
 export async function PATCH(req, { params }) {
-  const authError = await ensureAdmin();
+  const { session, error: authError } = await ensureAdmin();
 
   if (authError) {
     return authError;
@@ -86,16 +91,23 @@ export async function PATCH(req, { params }) {
     let invoiceDeliveryDate = "";
 
     await connectMongo();
-    const orderPlan = await OrderPlan.findById(params.id);
+    let orderPlan = await OrderPlan.findById(params.id);
 
     if (!orderPlan) {
       return NextResponse.json({ error: "Order not found." }, { status: 404 });
     }
 
     ensureOneTimeFulfillmentStatus(orderPlan);
+    let shouldReleaseInventory = false;
 
     if (orderPlan.mode === "one_time") {
       if (body?.markShipped) {
+        if (!canFulfillOrderInventory(orderPlan)) {
+          return NextResponse.json(
+            { error: "Commit or resolve this order's inventory before fulfillment." },
+            { status: 409 }
+          );
+        }
         const currentStatus = normalizeOneTimeOrderPlanStatus(orderPlan.status);
 
         if (currentStatus !== "confirmed") {
@@ -116,6 +128,12 @@ export async function PATCH(req, { params }) {
         };
         orderPlan.status = "shipped";
       } else if (body?.markDelivered) {
+        if (!canFulfillOrderInventory(orderPlan)) {
+          return NextResponse.json(
+            { error: "Commit or resolve this order's inventory before fulfillment." },
+            { status: 409 }
+          );
+        }
         const currentStatus = normalizeOneTimeOrderPlanStatus(orderPlan.status);
 
         if (!["confirmed", "shipped"].includes(currentStatus)) {
@@ -143,8 +161,15 @@ export async function PATCH(req, { params }) {
         });
         assertValidOrderPlanStatus(normalizedStatus, "one_time");
         orderPlan.status = normalizedStatus;
+        shouldReleaseInventory = normalizedStatus === "cancelled";
       }
     } else if (body?.markShipped) {
+      if (!canFulfillOrderInventory(orderPlan)) {
+        return NextResponse.json(
+          { error: "Commit or resolve this order's inventory before fulfillment." },
+          { status: 409 }
+        );
+      }
       if (!isRecurringDeliveryActionAllowed(orderPlan, ["new", "active"])) {
         return NextResponse.json(
           { error: "Only active recurring orders can be marked as shipped." },
@@ -163,6 +188,12 @@ export async function PATCH(req, { params }) {
       };
       orderPlan.status = "shipped";
     } else if (body?.markDelivered) {
+      if (!canFulfillOrderInventory(orderPlan)) {
+        return NextResponse.json(
+          { error: "Commit or resolve this order's inventory before fulfillment." },
+          { status: 409 }
+        );
+      }
       if (!isRecurringDeliveryActionAllowed(orderPlan, ["new", "active", "shipped"])) {
         return NextResponse.json(
           { error: "Only active or shipped recurring orders can be marked as delivered." },
@@ -190,9 +221,21 @@ export async function PATCH(req, { params }) {
       const nextStatus = String(body?.status || "").trim();
       assertValidOrderPlanStatus(nextStatus, "recurring");
       orderPlan.status = nextStatus;
+      shouldReleaseInventory = nextStatus === "cancelled";
     }
 
-    await orderPlan.save();
+    if (shouldReleaseInventory) {
+      orderPlan = await releaseOrderInventory({
+        orderPlanId: orderPlan.id,
+        actor: { actorType: "admin", actorEmail: session.user.email || "" },
+        note: "Order cancelled by admin",
+        setOrderStatus: "cancelled",
+        setPaymentStatus:
+          orderPlan.payment?.status === "pending" ? "cancelled" : orderPlan.payment?.status,
+      });
+    } else {
+      await orderPlan.save();
+    }
     await refreshRouteSnapshots();
 
     let emailDelivery = null;
@@ -264,7 +307,7 @@ export async function PATCH(req, { params }) {
 }
 
 export async function DELETE(_req, { params }) {
-  const authError = await ensureAdmin();
+  const { session, error: authError } = await ensureAdmin();
 
   if (authError) {
     return authError;
@@ -272,7 +315,10 @@ export async function DELETE(_req, { params }) {
 
   try {
     await connectMongo();
-    const orderPlan = await OrderPlan.findByIdAndDelete(params.id);
+    const orderPlan = await deleteOrderPlanWithInventory({
+      orderPlanId: params.id,
+      actor: { actorType: "admin", actorEmail: session.user.email || "" },
+    });
 
     if (!orderPlan) {
       return NextResponse.json({ error: "Order not found." }, { status: 404 });

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { formatInventoryBatchCode } from "@/libs/inventory-batch-codes";
 
 const createEmptySkuForm = () => ({
   id: "",
@@ -20,6 +21,13 @@ const createEmptySkuForm = () => ({
   status: "active",
   isSeasonal: false,
   recurringCutoffDate: "",
+  inventoryTrackingEnabled: false,
+  inventoryOnHand: 0,
+  inventoryReserved: 0,
+  inventoryBatchPrefix: "",
+  inventoryAvailable: null,
+  inventoryShortfall: 0,
+  inventoryAvailability: "made_to_order",
 });
 
 const CATEGORY_OPTIONS = [
@@ -50,6 +58,16 @@ const hydrateSkuForm = (skuItem = {}) => ({
   status: skuItem.status || "active",
   isSeasonal: skuItem.isSeasonal === true || skuItem.skuType === "seasonal",
   recurringCutoffDate: String(skuItem.recurringCutoffDate || "").trim(),
+  inventoryTrackingEnabled: skuItem.inventoryTrackingEnabled === true,
+  inventoryOnHand: Number(skuItem.inventoryOnHand || 0),
+  inventoryReserved: Number(skuItem.inventoryReserved || 0),
+  inventoryBatchPrefix: String(skuItem.inventoryBatchPrefix || ""),
+  inventoryAvailable:
+    skuItem.inventoryAvailable === null || skuItem.inventoryAvailable === undefined
+      ? null
+      : Number(skuItem.inventoryAvailable || 0),
+  inventoryShortfall: Number(skuItem.inventoryShortfall || 0),
+  inventoryAvailability: skuItem.inventoryAvailability || "made_to_order",
 });
 
 const getDefaultSeasonalCutoffDate = (now = new Date()) => {
@@ -65,6 +83,18 @@ export default function AdminSkuCatalogManager({ embedded = false }) {
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [isSavingInventory, setIsSavingInventory] = useState(false);
+  const [inventoryOnHandInput, setInventoryOnHandInput] = useState(0);
+  const [inventoryNote, setInventoryNote] = useState("");
+  const [inventoryCorrectionNote, setInventoryCorrectionNote] = useState("");
+  const [inventoryMovements, setInventoryMovements] = useState([]);
+  const [inventoryBatches, setInventoryBatches] = useState([]);
+  const [inventoryBatchSummary, setInventoryBatchSummary] = useState({
+    batchedOnHand: 0,
+    legacyUnbatchedOnHand: 0,
+  });
+  const [inventoryBatchCode, setInventoryBatchCode] = useState("");
+  const [inventoryBatchQuantity, setInventoryBatchQuantity] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const editorRef = useRef(null);
@@ -121,10 +151,48 @@ export default function AdminSkuCatalogManager({ embedded = false }) {
     refreshData("");
   }, [refreshData]);
 
+  useEffect(() => {
+    if (!skuForm.id) {
+      setInventoryMovements([]);
+      setInventoryBatches([]);
+      setInventoryBatchSummary({ batchedOnHand: 0, legacyUnbatchedOnHand: 0 });
+      return;
+    }
+
+    let active = true;
+    fetch(`/api/admin/skus/${skuForm.id}/inventory`, { cache: "no-store" })
+      .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Could not load inventory.");
+        if (!active) return;
+        setInventoryMovements(data.movements || []);
+        setInventoryBatches(data.batches || []);
+        setInventoryBatchSummary(
+          data.batchSummary || { batchedOnHand: 0, legacyUnbatchedOnHand: 0 }
+        );
+        setInventoryOnHandInput(Number(data.sku?.inventoryOnHand || 0));
+      })
+      .catch((loadError) => {
+        if (active) setError(loadError.message || "Could not load inventory.");
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [skuForm.id]);
+
   const selectSku = (skuItem) => {
     setError("");
     setMessage("");
     setSkuForm(hydrateSkuForm(skuItem));
+    setInventoryOnHandInput(Number(skuItem.inventoryOnHand || 0));
+    setInventoryMovements([]);
+    setInventoryBatches([]);
+    setInventoryBatchSummary({ batchedOnHand: 0, legacyUnbatchedOnHand: 0 });
+    setInventoryBatchCode("");
+    setInventoryBatchQuantity("");
+    setInventoryNote("");
+    setInventoryCorrectionNote("");
 
   };
 
@@ -132,9 +200,87 @@ export default function AdminSkuCatalogManager({ embedded = false }) {
     setError("");
     setMessage("");
     setSkuForm(createEmptySkuForm());
+    setInventoryOnHandInput(0);
+    setInventoryMovements([]);
+    setInventoryBatches([]);
+    setInventoryBatchSummary({ batchedOnHand: 0, legacyUnbatchedOnHand: 0 });
+    setInventoryBatchCode("");
+    setInventoryBatchQuantity("");
+    setInventoryNote("");
+    setInventoryCorrectionNote("");
     window.requestAnimationFrame(() => {
       editorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
+  };
+
+  const updateInventory = async (action) => {
+    if (!skuForm.id || isSavingInventory) return;
+
+    if (
+      action === "disable" &&
+      !window.confirm(
+        "Switch this SKU back to made-to-order? This is allowed only after every active hold is cleared."
+      )
+    ) {
+      return;
+    }
+
+    setError("");
+    setMessage("");
+    setIsSavingInventory(true);
+
+    try {
+      const response = await fetch(`/api/admin/skus/${skuForm.id}/inventory`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action,
+          onHand: Number(inventoryOnHandInput || 0),
+          batchCode: inventoryBatchCode,
+          quantity: Number(inventoryBatchQuantity || 0),
+          note: action === "set_on_hand" ? inventoryCorrectionNote : inventoryNote,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Could not update inventory.");
+      }
+
+      const nextSku = hydrateSkuForm(data.sku || {});
+      setSkuForm(nextSku);
+      setSkuCatalog((current) =>
+        current.map((item) =>
+          item.id === nextSku.id ? { ...item, ...(data.sku || {}) } : item
+        )
+      );
+      setInventoryOnHandInput(Number(data.sku?.inventoryOnHand || 0));
+      setInventoryMovements(data.movements || []);
+      setInventoryBatches(data.batches || []);
+      setInventoryBatchSummary(
+        data.batchSummary || { batchedOnHand: 0, legacyUnbatchedOnHand: 0 }
+      );
+      setInventoryNote("");
+      if (action === "set_on_hand") {
+        setInventoryCorrectionNote("");
+      }
+      if (action === "add_batch") {
+        setInventoryBatchCode("");
+        setInventoryBatchQuantity("");
+      }
+      setMessage(
+        action === "disable"
+          ? "Inventory tracking disabled."
+          : action === "enable"
+            ? "Inventory tracking enabled."
+            : action === "add_batch"
+              ? "Batch added to inventory."
+              : "On-hand inventory updated."
+      );
+    } catch (inventoryError) {
+      setError(inventoryError.message || "Could not update inventory.");
+    } finally {
+      setIsSavingInventory(false);
+    }
   };
 
   const onSave = async (event) => {
@@ -327,6 +473,19 @@ export default function AdminSkuCatalogManager({ embedded = false }) {
                         Order {Number(skuItem.displayOrder || 0)}
                       </div>
                     )}
+                    {skuItem.inventoryTrackingEnabled === true && (
+                      <div
+                        className={`badge ${
+                          skuItem.inventoryAvailability === "sold_out"
+                            ? "badge-error"
+                            : skuItem.inventoryAvailability === "low_stock"
+                              ? "badge-warning"
+                              : "badge-info"
+                        }`}
+                      >
+                        {Number(skuItem.inventoryAvailable || 0)} available
+                      </div>
+                    )}
                   </div>
                   {(skuItem.isSeasonal === true || skuItem.skuType === "seasonal") &&
                     skuItem.recurringCutoffDate && (
@@ -429,6 +588,268 @@ export default function AdminSkuCatalogManager({ embedded = false }) {
                   </div>
                 </label>
               )}
+
+              <div className="rounded-2xl border border-base-300 bg-base-100 p-4 md:col-span-2">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div className="font-semibold">Inventory</div>
+                    <div className="mt-1 text-xs opacity-70">
+                      Track finite stock for this SKU. Made-to-order products remain unlimited.
+                    </div>
+                  </div>
+                  <label className="label cursor-pointer gap-3 py-0">
+                    <span className="label-text">
+                      {skuForm.inventoryTrackingEnabled ? "Tracked" : "Made to order"}
+                    </span>
+                    <input
+                      type="checkbox"
+                      className="toggle toggle-primary"
+                      checked={skuForm.inventoryTrackingEnabled === true}
+                      disabled={!skuForm.id || isSavingInventory}
+                      onChange={(event) =>
+                        updateInventory(event.target.checked ? "enable" : "disable")
+                      }
+                    />
+                  </label>
+                </div>
+
+                {!skuForm.id && (
+                  <div className="mt-4 rounded-xl bg-base-200 p-3 text-sm opacity-75">
+                    Save the product first, then enable inventory tracking and enter its opening stock.
+                  </div>
+                )}
+
+                {skuForm.id && (
+                  <>
+                    {skuForm.inventoryTrackingEnabled && (
+                      <div className="mt-4 grid gap-3 sm:grid-cols-4">
+                        <div className="rounded-xl bg-base-200 p-3">
+                          <div className="text-xs uppercase tracking-[0.14em] opacity-60">On hand</div>
+                          <div className="mt-1 text-xl font-semibold">{skuForm.inventoryOnHand}</div>
+                        </div>
+                        <div className="rounded-xl bg-base-200 p-3">
+                          <div className="text-xs uppercase tracking-[0.14em] opacity-60">Reserved</div>
+                          <div className="mt-1 text-xl font-semibold">{skuForm.inventoryReserved}</div>
+                        </div>
+                        <div className="rounded-xl bg-base-200 p-3">
+                          <div className="text-xs uppercase tracking-[0.14em] opacity-60">Available</div>
+                          <div className="mt-1 text-xl font-semibold">{skuForm.inventoryAvailable ?? 0}</div>
+                        </div>
+                        <div className={`rounded-xl p-3 ${skuForm.inventoryShortfall > 0 ? "bg-error/15" : "bg-base-200"}`}>
+                          <div className="text-xs uppercase tracking-[0.14em] opacity-60">Shortfall</div>
+                          <div className="mt-1 text-xl font-semibold">{skuForm.inventoryShortfall}</div>
+                        </div>
+                      </div>
+                    )}
+
+                    {skuForm.inventoryTrackingEnabled &&
+                      inventoryBatchSummary.legacyUnbatchedOnHand > 0 && (
+                        <div className="mt-3 rounded-xl border border-warning/40 bg-warning/10 p-3 text-sm">
+                          {inventoryBatchSummary.legacyUnbatchedOnHand} existing unit
+                          {inventoryBatchSummary.legacyUnbatchedOnHand === 1 ? " is" : "s are"}{" "}
+                          legacy unbatched stock. It will be consumed before the recorded batches.
+                        </div>
+                      )}
+
+                    {skuForm.inventoryTrackingEnabled ? (
+                      <>
+                        <div className="mt-4 rounded-xl border border-base-300 bg-base-200/60 p-4">
+                          <div className="font-medium">Add inventory batch</div>
+                          <div className="mt-1 text-xs opacity-70">
+                            Batch numbers are stored without separators and displayed as SSSS-YY-MM-NN.
+                            {skuForm.inventoryBatchPrefix
+                              ? ` This SKU uses the ${skuForm.inventoryBatchPrefix} prefix.`
+                              : " The first batch sets this SKU’s four-character prefix."}
+                          </div>
+                          <div className="mt-3 grid gap-3 md:grid-cols-[210px_120px_minmax(0,1fr)_auto] md:items-end">
+                            <label className="form-control">
+                              <div className="label py-1">
+                                <span className="label-text">Batch number</span>
+                              </div>
+                              <input
+                                type="text"
+                                inputMode="text"
+                                maxLength={13}
+                                className="input input-bordered font-mono uppercase"
+                                value={inventoryBatchCode}
+                                placeholder="KCSK-26-09-01"
+                                disabled={isSavingInventory}
+                                onChange={(event) =>
+                                  setInventoryBatchCode(
+                                    formatInventoryBatchCode(event.target.value)
+                                  )
+                                }
+                              />
+                            </label>
+                            <label className="form-control">
+                              <div className="label py-1">
+                                <span className="label-text">Quantity</span>
+                              </div>
+                              <input
+                                type="number"
+                                min="1"
+                                step="1"
+                                className="input input-bordered"
+                                value={inventoryBatchQuantity}
+                                placeholder="0"
+                                disabled={isSavingInventory}
+                                onChange={(event) => setInventoryBatchQuantity(event.target.value)}
+                              />
+                            </label>
+                            <label className="form-control">
+                              <div className="label py-1">
+                                <span className="label-text">Batch note (optional)</span>
+                              </div>
+                              <input
+                                className="input input-bordered"
+                                value={inventoryNote}
+                                placeholder="Production run, sheet reference..."
+                                disabled={isSavingInventory}
+                                onChange={(event) => setInventoryNote(event.target.value)}
+                              />
+                            </label>
+                            <button
+                              type="button"
+                              className="btn btn-primary"
+                              disabled={
+                                isSavingInventory ||
+                                !inventoryBatchCode ||
+                                Number(inventoryBatchQuantity || 0) < 1
+                              }
+                              onClick={() => updateInventory("add_batch")}
+                            >
+                              {isSavingInventory ? "Saving..." : "Add batch"}
+                            </button>
+                          </div>
+                        </div>
+
+                        <details className="mt-4 rounded-xl border border-base-300 p-3">
+                          <summary className="cursor-pointer text-sm font-medium">
+                            Correct physical stock downwards
+                          </summary>
+                          <p className="mt-2 text-xs opacity-70">
+                            Use this only for damage or stocktake corrections. New stock must be added as a batch.
+                          </p>
+                          <div className="mt-3 grid gap-3 md:grid-cols-[180px_minmax(0,1fr)_auto] md:items-end">
+                            <label className="form-control">
+                              <div className="label py-1">
+                                <span className="label-text">Physical on-hand</span>
+                              </div>
+                              <input
+                                type="number"
+                                min="0"
+                                max={skuForm.inventoryOnHand}
+                                step="1"
+                                className="input input-bordered"
+                                value={inventoryOnHandInput}
+                                disabled={isSavingInventory}
+                                onChange={(event) =>
+                                  setInventoryOnHandInput(
+                                    Math.max(0, Number(event.target.value || 0))
+                                  )
+                                }
+                              />
+                            </label>
+                            <label className="form-control">
+                              <div className="label py-1">
+                                <span className="label-text">Correction note</span>
+                              </div>
+                              <input
+                                className="input input-bordered"
+                                value={inventoryCorrectionNote}
+                                placeholder="Damaged bottle, stocktake correction..."
+                                disabled={isSavingInventory}
+                                onChange={(event) => setInventoryCorrectionNote(event.target.value)}
+                              />
+                            </label>
+                            <button
+                              type="button"
+                              className="btn btn-outline"
+                              disabled={isSavingInventory}
+                              onClick={() => updateInventory("set_on_hand")}
+                            >
+                              {isSavingInventory ? "Saving..." : "Apply correction"}
+                            </button>
+                          </div>
+                        </details>
+                      </>
+                    ) : (
+                      <div className="mt-4 rounded-xl bg-base-200 p-3 text-sm opacity-75">
+                        Enable inventory tracking, then add the opening stock as its first batch.
+                      </div>
+                    )}
+
+                    {inventoryBatches.length > 0 && (
+                      <details open className="mt-4 rounded-xl border border-base-300 p-3">
+                        <summary className="cursor-pointer text-sm font-medium">
+                          Inventory batches ({inventoryBatches.length})
+                        </summary>
+                        <div className="mt-3 max-h-72 overflow-auto">
+                          <table className="table table-xs">
+                            <thead>
+                              <tr>
+                                <th>Batch</th>
+                                <th>Received</th>
+                                <th>Remaining</th>
+                                <th>Added</th>
+                                <th>Note</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {inventoryBatches.map((batch) => (
+                                <tr key={batch.id}>
+                                  <td className="font-mono font-medium">
+                                    {batch.displayBatchCode || formatInventoryBatchCode(batch.batchCode)}
+                                  </td>
+                                  <td>{batch.quantityReceived}</td>
+                                  <td>{batch.quantityRemaining}</td>
+                                  <td>{new Date(batch.createdAt).toLocaleString("en-IN")}</td>
+                                  <td>{batch.note || "-"}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </details>
+                    )}
+
+                    {inventoryMovements.length > 0 && (
+                      <details className="mt-4 rounded-xl border border-base-300 p-3">
+                        <summary className="cursor-pointer text-sm font-medium">
+                          Inventory history ({inventoryMovements.length})
+                        </summary>
+                        <div className="mt-3 max-h-72 overflow-auto">
+                          <table className="table table-xs">
+                            <thead>
+                              <tr><th>When</th><th>Change</th><th>Batch</th><th>On hand</th><th>Reserved</th><th>Note</th></tr>
+                            </thead>
+                            <tbody>
+                              {inventoryMovements.map((movement) => (
+                                <tr key={movement.id}>
+                                  <td>{new Date(movement.createdAt).toLocaleString("en-IN")}</td>
+                                  <td>{movement.type.replaceAll("_", " ")}</td>
+                                  <td className="font-mono">
+                                    {(movement.batchAllocations || [])
+                                      .map((item) =>
+                                        item.batchCode
+                                          ? `${formatInventoryBatchCode(item.batchCode)} × ${item.quantity}`
+                                          : `Legacy × ${item.quantity}`
+                                      )
+                                      .join(", ") || "-"}
+                                  </td>
+                                  <td>{movement.onHandAfter}</td>
+                                  <td>{movement.reservedAfter}</td>
+                                  <td>{movement.note || movement.orderNumber || "-"}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </details>
+                    )}
+                  </>
+                )}
+              </div>
 
               <label className="form-control w-full md:col-span-2">
                 <div className="label"><span className="label-text">Product name</span></div>

@@ -4,6 +4,7 @@ import { authOptions } from "@/libs/next-auth";
 import { isAdminEmail } from "@/libs/admin";
 import connectMongo from "@/libs/mongoose";
 import Sku from "@/models/Sku";
+import InventoryBatch from "@/models/InventoryBatch";
 import SubscriptionCombo from "@/models/SubscriptionCombo";
 import { normalizeSkuPublicMetadata } from "@/libs/sku-catalog";
 import {
@@ -131,6 +132,17 @@ export async function DELETE(_req, { params }) {
     if (comboUsingSku) {
       return NextResponse.json(
         { error: "Remove this SKU from all sets before deleting it." },
+        { status: 409 }
+      );
+    }
+
+    const hasInventoryHistory =
+      Number(sku.inventoryOnHand || 0) > 0 ||
+      Number(sku.inventoryReserved || 0) > 0 ||
+      (await InventoryBatch.exists({ sku: sku._id }));
+    if (hasInventoryHistory) {
+      return NextResponse.json(
+        { error: "Archive this SKU instead of deleting it because it has inventory history." },
         { status: 409 }
       );
     }

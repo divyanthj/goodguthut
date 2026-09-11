@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import AdminVoiceAssistant from "@/components/AdminVoiceAssistant";
 
 const MAX_RECORDING_MS = 10 * 60 * 1000;
 
@@ -367,6 +368,10 @@ export default function AdminAssistantConsole({ initialEntries = [], initialHasM
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState(null);
   const [isSearching, setIsSearching] = useState(false);
+  const [isVoiceActive, setIsVoiceActive] = useState(false);
+  const [isTextAssistantOpen, setIsTextAssistantOpen] = useState(false);
+  const [voiceActionEntryId, setVoiceActionEntryId] = useState("");
+  const [voiceActionAnnouncement, setVoiceActionAnnouncement] = useState(null);
 
   const mediaRecorderRef = useRef(null);
   const streamRef = useRef(null);
@@ -397,6 +402,9 @@ export default function AdminAssistantConsole({ initialEntries = [], initialHasM
     () => new Set(entries.filter((entry) => entry.responseData?.actions?.length).map((entry) => entry.parentEntryId)),
     [entries]
   );
+  const voiceActionEntry = voiceActionEntryId
+    ? entries.find((entry) => entry.id === voiceActionEntryId) || null
+    : null;
 
   const latestEntryId = entries[entries.length - 1]?.id || "";
 
@@ -499,6 +507,38 @@ export default function AdminAssistantConsole({ initialEntries = [], initialHasM
     setEntries((current) =>
       sortEntries([...current.filter((entry) => entry.id !== optimisticId), ...nextEntries])
     );
+  };
+
+  const handleVoiceOperationsQuery = async (question) => {
+    const message = String(question || "").trim();
+    if (!message) throw new Error("I could not understand that request. Please say it again.");
+    setError("");
+    setNotice("");
+
+    const payload = await readPayload(
+      await fetch("/api/admin/assistant/entries", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: message }),
+      })
+    );
+    appendResponseEntries(payload);
+
+    const assistantEntry = payload.assistantEntry;
+    if (!assistantEntry) throw new Error("The operations assistant did not return an answer.");
+    if (assistantEntry.processingStatus !== "logged") {
+      throw new Error(assistantEntry.processingError || "The operations answer could not be generated.");
+    }
+
+    const actions = Array.isArray(assistantEntry.responseData?.actions)
+      ? assistantEntry.responseData.actions
+      : [];
+    if (actions.length) setVoiceActionEntryId(assistantEntry.id);
+
+    return {
+      answer: assistantEntry.displayText,
+      actions,
+    };
   };
 
   const saveTypedEntry = async (event) => {
@@ -676,7 +716,7 @@ export default function AdminAssistantConsole({ initialEntries = [], initialHasM
   };
 
   const startRecording = async () => {
-    if (!voiceConfigured || isSaving || isTranscribing) return;
+    if (!voiceConfigured || isVoiceActive || isSaving || isTranscribing) return;
     setError("");
     setNotice("");
     setLiveText("");
@@ -803,10 +843,18 @@ export default function AdminAssistantConsole({ initialEntries = [], initialHasM
         })
       );
       replaceEntry(payload.entry);
-      setNotice(decision === "confirm" ? "Database action completed." : "Action dismissed.");
+      const successMessage = decision === "confirm" ? "Database action completed." : "Action dismissed.";
+      setNotice(successMessage);
+      if (entry.id === voiceActionEntryId) {
+        setVoiceActionAnnouncement({ id: `${Date.now()}-${action.id}`, text: successMessage });
+      }
     } catch (requestError) {
       if (requestError.payload?.entry) replaceEntry(requestError.payload.entry);
-      setError(requestError.message || "Could not complete this action.");
+      const failureMessage = requestError.message || "Could not complete this action.";
+      setError(failureMessage);
+      if (entry.id === voiceActionEntryId) {
+        setVoiceActionAnnouncement({ id: `${Date.now()}-${action.id}`, text: failureMessage });
+      }
     } finally {
       setBusyEntryId("");
     }
@@ -830,21 +878,56 @@ export default function AdminAssistantConsole({ initialEntries = [], initialHasM
   };
 
   return (
-    <div className="mx-auto flex h-full min-h-0 w-full max-w-4xl flex-col gap-2">
+    <div className="mx-auto w-full max-w-4xl space-y-4">
       {!chatConfigured ? (
-        <div className="alert alert-warning mb-4 text-sm">
-          Answers need OPENAI_API_KEY. Messages will still be logged while chat is unconfigured.
+        <div className="alert alert-warning text-sm">
+          Voice and assistant answers need OPENAI_API_KEY. Text messages will still be logged while OpenAI is unconfigured.
         </div>
       ) : null}
-      {!voiceConfigured ? (
-        <div className="alert alert-warning mb-4 text-sm">
-          Voice transcription needs OPENAI_API_KEY. Typed chat remains available.
-        </div>
-      ) : null}
-      {error ? <div className="alert alert-error mb-4 text-sm"><span>{error}</span></div> : null}
-      {notice ? <div className="alert alert-info mb-4 text-sm"><span>{notice}</span></div> : null}
+      {error ? <div className="alert alert-error text-sm"><span>{error}</span></div> : null}
+      {notice ? <div className="alert alert-info text-sm"><span>{notice}</span></div> : null}
 
-      <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-3xl border border-base-300 bg-base-100 shadow-xl">
+      <AdminVoiceAssistant
+        configured={voiceConfigured}
+        microphoneBusy={isRecording || isTranscribing}
+        onActiveChange={setIsVoiceActive}
+        onOperationsQuery={handleVoiceOperationsQuery}
+        actionAnnouncement={voiceActionAnnouncement}
+      >
+        {voiceActionEntry ? (voiceActionEntry.responseData?.actions || []).map((action) => (
+          <AssistantActionCard
+            key={action.id}
+            action={action}
+            busy={busyEntryId === `${voiceActionEntry.id}:${action.id}`}
+            onDecision={(decision) => handleAction(voiceActionEntry, action, decision)}
+          />
+        )) : null}
+      </AdminVoiceAssistant>
+
+      <button
+        type="button"
+        className="flex min-h-20 w-full items-center justify-between gap-4 rounded-3xl border border-base-300 bg-base-100 px-5 py-4 text-left shadow-lg transition hover:border-primary/30 hover:bg-base-100 disabled:cursor-not-allowed disabled:opacity-60"
+        onClick={() => setIsTextAssistantOpen((current) => !current)}
+        disabled={isRecording || isTranscribing}
+        aria-expanded={isTextAssistantOpen}
+      >
+        <span className="flex min-w-0 items-center gap-3">
+          <span className="grid h-11 w-11 flex-none place-items-center rounded-2xl bg-primary/10 text-xl text-primary">✦</span>
+          <span className="min-w-0">
+            <span className="block font-semibold">Text assistant</span>
+            <span className="block truncate text-sm opacity-60">Chat history, typed questions, dictation, and action audit trail</span>
+          </span>
+        </span>
+        <span className="flex flex-none items-center gap-2 text-sm font-medium text-primary">
+          {isTextAssistantOpen ? "Collapse" : "Open"}
+          <svg viewBox="0 0 24 24" className={`h-5 w-5 transition ${isTextAssistantOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+        </span>
+      </button>
+
+      {isTextAssistantOpen ? (
+      <section className="flex h-[min(72dvh,760px)] min-h-[32rem] flex-col overflow-hidden rounded-3xl border border-base-300 bg-base-100 shadow-xl">
         <div className="flex flex-none flex-col gap-3 border-b border-base-300 bg-base-100 px-5 py-4 md:flex-row md:items-center md:justify-between">
           <div className="flex min-w-0 items-center gap-3">
             <div className="grid h-11 w-11 flex-none place-items-center rounded-2xl bg-primary text-xl text-primary-content">✦</div>
@@ -974,7 +1057,7 @@ export default function AdminAssistantConsole({ initialEntries = [], initialHasM
               type="button"
               aria-label={isRecording ? "Stop dictation" : "Start dictation"}
               title={isRecording ? "Stop dictation" : "Dictate into the message box"}
-              disabled={(!voiceConfigured && !isRecording) || isSaving || isTranscribing}
+              disabled={(!voiceConfigured && !isRecording) || isVoiceActive || isSaving || isTranscribing}
               onClick={isRecording ? stopRecording : startRecording}
             >
               {isTranscribing ? (
@@ -1002,6 +1085,7 @@ export default function AdminAssistantConsole({ initialEntries = [], initialHasM
           <p className="mt-2 text-center text-[11px] opacity-50">Dictation stays in the message box until you press Enter. Shift+Enter adds a new line.</p>
         </div>
       </section>
+      ) : null}
     </div>
   );
 }

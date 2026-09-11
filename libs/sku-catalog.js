@@ -1,4 +1,8 @@
 import Sku from "@/models/Sku";
+import {
+  cleanupExpiredInventoryHolds,
+  getSkuInventorySummary,
+} from "@/libs/inventory";
 
 const LEGACY_SEEDED_SKU_CODES = new Set([
   "GGH-BUG-330",
@@ -177,6 +181,7 @@ export const filterSkuCatalog = (skuCatalog = []) =>
 
       return {
         ...serialized,
+        ...getSkuInventorySummary(serialized),
         category: normalizeSkuCategory(serialized?.category),
         categoryLabel: getSkuCategoryLabel(serialized?.category),
         imageUrl: String(serialized?.imageUrl || "").trim(),
@@ -195,6 +200,7 @@ export const filterSkuCatalog = (skuCatalog = []) =>
     });
 
 export const listSkuCatalog = async () => {
+  await cleanupExpiredInventoryHolds();
   await Sku.updateMany(
     { skuType: { $exists: false } },
     { $set: { skuType: "perennial" } }
@@ -242,6 +248,7 @@ export const getSkuMap = (skuCatalog = []) =>
             : "perennial",
         isSeasonal: item.isSeasonal === true || item.skuType === "seasonal",
         recurringCutoffDate: String(item.recurringCutoffDate || "").trim(),
+        ...getSkuInventorySummary(item),
       },
     ])
   );
@@ -275,6 +282,12 @@ export const hydrateAllowedItems = (allowedItems = [], skuMap) =>
         skuType: "perennial",
         isSeasonal: false,
         recurringCutoffDate: "",
+        inventoryTrackingEnabled: false,
+        inventoryOnHand: 0,
+        inventoryReserved: 0,
+        inventoryAvailable: null,
+        inventoryShortfall: 0,
+        inventoryAvailability: "made_to_order",
       };
     });
 

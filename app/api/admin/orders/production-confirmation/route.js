@@ -7,6 +7,7 @@ import {
 } from "@/libs/production-confirmation-notifications";
 import OrderPlan from "@/models/OrderPlan";
 import Preorder from "@/models/Preorder";
+import { hasMadeToOrderDemand } from "@/libs/order-production";
 
 const ensureAdmin = async () => {
   const { session, isAdmin } = await getAdminSessionState();
@@ -47,6 +48,13 @@ export async function POST(req) {
 
     if (!record) {
       return NextResponse.json({ error: "Order not found." }, { status: 404 });
+    }
+
+    if (sourceType === "order_plan" && !hasMadeToOrderDemand(record)) {
+      return NextResponse.json(
+        { error: "This order is fulfilled entirely from inventory and has no production demand." },
+        { status: 409 }
+      );
     }
 
     const order = normalizeProductionConfirmationOrder({ sourceType, record });

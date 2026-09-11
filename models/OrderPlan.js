@@ -284,6 +284,134 @@ const orderPlanShipmentSchema = mongoose.Schema(
   { _id: false }
 );
 
+const orderPlanInventoryBatchCommitSchema = mongoose.Schema(
+  {
+    batch: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "InventoryBatch",
+      default: null,
+    },
+    batchCode: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      default: "",
+    },
+    quantity: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+  },
+  { _id: false }
+);
+
+const orderPlanInventoryItemSchema = mongoose.Schema(
+  {
+    sku: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      required: true,
+    },
+    quantityPerCycle: {
+      type: Number,
+      min: 1,
+      required: true,
+    },
+    reservedQuantity: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+    committedQuantity: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+    committedBatches: {
+      type: [orderPlanInventoryBatchCommitSchema],
+      default: [],
+    },
+  },
+  { _id: false }
+);
+
+const orderPlanInventoryShortfallSchema = mongoose.Schema(
+  {
+    sku: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      required: true,
+    },
+    requiredQuantity: {
+      type: Number,
+      min: 1,
+      required: true,
+    },
+    availableQuantity: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+  },
+  { _id: false }
+);
+
+const orderPlanInventorySchema = mongoose.Schema(
+  {
+    status: {
+      type: String,
+      enum: [
+        "not_tracked",
+        "held",
+        "allocated",
+        "partially_committed",
+        "committed",
+        "released",
+        "expired",
+        "shortfall",
+      ],
+      default: "not_tracked",
+      index: true,
+    },
+    channel: {
+      type: String,
+      enum: ["", "website", "admin"],
+      default: "",
+    },
+    expiresAt: {
+      type: Date,
+      default: null,
+      index: true,
+    },
+    totalCycles: {
+      type: Number,
+      min: 1,
+      default: 1,
+    },
+    committedCycles: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+    items: {
+      type: [orderPlanInventoryItemSchema],
+      default: [],
+    },
+    shortfalls: {
+      type: [orderPlanInventoryShortfallSchema],
+      default: [],
+    },
+    lastTransitionAt: {
+      type: Date,
+      default: null,
+    },
+  },
+  { _id: false }
+);
+
 const orderPlanSchema = mongoose.Schema(
   {
     mode: {
@@ -494,6 +622,10 @@ const orderPlanSchema = mongoose.Schema(
       type: orderPlanNotificationsSchema,
       default: () => ({}),
     },
+    inventory: {
+      type: orderPlanInventorySchema,
+      default: () => ({}),
+    },
   },
   {
     timestamps: true,
@@ -502,6 +634,7 @@ const orderPlanSchema = mongoose.Schema(
 );
 
 orderPlanSchema.plugin(toJSON);
+orderPlanSchema.index({ "inventory.status": 1, "inventory.expiresAt": 1 });
 
 export default mongoose.models.OrderPlan ||
   mongoose.model("OrderPlan", orderPlanSchema);

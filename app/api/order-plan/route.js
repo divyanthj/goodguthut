@@ -31,8 +31,13 @@ import {
 } from "@/libs/subscriptions";
 import { reserveNextOrderNumber } from "@/libs/order-numbers";
 import { RECURRING_SEASONAL_FULL_PERIOD_ERROR } from "@/libs/recurring-seasonal-policy";
-import OrderPlan from "@/models/OrderPlan";
 import { syncCollatoKnowledgeDocument } from "@/libs/collato-knowledge";
+import {
+  WEBSITE_INVENTORY_HOLD_MS,
+  activateRecurringOrderInventory,
+  createOrderPlanWithInventory,
+  releaseOrderInventory,
+} from "@/libs/inventory";
 
 const serializeOrderPlan = (orderPlan) => JSON.parse(JSON.stringify(orderPlan));
 
@@ -160,7 +165,19 @@ export async function POST(req) {
       ? body.manualPaymentAction
       : "mark_paid";
 
-    const orderPlan = await OrderPlan.create({
+    const inventoryTotalCycles =
+      orderPlanRequest.mode === "recurring"
+        ? getSubscriptionDurationConfig(
+            orderPlanRequest.cadence,
+            orderPlanRequest.durationWeeks
+          ).totalCount
+        : 1;
+    const shouldCommitInventoryImmediately =
+      orderPlanRequest.mode === "one_time" &&
+      ((allowManualWithoutPayment && manualPaymentAction !== "collect_later") ||
+        (!allowManualWithoutPayment &&
+          (!isRazorpayConfigured() || Number(orderPlanRequest.total || 0) <= 0)));
+    const orderPayload = {
       orderNumber: await reserveNextOrderNumber({
         sourceType: "order_plan",
         mode: orderPlanRequest.mode,
@@ -196,6 +213,29 @@ export async function POST(req) {
       total: orderPlanRequest.total,
       status: "new",
       source: allowManualWithoutPayment ? "admin" : "landing",
+      adminOrderKind: allowManualWithoutPayment
+        ? manualPaymentAction === "never_collect"
+          ? "sample"
+          : "manual"
+        : "",
+      createdByAdmin: allowManualWithoutPayment
+        ? String(manualAdminSession?.session?.user?.email || "").trim().toLowerCase()
+        : "",
+    };
+    const orderPlan = await createOrderPlanWithInventory({
+      orderPayload,
+      channel: allowManualWithoutPayment ? "admin" : "website",
+      totalCycles: inventoryTotalCycles,
+      expiresAt: allowManualWithoutPayment
+        ? null
+        : new Date(Date.now() + WEBSITE_INVENTORY_HOLD_MS),
+      commitImmediately: shouldCommitInventoryImmediately,
+      actor: allowManualWithoutPayment
+        ? {
+            actorType: "admin",
+            actorEmail: manualAdminSession?.session?.user?.email || "",
+          }
+        : { actorType: "customer" },
     });
 
     let checkoutPayload = null;
@@ -231,6 +271,7 @@ export async function POST(req) {
       await orderPlan.save();
       await refreshRouteSnapshots();
     } else if (isRazorpayConfigured() && Number(orderPlan.total || 0) > 0) {
+      try {
       if (orderPlan.mode === "one_time") {
         const razorpayOrder = await createRazorpayOrder({
           amount: Math.round(Number(orderPlan.total) * 100),
@@ -335,6 +376,17 @@ export async function POST(req) {
           razorpaySubscription,
         });
       }
+      } catch (paymentSetupError) {
+        await releaseOrderInventory({
+          orderPlanId: orderPlan.id,
+          actor: { actorType: "system" },
+          note: "Razorpay setup failed before checkout",
+          setOrderStatus: "failed",
+        }).catch((inventoryError) =>
+          console.error("Failed to release inventory after Razorpay setup error", inventoryError)
+        );
+        throw paymentSetupError;
+      }
     } else {
       orderPlan.payment = {
         provider: "",
@@ -344,6 +396,12 @@ export async function POST(req) {
       };
       orderPlan.status = "active";
       await orderPlan.save();
+      if (orderPlan.mode === "recurring") {
+        await activateRecurringOrderInventory({
+          orderPlanId: orderPlan.id,
+          actor: { actorType: "system" },
+        });
+      }
       await refreshRouteSnapshots();
     }
 
@@ -386,6 +444,9 @@ export async function POST(req) {
     });
   } catch (error) {
     console.error(error);
+    if (error.code === "INSUFFICIENT_INVENTORY") {
+      return jsonError(error.message, 409);
+    }
     if (
       error.message?.startsWith("SKU ") ||
       error.message === "Select a valid order mode." ||

@@ -1,4 +1,5 @@
 import { normalizeOneTimeOrderPlanStatus } from "@/libs/order-plans";
+import { hasMadeToOrderDemand } from "@/libs/order-production";
 
 const TRACKING_STAGES = [
   {
@@ -22,6 +23,10 @@ const TRACKING_STAGES = [
     description: "Your order has been completed.",
   },
 ];
+
+const INVENTORY_TRACKING_STAGES = TRACKING_STAGES.filter(
+  (stage) => stage.key !== "production"
+);
 
 const STATUS_STAGE_INDEX = {
   pending: 0,
@@ -95,20 +100,22 @@ const getOrderStatus = (order = {}, recordType = "") => {
 
 const getStageIndex = ({ order, recordType }) => {
   const status = getOrderStatus(order, recordType);
+  const skipsProduction =
+    recordType === "order_plan" && !hasMadeToOrderDemand(order);
 
   if (TERMINAL_CANCELLED_STATUSES.has(status)) {
     return -1;
   }
 
   if (order.deliveredAt) {
-    return 3;
+    return skipsProduction ? 2 : 3;
   }
 
   if (order.shipment?.shippedAt || order.shipment?.trackingLink) {
-    return Math.max(2, STATUS_STAGE_INDEX[status] ?? 0);
+    return skipsProduction ? 1 : Math.max(2, STATUS_STAGE_INDEX[status] ?? 0);
   }
 
-  return STATUS_STAGE_INDEX[status] ?? 0;
+  return skipsProduction ? 0 : STATUS_STAGE_INDEX[status] ?? 0;
 };
 
 const getStageDate = ({ order, stageKey }) => {
@@ -150,8 +157,12 @@ export const buildCustomerTimeline = ({ order, recordType }) => {
   }
 
   const activeIndex = getStageIndex({ order, recordType });
+  const stages =
+    recordType === "order_plan" && !hasMadeToOrderDemand(order)
+      ? INVENTORY_TRACKING_STAGES
+      : TRACKING_STAGES;
 
-  return TRACKING_STAGES.map((stage, index) => ({
+  return stages.map((stage, index) => ({
     ...stage,
     state:
       index < activeIndex

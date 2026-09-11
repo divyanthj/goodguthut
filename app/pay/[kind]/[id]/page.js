@@ -11,6 +11,7 @@ import { recalculateSubscriptionRouteSnapshots } from "@/libs/subscription-route
 import OrderPlan from "@/models/OrderPlan";
 import Preorder from "@/models/Preorder";
 import PaymentRedirectClient from "./PaymentRedirectClient";
+import { commitOneTimeOrderInventory } from "@/libs/inventory";
 
 export const dynamic = "force-dynamic";
 
@@ -169,6 +170,11 @@ const reconcilePaidPaymentLink = async ({ kind, record }) => {
       ? record.status
       : "active";
   await record.save();
+  await commitOneTimeOrderInventory({
+    orderPlanId: record.id,
+    actor: { actorType: "system" },
+    note: "Paid Razorpay payment link reconciled on redirect",
+  });
 
   try {
     await recalculateSubscriptionRouteSnapshots();

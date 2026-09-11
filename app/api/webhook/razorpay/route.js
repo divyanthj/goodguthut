@@ -19,6 +19,12 @@ import {
   verifyRazorpayWebhookSignature,
 } from "@/libs/razorpay";
 import { buildSeasonalCutoffMapFromCatalog, getValidRecurringDeliveryCount } from "@/libs/recurring-seasonal-policy";
+import {
+  activateRecurringOrderInventory,
+  commitOneTimeOrderInventory,
+  releaseOrderInventory,
+  syncRecurringOrderInventory,
+} from "@/libs/inventory";
 
 const getRazorpayOrderIdFromEvent = (event) => {
   return event?.payload?.payment?.entity?.order_id || event?.payload?.order?.entity?.id || "";
@@ -42,6 +48,44 @@ const getPaymentNotesFromEvent = (event) => {
 };
 
 const TERMINAL_BILLING_STATUSES = new Set(["cancelled", "completed", "expired"]);
+
+const syncOrderPlanInventoryForSubscriptionEvent = async (orderPlan, eventName) => {
+  if (!orderPlan?.id) return;
+
+  const billingStatus = String(orderPlan.payment?.status || "").toLowerCase();
+  if (
+    orderPlan.status === "cancelled" ||
+    ["cancelled", "expired"].includes(billingStatus) ||
+    ["subscription.cancelled", "subscription.expired"].includes(eventName)
+  ) {
+    await releaseOrderInventory({
+      orderPlanId: orderPlan.id,
+      actor: { actorType: "webhook" },
+      note: `Razorpay ${eventName.replace("subscription.", "subscription ")}`,
+    });
+    return;
+  }
+
+  if (
+    [
+      "subscription.authenticated",
+      "subscription.activated",
+      "subscription.charged",
+      "subscription.resumed",
+      "subscription.completed",
+    ].includes(eventName)
+  ) {
+    await activateRecurringOrderInventory({
+      orderPlanId: orderPlan.id,
+      actor: { actorType: "webhook" },
+    });
+    await syncRecurringOrderInventory({
+      orderPlanId: orderPlan.id,
+      paidCycles: orderPlan.payment?.paidCount || 0,
+      actor: { actorType: "webhook" },
+    });
+  }
+};
 
 const refreshRouteSnapshots = async () => {
   try {
@@ -437,6 +481,7 @@ export async function POST(req) {
         }
 
         await orderPlan.save();
+        await syncOrderPlanInventoryForSubscriptionEvent(orderPlan, event.event);
         await refreshRouteSnapshots();
       }
 
@@ -580,6 +625,11 @@ export async function POST(req) {
         orderPlan.payment.paymentLinkId = razorpayPaymentLinkId;
         orderPlan.payment.shortUrl = "";
         await orderPlan.save();
+        await commitOneTimeOrderInventory({
+          orderPlanId: orderPlan.id,
+          actor: { actorType: "webhook" },
+          note: "Razorpay payment link paid",
+        });
         await refreshRouteSnapshots();
 
         if (shouldSendConfirmationEmail) {
@@ -706,6 +756,11 @@ export async function POST(req) {
             eventName: event.event,
           });
           await orderPlan.save();
+          await commitOneTimeOrderInventory({
+            orderPlanId: orderPlan.id,
+            actor: { actorType: "webhook" },
+            note: `Razorpay ${event.event}`,
+          });
           await refreshRouteSnapshots();
 
           if (shouldSendConfirmationEmail) {
@@ -752,6 +807,11 @@ export async function POST(req) {
               eventName: "payment.captured",
             });
             await orderPlan.save();
+            await commitOneTimeOrderInventory({
+              orderPlanId: orderPlan.id,
+              actor: { actorType: "webhook" },
+              note: "Captured payment reconciled after failure event",
+            });
             await refreshRouteSnapshots();
             break;
           }
@@ -767,6 +827,12 @@ export async function POST(req) {
             orderPlan.status = "failed";
           }
           await orderPlan.save();
+          await releaseOrderInventory({
+            orderPlanId: orderPlan.id,
+            actor: { actorType: "webhook" },
+            note: "Razorpay payment failed",
+            setOrderStatus: "failed",
+          });
           await refreshRouteSnapshots();
           break;
         }

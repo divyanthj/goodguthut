@@ -23,6 +23,11 @@ import {
 import OrderPlan from "@/models/OrderPlan";
 import Preorder from "@/models/Preorder";
 import Sku from "@/models/Sku";
+import {
+  canFulfillOrderInventory,
+  createOrderPlanWithInventory,
+  releaseOrderInventory,
+} from "@/libs/inventory";
 
 const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const exact = (value) => new RegExp(`^${escapeRegExp(String(value || "").trim())}$`, "i");
@@ -115,11 +120,17 @@ const getNextRecurringDeliveryDate = (orderPlan) => {
   }).find((dateKey) => dateKey > currentDeliveryDate) || "";
 };
 
-const updateOrderPlanStatus = async (proposal) => {
+const updateOrderPlanStatus = async (proposal, context = {}) => {
   const orderPlan = await OrderPlan.findOne({ orderNumber: exact(proposal.target) });
   if (!orderPlan) throw new AssistantActionError(`Order ${proposal.target} was not found.`, "not_found");
   const previousStatus = assertExpectedStatus(orderPlan, proposal);
   const nextStatus = proposal.requestedStatus;
+
+  if (["shipped", "delivered"].includes(nextStatus) && !canFulfillOrderInventory(orderPlan)) {
+    throw new AssistantActionError(
+      "Commit or resolve this order's inventory before fulfillment."
+    );
+  }
 
   if (orderPlan.mode === "one_time") {
     if (!["confirmed", "shipped", "delivered", "cancelled"].includes(nextStatus)) {
@@ -180,8 +191,20 @@ const updateOrderPlanStatus = async (proposal) => {
     };
   }
   if (nextStatus !== "delivered") {
-    orderPlan.status = nextStatus;
-    await orderPlan.save();
+    if (nextStatus === "cancelled") {
+      await releaseOrderInventory({
+        orderPlanId: orderPlan.id,
+        actor: { actorType: "admin", actorEmail: context.adminEmail || "" },
+        note: "Order cancelled through admin assistant",
+        setOrderStatus: "cancelled",
+        setPaymentStatus:
+          orderPlan.payment?.status === "pending" ? "cancelled" : orderPlan.payment?.status,
+      });
+      orderPlan.status = "cancelled";
+    } else {
+      orderPlan.status = nextStatus;
+      await orderPlan.save();
+    }
   }
   await recalculateSubscriptionRouteSnapshots().catch((error) =>
     console.error("Assistant subscription route refresh failed", error)
@@ -282,7 +305,8 @@ const createManualOrder = async (proposal, context = {}) => {
     throw new AssistantActionError("Choose whether payment is paid, collect later, or not required.");
   }
 
-  const orderPlan = await OrderPlan.create({
+  const orderPlan = await createOrderPlanWithInventory({
+    orderPayload: {
     orderNumber: await reserveNextOrderNumber({ sourceType: "order_plan", mode: "one_time" }),
     mode: "one_time",
     paymentType: "one_time",
@@ -318,6 +342,12 @@ const createManualOrder = async (proposal, context = {}) => {
       : paymentHandling === "collect_later"
         ? { provider: "manual", status: "pending", amount: total, currency: "INR" }
         : { provider: "manual", status: "not_required", amount: 0, currency: "INR" },
+    },
+    channel: "admin",
+    totalCycles: 1,
+    expiresAt: null,
+    commitImmediately: paymentHandling !== "collect_later",
+    actor: { actorType: "admin", actorEmail: context.adminEmail || "" },
   });
   await recalculateSubscriptionRouteSnapshots().catch((error) =>
     console.error("Assistant manual order route refresh failed", error)
@@ -343,7 +373,7 @@ const createManualOrder = async (proposal, context = {}) => {
 export async function executeAssistantAction(proposal, context = {}) {
   if (proposal.type === "create_manual_order") return createManualOrder(proposal, context);
   if (proposal.type === "update_preorder_status") return updatePreorderStatus(proposal);
-  if (proposal.type === "update_order_plan_status") return updateOrderPlanStatus(proposal);
+  if (proposal.type === "update_order_plan_status") return updateOrderPlanStatus(proposal, context);
   if (proposal.type === "update_sku_status") return updateSkuStatus(proposal);
   throw new AssistantActionError("This action type is not supported.");
 }

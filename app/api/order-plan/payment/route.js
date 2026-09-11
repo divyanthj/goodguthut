@@ -20,6 +20,11 @@ import { formatSubscriptionDate } from "@/libs/subscription-schedule";
 import { buildSeasonalCutoffMapFromCatalog, getValidRecurringDeliveryCount } from "@/libs/recurring-seasonal-policy";
 import OrderPlan from "@/models/OrderPlan";
 import { syncCollatoKnowledgeDocument } from "@/libs/collato-knowledge";
+import {
+  activateRecurringOrderInventory,
+  commitOneTimeOrderInventory,
+  syncRecurringOrderInventory,
+} from "@/libs/inventory";
 
 const sanitizeOrderPlan = (orderPlan) => JSON.parse(JSON.stringify(orderPlan));
 
@@ -164,9 +169,17 @@ export async function PATCH(req) {
 
     if (orderPlan.mode === "one_time") {
       if (orderPlan.payment?.status === "paid") {
+        const committedOrder = await commitOneTimeOrderInventory({
+          orderPlanId: orderPlan.id,
+          actor: { actorType: "system" },
+          note: "One-time payment callback reconciled",
+        });
         return NextResponse.json({
-          orderPlan: sanitizeOrderPlan(orderPlan),
-          confirmationMessage: "Payment received. Your one-time order is confirmed.",
+          orderPlan: sanitizeOrderPlan(committedOrder || orderPlan),
+          confirmationMessage:
+            committedOrder?.inventory?.status === "shortfall"
+              ? "Payment received. We will confirm item availability with you shortly."
+              : "Payment received. Your one-time order is confirmed.",
         });
       }
 
@@ -220,6 +233,11 @@ export async function PATCH(req) {
         paidAt: new Date(),
       };
       await orderPlan.save();
+      const committedOrder = await commitOneTimeOrderInventory({
+        orderPlanId: orderPlan.id,
+        actor: { actorType: "system" },
+        note: "Verified one-time Razorpay payment",
+      });
       await refreshRouteSnapshots();
 
       if (!orderPlan.notifications?.confirmationEmailSentAt) {
@@ -255,8 +273,11 @@ export async function PATCH(req) {
       });
 
       return NextResponse.json({
-        orderPlan: sanitizeOrderPlan(orderPlan),
-        confirmationMessage: "Payment received. Your one-time order is confirmed.",
+        orderPlan: sanitizeOrderPlan(committedOrder || orderPlan),
+        confirmationMessage:
+          committedOrder?.inventory?.status === "shortfall"
+            ? "Payment received. We will confirm item availability with you shortly."
+            : "Payment received. Your one-time order is confirmed.",
       });
     }
 
@@ -328,6 +349,15 @@ export async function PATCH(req) {
       paymentId,
     });
     await orderPlan.save();
+    await activateRecurringOrderInventory({
+      orderPlanId: orderPlan.id,
+      actor: { actorType: "system" },
+    });
+    const inventoryOrderPlan = await syncRecurringOrderInventory({
+      orderPlanId: orderPlan.id,
+      paidCycles: orderPlan.payment?.paidCount || 0,
+      actor: { actorType: "system" },
+    });
     await refreshRouteSnapshots();
 
     if (!orderPlan.notifications?.confirmationEmailSentAt) {
@@ -363,9 +393,11 @@ export async function PATCH(req) {
     });
 
     return NextResponse.json({
-      orderPlan: sanitizeOrderPlan(orderPlan),
+      orderPlan: sanitizeOrderPlan(inventoryOrderPlan || orderPlan),
       confirmationMessage:
-        orderPlan.payment?.status === "active"
+        inventoryOrderPlan?.inventory?.status === "shortfall"
+          ? "Payment setup was received. We will confirm item availability with you shortly."
+          : orderPlan.payment?.status === "active"
           ? `Recurring payment is active and your plan is confirmed. Your first delivery is on ${formatSubscriptionDate(orderPlan.firstDeliveryDate || orderPlan.startDate)}.`
           : orderPlan.payment?.status === "authenticated"
             ? `Auto-pay is confirmed and your first delivery is set for ${formatSubscriptionDate(orderPlan.firstDeliveryDate || orderPlan.startDate)}.`

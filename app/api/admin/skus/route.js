@@ -6,6 +6,7 @@ import connectMongo from "@/libs/mongoose";
 import Sku from "@/models/Sku";
 import { listSkuCatalog, normalizeSkuPublicMetadata } from "@/libs/sku-catalog";
 import { syncCollatoKnowledgeDocument } from "@/libs/collato-knowledge";
+import { cleanupExpiredInventoryHolds } from "@/libs/inventory";
 
 const normalizeRecurringCutoffDate = (value = "") => {
   const normalized = String(value || "").trim();
@@ -55,6 +56,7 @@ export async function GET() {
   }
 
   await connectMongo();
+  await cleanupExpiredInventoryHolds();
   const skuCatalog = await listSkuCatalog();
 
   return NextResponse.json({ skuCatalog });

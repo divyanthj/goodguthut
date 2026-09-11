@@ -29,12 +29,11 @@ export default function SiteChrome({ children }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const showAdminLink = Boolean(session?.user?.isAdmin);
   const showLogout = status === "authenticated";
-  const hidePublicChrome = config.landingPageUnderConstruction && pathname === "/";
   const closeMenu = () => setIsMenuOpen(false);
 
   return (
     <div className="flex min-h-screen flex-col bg-base-200">
-      <header className={`site-chrome-header sticky top-0 z-50 border-b border-[#ddcfb6] bg-[#fffdf8]/95 backdrop-blur ${hidePublicChrome ? "hidden" : ""}`}>
+      <header className="site-chrome-header sticky top-0 z-50 border-b border-[#ddcfb6] bg-[#fffdf8]/95 backdrop-blur">
         <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-6 px-5 py-3 md:px-8">
           <div className="min-w-0 shrink-0">
             <Link
@@ -154,7 +153,7 @@ export default function SiteChrome({ children }) {
 
       <div className="flex-1">{children}</div>
 
-      <footer className={`site-chrome-footer border-t border-[#ddcfb6] bg-[#f7f1e6] text-base-content ${hidePublicChrome ? "hidden" : ""}`}>
+      <footer className="site-chrome-footer border-t border-[#ddcfb6] bg-[#f7f1e6] text-base-content">
         <div className="mx-auto grid max-w-6xl gap-12 px-6 py-14 text-center md:grid-cols-[1.3fr_1fr_1fr_1fr] md:px-8 md:text-left">
           <div className="mx-auto max-w-xs md:mx-0">
             <Link href="/" className="flex items-center justify-center gap-3 md:justify-start" aria-label={`${config.appName} homepage`}>

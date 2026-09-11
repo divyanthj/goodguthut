@@ -78,6 +78,12 @@ export const hydrateSubscriptionCombo = (combo, skuMap = new Map()) => {
       status: sku?.status || "archived",
       skuType: sku?.skuType || "perennial",
       recurringCutoffDate: String(sku?.recurringCutoffDate || ""),
+      inventoryTrackingEnabled: sku?.inventoryTrackingEnabled === true,
+      inventoryAvailable:
+        sku?.inventoryAvailable === null || sku?.inventoryAvailable === undefined
+          ? null
+          : Number(sku.inventoryAvailable || 0),
+      inventoryAvailability: sku?.inventoryAvailability || "made_to_order",
     };
   });
 

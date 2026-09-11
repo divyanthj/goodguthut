@@ -95,6 +95,31 @@ const skuSchema = mongoose.Schema(
       trim: true,
       default: "",
     },
+    inventoryTrackingEnabled: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    inventoryOnHand: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+    inventoryReserved: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+    inventoryBatchPrefix: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      default: "",
+      validate: {
+        validator: (value) => !value || /^[A-Z0-9]{4}$/.test(value),
+        message: "Inventory batch prefix must contain four letters or digits.",
+      },
+    },
   },
   {
     timestamps: true,

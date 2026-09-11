@@ -1,4 +1,9 @@
 import { isRecurringOrderPlanConfirmed } from "@/libs/order-plans";
+import {
+  getMadeToOrderItems,
+  getMadeToOrderQuantity,
+  hasMadeToOrderDemand,
+} from "@/libs/order-production";
 
 const BOTTLE_SIZE_ML = 220;
 const MIN_WASTAGE_BUFFER_LITRES = 0.25;
@@ -178,7 +183,7 @@ const isDateKey = (value = "") => /^\d{4}-\d{2}-\d{2}$/.test(String(value || "")
 const isProductionRelevantOrderPlan = (plan = {}) => {
   const status = String(plan.status || "").trim();
 
-  if (!status) {
+  if (!status || !hasMadeToOrderDemand(plan)) {
     return false;
   }
 
@@ -412,8 +417,9 @@ export const computeDemandForDeliveryDate = ({
       return;
     }
 
-    totalBottles += Number(plan.totalQuantity || 0);
-    (plan.items || []).forEach((item) => {
+    const productionItems = getMadeToOrderItems(plan);
+    totalBottles += getMadeToOrderQuantity(plan);
+    productionItems.forEach((item) => {
       addDemandItem(demandMap, item, Number(item.quantity || 0));
     });
   });
@@ -532,8 +538,8 @@ export const computeWeeklyDemandFromAllOrders = ({
       }
 
       activeRecurringOrderPlans += 1;
-      recurringFromOrderPlanBottles += Number(plan.totalQuantity || 0) * weeklyFactor;
-      (plan.items || []).forEach((item) => {
+      recurringFromOrderPlanBottles += getMadeToOrderQuantity(plan) * weeklyFactor;
+      getMadeToOrderItems(plan).forEach((item) => {
         addDemandItem(demandMap, item, Number(item.quantity || 0) * weeklyFactor);
       });
       return;
@@ -551,8 +557,8 @@ export const computeWeeklyDemandFromAllOrders = ({
     }
 
     oneTimeOrderPlansInWeek += 1;
-    oneTimeOrderPlanBottles += Number(plan.totalQuantity || 0);
-    (plan.items || []).forEach((item) => {
+    oneTimeOrderPlanBottles += getMadeToOrderQuantity(plan);
+    getMadeToOrderItems(plan).forEach((item) => {
       addDemandItem(demandMap, item, Number(item.quantity || 0));
     });
   });

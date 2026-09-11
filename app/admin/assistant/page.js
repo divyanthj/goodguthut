@@ -52,9 +52,9 @@ export default async function AdminAssistantPage() {
   const voiceConfigured = Boolean(process.env.OPENAI_API_KEY);
 
   return (
-    <main className="h-[100dvh] overflow-hidden bg-base-200 px-4 py-4 md:px-6 md:py-5">
-      <div className="mx-auto flex h-full max-w-6xl flex-col gap-4">
-        <div className="flex flex-none flex-wrap items-center justify-between gap-3">
+    <main className="min-h-[100dvh] bg-base-200 px-4 py-4 md:px-6 md:py-5">
+      <div className="mx-auto flex max-w-6xl flex-col gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-3xl font-bold">Assistant</h1>
             <p className="mt-1 max-w-3xl text-sm opacity-75">
@@ -64,7 +64,7 @@ export default async function AdminAssistantPage() {
           <AdminNav active="assistant" />
         </div>
 
-        <div className="min-h-0 flex-1">
+        <div>
           <AdminAssistantConsole
             initialEntries={initialEntries}
             initialHasMore={hasMore}

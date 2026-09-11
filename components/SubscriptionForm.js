@@ -469,6 +469,12 @@ export default function SubscriptionForm({
           unitPrice: Number(item.unitPrice || 0),
           skuType: item.skuType || "perennial",
           recurringCutoffDate: String(item.recurringCutoffDate || "").trim(),
+          inventoryTrackingEnabled: item.inventoryTrackingEnabled === true,
+          inventoryAvailable:
+            item.inventoryAvailable === null || item.inventoryAvailable === undefined
+              ? null
+              : Number(item.inventoryAvailable || 0),
+          inventoryAvailability: item.inventoryAvailability || "made_to_order",
         })),
     [catalogItems]
   );
@@ -572,6 +578,42 @@ export default function SubscriptionForm({
   const durationIsValid = isOneTimeMode
     ? true
     : durationOptions.includes(Number(durationWeeks || 0));
+  const inventoryCycleCount = useMemo(() => {
+    if (!isRecurringMode) return 1;
+    try {
+      return getSubscriptionDurationConfig(cadence, durationWeeks).totalCount;
+    } catch (_error) {
+      return 1;
+    }
+  }, [cadence, durationWeeks, isRecurringMode]);
+  const lineupBySku = useMemo(
+    () => new Map(lineup.map((item) => [item.sku, item])),
+    [lineup]
+  );
+  const getSkuMaxSelectable = (sku) => {
+    const item = lineupBySku.get(sku);
+    if (!item?.inventoryTrackingEnabled) return MAX_QTY;
+    return Math.max(
+      0,
+      Math.min(
+        MAX_QTY,
+        Math.floor(Number(item.inventoryAvailable || 0) / Math.max(1, inventoryCycleCount))
+      )
+    );
+  };
+  const getComboMaxSelectable = (combo = {}) => {
+    const trackedCapacities = (combo.items || [])
+      .filter((item) => item.inventoryTrackingEnabled === true)
+      .map((item) =>
+        Math.floor(
+          Number(item.inventoryAvailable || 0) /
+            (Math.max(1, Number(item.quantity || 0)) * Math.max(1, inventoryCycleCount))
+        )
+      );
+    return trackedCapacities.length
+      ? Math.max(0, Math.min(MAX_QTY, ...trackedCapacities))
+      : MAX_QTY;
+  };
   const recurringEligibility = useMemo(
     () =>
       buildRecurringEligibility({
@@ -748,6 +790,16 @@ export default function SubscriptionForm({
       );
     } else if (totalQuantity > MAX_TOTAL_QTY) {
       addError("quantity", `Please bring this down to ${MAX_TOTAL_QTY} bottles or fewer.`);
+    }
+
+    const unavailableItem = selectedItems.find(
+      (item) => Number(item.quantity || 0) > getSkuMaxSelectable(item.sku)
+    );
+    if (unavailableItem) {
+      addError(
+        "quantity",
+        `${unavailableItem.productName || unavailableItem.sku} does not have enough available stock for this order${isRecurringMode ? " and its full delivery plan" : ""}.`
+      );
     }
 
     if (isRecurringMode && !recurringEligibility.isEligible) {
@@ -1087,7 +1139,7 @@ export default function SubscriptionForm({
       return;
     }
 
-    const boundedQty = Math.max(0, Math.min(MAX_QTY, nextQty));
+    const boundedQty = Math.max(0, Math.min(getSkuMaxSelectable(sku), nextQty));
     setCart((prev) => ({ ...prev, [sku]: boundedQty }));
     clearFieldErrors("selection", "quantity");
   };
@@ -1097,7 +1149,11 @@ export default function SubscriptionForm({
       return;
     }
 
-    const normalizedQty = Math.max(0, Math.min(MAX_QTY, Number(nextQty || 0)));
+    const combo = comboOptions.find((item) => item.id === comboId);
+    const normalizedQty = Math.max(
+      0,
+      Math.min(getComboMaxSelectable(combo), Number(nextQty || 0))
+    );
 
     setComboCart((current) => {
       if (normalizedQty <= 0) {
@@ -1555,9 +1611,22 @@ export default function SubscriptionForm({
                 );
               });
               const canUseComboInCurrentMode = !(isRecurringMode && seasonalIneligibility);
+              const comboInventoryMaximum = getComboMaxSelectable(combo);
+              const hasInventoryForNextCombo = (combo.items || []).every((item) => {
+                if (item.inventoryTrackingEnabled !== true) return true;
+                const selectedQuantity = Number(
+                  selectedItems.find((selected) => selected.sku === item.sku)?.quantity || 0
+                );
+                return (
+                  selectedQuantity + Number(item.quantity || 0) <=
+                  getSkuMaxSelectable(item.sku)
+                );
+              });
               const canIncrementCombo =
                 !billingLocked &&
                 canUseComboInCurrentMode &&
+                comboQty < comboInventoryMaximum &&
+                hasInventoryForNextCombo &&
                 totalQuantity + Number(combo.totalQuantity || 0) <= MAX_TOTAL_QTY;
 
               return (
@@ -1641,6 +1710,14 @@ export default function SubscriptionForm({
                         : `This set includes seasonal items that must be delivered before ${seasonalIneligibility.recurringCutoffDate}.`}
                     </div>
                   )}
+                  {canUseComboInCurrentMode && comboInventoryMaximum === 0 && (
+                    <div className="mt-2 text-xs font-medium text-error">Sold out</div>
+                  )}
+                  {canUseComboInCurrentMode &&
+                    comboInventoryMaximum > 0 &&
+                    comboInventoryMaximum <= 3 && (
+                      <div className="mt-2 text-xs font-medium text-[#8a5a20]">Low stock</div>
+                    )}
                 </article>
               );
             })}
@@ -1679,6 +1756,7 @@ export default function SubscriptionForm({
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {lineup.map((drink) => {
               const qty = Number(cart[drink.sku] || 0);
+              const inventoryMaximum = getSkuMaxSelectable(drink.sku);
 
               return (
                 <article
@@ -1696,6 +1774,23 @@ export default function SubscriptionForm({
                         {drink.packLabel && (
                           <span className="rounded-full bg-[#eef4ee] px-3 py-1 text-xs font-semibold text-[#2f5d49]">
                             {drink.packLabel}
+                          </span>
+                        )}
+                        {drink.inventoryTrackingEnabled && (
+                          <span
+                            className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                              inventoryMaximum === 0
+                                ? "bg-error/15 text-error"
+                                : inventoryMaximum <= 3
+                                  ? "bg-warning/20 text-[#7a5a2e]"
+                                  : "bg-success/15 text-success"
+                            }`}
+                          >
+                            {inventoryMaximum === 0
+                              ? "Sold out"
+                              : inventoryMaximum <= 3
+                                ? "Low stock"
+                                : "Available"}
                           </span>
                         )}
                       </div>
@@ -1722,7 +1817,7 @@ export default function SubscriptionForm({
                         <button
                           type="button"
                           className="btn btn-primary btn-sm"
-                          disabled={billingLocked}
+                          disabled={billingLocked || inventoryMaximum === 0}
                           onClick={() => updateQty(drink.sku, 1)}
                         >
                           Add
@@ -1743,7 +1838,7 @@ export default function SubscriptionForm({
                           <button
                             type="button"
                             className="btn btn-sm join-item"
-                            disabled={billingLocked || qty >= MAX_QTY}
+                            disabled={billingLocked || qty >= inventoryMaximum}
                             onClick={() => updateQty(drink.sku, qty + 1)}
                           >
                             +
