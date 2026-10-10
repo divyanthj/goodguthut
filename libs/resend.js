@@ -10,7 +10,7 @@ const getFromEmail = () => {
   return "Good Gut Hut <noreply@resend.goodguthut.com>";
 };
 
-export const sendResendEmail = async ({ to, subject, html, text, replyTo }) => {
+export const sendResendEmail = async ({ to, subject, html, text, replyTo, idempotencyKey }) => {
   if (!process.env.RESEND_API_KEY) {
     throw new Error("RESEND_API_KEY is missing from environment variables");
   }
@@ -20,6 +20,7 @@ export const sendResendEmail = async ({ to, subject, html, text, replyTo }) => {
     headers: {
       Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
       "Content-Type": "application/json",
+      ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
     },
     body: JSON.stringify({
       from: getFromEmail(),

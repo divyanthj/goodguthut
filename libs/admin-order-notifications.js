@@ -68,13 +68,13 @@ const buildOrderPlanAdminEmail = (orderPlan) => {
     : "Single delivery";
   const orderNumber = orderPlan?.orderNumber || String(orderPlan?.id || orderPlan?._id || "").trim();
   const subject = isRecurring
-    ? `Admin: payment confirmed for recurring order ${orderNumber}`
+    ? `Admin: payment confirmed for subscription ${orderNumber}`
     : `Admin: payment confirmed for order ${orderNumber}`;
   const text = [
     "A customer order has been paid and confirmed.",
     "",
     `Order number: ${orderNumber}`,
-    `Type: ${isRecurring ? "Recurring order" : "One-time order"}`,
+    `Type: ${isRecurring ? "Subscription" : "One-time order"}`,
     `Customer: ${orderPlan?.name || "-"}`,
     `Email: ${orderPlan?.email || "-"}`,
     `Phone: ${orderPlan?.phone || "-"}`,

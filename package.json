@@ -8,7 +8,8 @@
     "postbuild": "next-sitemap",
     "start": "next start",
     "lint": "next lint",
-    "knowledge:backfill": "node scripts/backfill-collato-knowledge.cjs"
+    "knowledge:backfill": "node scripts/backfill-collato-knowledge.cjs",
+    "test:subscriptions": "node --test tests/prepaid-subscriptions.test.mjs"
   },
   "dependencies": {
     "@auth/mongodb-adapter": "^1.0.0",

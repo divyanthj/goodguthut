@@ -68,6 +68,7 @@ export const hydrateSubscriptionCombo = (combo, skuMap = new Map()) => {
       sku: item.sku,
       quantity: Number(item.quantity || 0),
       productName: sku?.name || item.sku,
+      imageUrl: String(sku?.imageUrl || "").trim(),
       note: sku?.notes || "",
       categoryLabel: sku?.categoryLabel || "",
       shortDescription: sku?.shortDescription || "",

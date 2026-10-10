@@ -27,7 +27,7 @@ const isPendingPaymentOrSetup = (order = {}) => {
   const paymentStatus = String(order.payment?.status || "").trim();
   const paymentProvider = String(order.payment?.provider || "").trim();
 
-  if (order.mode === "recurring") {
+  if (order.mode === "recurring" && order.paymentType !== "one_time") {
     return paymentStatus === "created";
   }
 
@@ -45,7 +45,7 @@ const ensureRazorpayPaymentLink = async ({ sourceType, record }) => {
     return order;
   }
 
-  if (order.mode === "recurring" || order.payment?.provider !== "razorpay") {
+  if ((order.mode === "recurring" && order.paymentType !== "one_time") || order.payment?.provider !== "razorpay") {
     return order;
   }
 

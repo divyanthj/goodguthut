@@ -21,7 +21,7 @@ import {
 import { buildSeasonalCutoffMapFromCatalog, getValidRecurringDeliveryCount } from "@/libs/recurring-seasonal-policy";
 import {
   activateRecurringOrderInventory,
-  commitOneTimeOrderInventory,
+  commitPaidOrderInventory,
   releaseOrderInventory,
   syncRecurringOrderInventory,
 } from "@/libs/inventory";
@@ -625,7 +625,7 @@ export async function POST(req) {
         orderPlan.payment.paymentLinkId = razorpayPaymentLinkId;
         orderPlan.payment.shortUrl = "";
         await orderPlan.save();
-        await commitOneTimeOrderInventory({
+        await commitPaidOrderInventory({
           orderPlanId: orderPlan.id,
           actor: { actorType: "webhook" },
           note: "Razorpay payment link paid",
@@ -756,7 +756,7 @@ export async function POST(req) {
             eventName: event.event,
           });
           await orderPlan.save();
-          await commitOneTimeOrderInventory({
+          await commitPaidOrderInventory({
             orderPlanId: orderPlan.id,
             actor: { actorType: "webhook" },
             note: `Razorpay ${event.event}`,
@@ -807,7 +807,7 @@ export async function POST(req) {
               eventName: "payment.captured",
             });
             await orderPlan.save();
-            await commitOneTimeOrderInventory({
+            await commitPaidOrderInventory({
               orderPlanId: orderPlan.id,
               actor: { actorType: "webhook" },
               note: "Captured payment reconciled after failure event",

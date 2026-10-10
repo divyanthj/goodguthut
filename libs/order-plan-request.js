@@ -225,12 +225,12 @@ const buildOneTimeRequest = async (body = {}, { allowMissingEmail = false } = {}
 export const buildOrderPlanRequest = async (body = {}, options = {}) => {
   const mode = String(body.mode || "one_time").trim().toLowerCase();
 
-  if (mode === "recurring") {
-    const recurringRequest = await buildSubscriptionRequest(body);
+  if (["recurring", "subscription"].includes(mode)) {
+    const recurringRequest = await buildSubscriptionRequest(body, { prepaid: true });
     return {
       ...recurringRequest,
       mode: "recurring",
-      paymentType: "recurring",
+      paymentType: "one_time",
     };
   }
 

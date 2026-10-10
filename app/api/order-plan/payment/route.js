@@ -22,7 +22,7 @@ import OrderPlan from "@/models/OrderPlan";
 import { syncCollatoKnowledgeDocument } from "@/libs/collato-knowledge";
 import {
   activateRecurringOrderInventory,
-  commitOneTimeOrderInventory,
+  commitPaidOrderInventory,
   syncRecurringOrderInventory,
 } from "@/libs/inventory";
 
@@ -167,9 +167,9 @@ export async function PATCH(req) {
       return NextResponse.json({ error: "Order not found." }, { status: 404 });
     }
 
-    if (orderPlan.mode === "one_time") {
+    if (orderPlan.paymentType === "one_time") {
       if (orderPlan.payment?.status === "paid") {
-        const committedOrder = await commitOneTimeOrderInventory({
+        const committedOrder = await commitPaidOrderInventory({
           orderPlanId: orderPlan.id,
           actor: { actorType: "system" },
           note: "One-time payment callback reconciled",
@@ -179,13 +179,16 @@ export async function PATCH(req) {
           confirmationMessage:
             committedOrder?.inventory?.status === "shortfall"
               ? "Payment received. We will confirm item availability with you shortly."
-              : "Payment received. Your one-time order is confirmed.",
+              : orderPlan.mode === "recurring" ? "Payment received. Your prepaid subscription is confirmed. No automatic renewal or further charges." : "Payment received. Your one-time order is confirmed.",
         });
       }
 
       const { orderId: callbackOrderId, paymentId, signature } = extractRazorpayPaymentResult(body);
       const expectedOrderId =
         callbackOrderId || checkoutSession.razorpayOrderId || orderPlan.payment?.orderId || "";
+      if (!expectedOrderId || expectedOrderId !== orderPlan.payment?.orderId || expectedOrderId !== checkoutSession.razorpayOrderId) {
+        return NextResponse.json({ error: "Payment order does not match this checkout." }, { status: 400 });
+      }
       const hasValidSignature = verifyRazorpayPaymentSignature({
         orderId: expectedOrderId,
         paymentId,
@@ -194,7 +197,7 @@ export async function PATCH(req) {
 
       let verifiedOrderId = expectedOrderId;
 
-      if (!hasValidSignature) {
+      if (!hasValidSignature || orderPlan.mode === "recurring") {
         const paymentCheck = await verifyRazorpayPaymentWithApi({
           orderId: expectedOrderId,
           paymentId,
@@ -203,7 +206,7 @@ export async function PATCH(req) {
           expectedPhone: orderPlan.phone || "",
         });
 
-        if (!paymentCheck.ok) {
+        if (!paymentCheck.ok || (orderPlan.mode === "recurring" && (paymentCheck.payment?.order_id !== expectedOrderId || paymentCheck.payment?.status !== "captured"))) {
           return NextResponse.json(
             {
               error: getRazorpayPaymentVerificationError({
@@ -220,7 +223,7 @@ export async function PATCH(req) {
         verifiedOrderId = paymentCheck.payment?.order_id || verifiedOrderId;
       }
 
-      orderPlan.status = orderPlan.status === "cancelled" ? "cancelled" : "active";
+      orderPlan.status = ["cancelled", "fulfilled", "shipped"].includes(orderPlan.status) ? orderPlan.status : "active";
       orderPlan.payment = {
         ...(orderPlan.payment?.toObject?.() || orderPlan.payment || {}),
         provider: "razorpay",
@@ -233,7 +236,7 @@ export async function PATCH(req) {
         paidAt: new Date(),
       };
       await orderPlan.save();
-      const committedOrder = await commitOneTimeOrderInventory({
+      const committedOrder = await commitPaidOrderInventory({
         orderPlanId: orderPlan.id,
         actor: { actorType: "system" },
         note: "Verified one-time Razorpay payment",

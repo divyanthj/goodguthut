@@ -60,7 +60,7 @@ const getOrderSummaryDeliveryDate = (order = {}) => {
     return order.firstDeliveryDate || order.nextDeliveryDate || null;
   }
 
-  if (order.mode === "recurring") {
+  if (order.mode === "recurring" && order.paymentType !== "one_time") {
     return order.nextDeliveryDate || order.firstDeliveryDate || order.startDate || null;
   }
 
@@ -168,7 +168,7 @@ const getModeLabel = (order = {}) =>
   order.sourceType === "legacy_preorder"
     ? "One-time"
     : order.mode === "recurring"
-      ? "Recurring"
+      ? "Subscription"
       : "One-time";
 
 const getModeBadgeClassName = (order = {}) => {
@@ -252,7 +252,7 @@ const buildPaymentNudgeWhatsAppMessage = (order = {}) => {
   const customerName = String(order.customerName || "").trim() || "there";
   const orderDetails = buildOrderDetailsText(order);
   const paymentRedirectUrl = buildPaymentRedirectUrl(order);
-  const isRecurring = order.mode === "recurring";
+  const isRecurring = order.mode === "recurring" && order.paymentType !== "one_time";
   const actionText = isRecurring
     ? "Your plan is almost in production. Complete your payment setup here to confirm it:"
     : "Your order is almost in production. Complete your payment here to confirm it:";
@@ -1041,13 +1041,19 @@ export default function AdminOrdersList({ initialOrders = [], orderEntryConfig =
                   <div className="text-xs uppercase tracking-[0.16em] opacity-60">Subtotal</div>
                   <div className="mt-1">{formatCurrency(order.currency, order.subtotal)}</div>
                 </div>
+                {Number(order.processingFee || 0) > 0 && (
+                  <div>
+                    <div className="text-xs uppercase tracking-[0.16em] opacity-60">Processing fee (once)</div>
+                    <div className="mt-1">{formatCurrency(order.currency, order.processingFee)}</div>
+                  </div>
+                )}
                 {Number(order.smallCartFee || 0) > 0 && (
                   <div>
                     <div className="text-xs uppercase tracking-[0.16em] opacity-60">Small cart fee</div>
                     <div className="mt-1">{formatCurrency(order.currency, order.smallCartFee)}</div>
                   </div>
                 )}
-                {isLegacy && (
+                {(isLegacy || order.discount?.discountAmount > 0) && (
                   <div>
                     <div className="text-xs uppercase tracking-[0.16em] opacity-60">Discount</div>
                     <div className="mt-1">
@@ -1512,7 +1518,7 @@ export default function AdminOrdersList({ initialOrders = [], orderEntryConfig =
             <div className="mt-1 text-2xl font-semibold">{summary.oneTime}</div>
           </div>
           <div className="rounded-2xl bg-base-100 p-4 shadow-sm">
-            <div className="text-sm opacity-70">Recurring</div>
+            <div className="text-sm opacity-70">Subscriptions</div>
             <div className="mt-1 text-2xl font-semibold">{summary.recurring}</div>
           </div>
         </div>

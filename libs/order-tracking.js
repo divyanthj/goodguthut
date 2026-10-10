@@ -192,7 +192,7 @@ export const serializeTrackedOrder = ({ order, recordType }) => {
 
   return {
     recordType,
-    recordLabel: isPreorder ? "Preorder" : order.mode === "recurring" ? "Recurring order" : "Order",
+    recordLabel: isPreorder ? "Preorder" : order.mode === "recurring" ? "Subscription" : "Order",
     orderNumber: order.orderNumber || "",
     customerName: isPreorder ? order.customerName || "" : order.name || "",
     status: getOrderStatus(order, recordType),

@@ -45,10 +45,10 @@ const productCategories = [
   {
     value: "subscriptions",
     name: "Subscriptions",
-    eyebrow: "Your recurring ferment rhythm",
+    eyebrow: "Your weekly kanji ritual",
     description:
-      "Weekly recurring plans for people who know they want the fridge stocked without thinking about it every time.",
-    notes: ["Weekly cadence", "Free recurring delivery", "Edit link by email"],
+      "Six kanji bottles each week. Choose a trial, two weeks, or four weeks and pay once upfront.",
+    notes: ["Delivery included", "₹50 processing fee once", "No automatic renewal"],
   },
   {
     value: "custom_orders",
@@ -386,7 +386,7 @@ export default async function HomePage() {
               Subscriptions and packs
             </p>
             <h2 className="mt-3 text-4xl font-black leading-tight text-[#213a2f] md:text-5xl">
-              Choose a one-time batch, recurring rhythm, or gift-worthy pack.
+              Choose a one-time batch, prepaid subscription, or gift-worthy pack.
             </h2>
             <p className="mt-5 max-w-3xl text-base leading-8 text-[#51685d]">
               Order once, set up a weekly rhythm, or ask us to build a gift or
@@ -505,7 +505,7 @@ export default async function HomePage() {
               Build your Good Gut Hut order.
             </h2>
             <p className="mt-4 text-base leading-8 text-[#51685d]">
-              Choose a ready set, customize your bottle mix, or switch into a recurring weekly plan.
+              Choose a ready set, customize your bottle mix, or switch into a prepaid weekly subscription.
             </p>
           </div>
           <UnifiedOrderCheckout

@@ -1374,3 +1374,13 @@ export const cleanupExpiredInventoryHolds = async ({ limit = 100 } = {}) => {
 
 export const canFulfillOrderInventory = (orderPlan = {}) =>
   !["held", "shortfall"].includes(orderPlan.inventory?.status || "not_tracked");
+
+// Prepaid subscriptions pay for all delivery cycles in a single transaction.
+export const commitPaidOrderInventory = async ({ orderPlanId, actor = {}, note = "" }) => {
+  const order = await OrderPlan.findById(orderPlanId);
+  if (order?.mode === "recurring" && order.paymentType === "one_time") {
+    if (order.payment?.status !== "paid") return order;
+    return syncRecurringOrderInventory({ orderPlanId, paidCycles: order.durationWeeks, actor });
+  }
+  return commitOneTimeOrderInventory({ orderPlanId, actor, note });
+};

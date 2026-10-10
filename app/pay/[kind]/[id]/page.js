@@ -11,7 +11,7 @@ import { recalculateSubscriptionRouteSnapshots } from "@/libs/subscription-route
 import OrderPlan from "@/models/OrderPlan";
 import Preorder from "@/models/Preorder";
 import PaymentRedirectClient from "./PaymentRedirectClient";
-import { commitOneTimeOrderInventory } from "@/libs/inventory";
+import { commitPaidOrderInventory } from "@/libs/inventory";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +23,7 @@ const isValidKind = (kind = "") => ["order", "preorder"].includes(kind);
 const isPendingPaymentOrSetup = (record = {}) => {
   const paymentStatus = String(record.payment?.status || "").trim();
 
-  if (record.mode === "recurring") {
+  if (record.mode === "recurring" && record.paymentType !== "one_time") {
     return paymentStatus === "created";
   }
 
@@ -170,7 +170,7 @@ const reconcilePaidPaymentLink = async ({ kind, record }) => {
       ? record.status
       : "active";
   await record.save();
-  await commitOneTimeOrderInventory({
+  await commitPaidOrderInventory({
     orderPlanId: record.id,
     actor: { actorType: "system" },
     note: "Paid Razorpay payment link reconciled on redirect",
@@ -222,7 +222,7 @@ const ensurePaymentLink = async ({ kind, record }) => {
     return record.payment.shortUrl;
   }
 
-  if (!isPendingPaymentOrSetup(record) || record.mode === "recurring") {
+  if (!isPendingPaymentOrSetup(record) || (record.mode === "recurring" && record.paymentType !== "one_time")) {
     return "";
   }
 

@@ -253,6 +253,8 @@ const orderPlanAppliedPerkSchema = mongoose.Schema(
 
 const orderPlanNotificationsSchema = mongoose.Schema(
   {
+    renewalEmailSentAt: { type: Date, default: null },
+    renewalEmailClaimedAt: { type: Date, default: null },
     confirmationEmailSentAt: {
       type: Date,
       default: null,
@@ -548,6 +550,8 @@ const orderPlanSchema = mongoose.Schema(
       type: orderPlanDiscountSchema,
       default: () => ({}),
     },
+    processingFee: { type: Number, min: 0, default: 0 },
+    subscriptionEndDate: { type: String, default: "", index: true },
     smallCartFee: {
       type: Number,
       min: 0,

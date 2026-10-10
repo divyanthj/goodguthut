@@ -32,7 +32,7 @@ const toDateTimeLocal = (value) => {
   return local.toISOString().slice(0, 16);
 };
 
-const modeLabel = (mode = "") => (mode === "recurring" ? "Recurring" : "One-time");
+const modeLabel = (mode = "") => (mode === "recurring" ? "Subscription" : "One-time");
 
 const normalizePlanForDisplay = (plan = {}) => {
   return {
@@ -220,7 +220,7 @@ export default function AdminOrderPlansList({ initialOrderPlans = [] }) {
           <div className="mt-1 text-2xl font-semibold">{summary.oneTime}</div>
         </div>
         <div className="rounded-2xl bg-base-100 p-4 shadow-sm">
-          <div className="text-sm opacity-70">Recurring</div>
+          <div className="text-sm opacity-70">Subscriptions</div>
           <div className="mt-1 text-2xl font-semibold">{summary.recurring}</div>
         </div>
       </div>

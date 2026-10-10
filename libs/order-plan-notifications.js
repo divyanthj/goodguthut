@@ -34,6 +34,7 @@ export const sendOrderPlanConfirmationEmail = async ({ orderPlan }) => {
     return { status: "skipped" };
   }
 
+  const isPrepaid = orderPlan.mode === "recurring" && orderPlan.paymentType === "one_time";
   const isRecurring = orderPlan.mode === "recurring";
   const firstDeliveryLabel = formatSubscriptionDate(
     orderPlan.firstDeliveryDate || orderPlan.startDate
@@ -53,10 +54,10 @@ export const sendOrderPlanConfirmationEmail = async ({ orderPlan }) => {
     "",
     "Thank you for ordering from Good Gut Hut.",
     isRecurring
-      ? "Your recurring plan is confirmed."
+      ? "Your subscription is confirmed."
       : "Your one-time order has been confirmed.",
     "",
-    `Mode: ${isRecurring ? "Recurring" : "One-time"}`,
+    `Mode: ${isRecurring ? "Subscription" : "One-time"}`,
     `How often: ${cadenceLabel}`,
     `How long: ${durationLabel}`,
     firstDeliveryLabel ? `First delivery: ${firstDeliveryLabel}` : "",
@@ -66,6 +67,8 @@ export const sendOrderPlanConfirmationEmail = async ({ orderPlan }) => {
     !isRecurring && Number(orderPlan.smallCartFee || 0) > 0
       ? `Small cart fee: ${orderPlan.currency || "INR"} ${Number(orderPlan.smallCartFee || 0).toFixed(2)}`
       : "",
+    isPrepaid ? `Processing fee (once): ${orderPlan.currency || "INR"} ${Number(orderPlan.processingFee || 0).toFixed(2)}` : "",
+    isPrepaid ? "Paid upfront. No automatic renewal or further charges. We will email you near the end to invite you to renew." : "",
     `Total: ${orderPlan.currency || "INR"} ${Number(orderPlan.total || 0).toFixed(2)}`,
   ]
     .filter(Boolean)
@@ -74,21 +77,22 @@ export const sendOrderPlanConfirmationEmail = async ({ orderPlan }) => {
   await sendResendEmail({
     to: orderPlan.email,
     subject: isRecurring
-      ? "Your Good Gut Hut recurring plan is confirmed"
+      ? "Your Good Gut Hut subscription is confirmed"
       : "Your Good Gut Hut order is confirmed",
     text,
     html: emailTemplate({
       eyebrow: "Order Confirmation",
       title: isRecurring
-        ? "Your recurring plan is confirmed"
+        ? "Your subscription is confirmed"
         : "Your one-time order is confirmed",
       subtitle: "Thanks for choosing Good Gut Hut.",
       contentHtml: `
         <p>${orderPlan.name ? `Hello ${escapeHtml(orderPlan.name)},` : "Hello,"}</p>
-        <p>${isRecurring ? "Your recurring plan is active." : "Your one-time order has been confirmed and paid."}</p>
+        <p>${isRecurring ? "Your subscription is active." : "Your one-time order has been confirmed and paid."}</p>
+        ${isPrepaid ? `<p>Paid upfront. No automatic renewal or further charges. We will email you near the end to invite you to renew.</p><p>Processing fee (once): ${escapeHtml(`${orderPlan.currency || "INR"} ${Number(orderPlan.processingFee || 0).toFixed(2)}`)}</p>` : ""}
         <h2 class="section-title">Your order summary</h2>
         <table role="presentation" class="summary-table">
-          <tr><td>Mode</td><td>${isRecurring ? "Recurring" : "One-time"}</td></tr>
+          <tr><td>Mode</td><td>${isRecurring ? "Subscription" : "One-time"}</td></tr>
           <tr><td>How often</td><td>${escapeHtml(cadenceLabel)}</td></tr>
           <tr><td>How long</td><td>${escapeHtml(durationLabel)}</td></tr>
           <tr><td>First delivery</td><td>${escapeHtml(firstDeliveryLabel || "-")}</td></tr>

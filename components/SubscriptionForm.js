@@ -1,6 +1,9 @@
 "use client";
 
+import { assertSubscriptionBox, calculatePrepaidSubscriptionPrice, getKanjiSubscriptionBoxes, PREPAID_SUBSCRIPTION_WEEKS, SUBSCRIPTION_PROCESSING_FEE } from "@/libs/prepaid-subscriptions";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Image from "next/image";
+import { getProductSetImage } from "@/libs/product-set-images";
 import {
   canEditSubscriptionBilling,
   getSubscriptionDurationConfig,
@@ -30,7 +33,6 @@ const buildRecurringEligibility = ({
   cadence = "",
   durationWeeks = 0,
   startDate = "",
-  recurringMinTotalQuantity = 6,
 }) => {
   if (selectedItems.length === 0) {
     return { isEligible: false, reason: "" };
@@ -41,10 +43,10 @@ const buildRecurringEligibility = ({
     0
   );
 
-  if (totalQuantity < recurringMinTotalQuantity || totalQuantity > MAX_TOTAL_QTY) {
+  if (totalQuantity !== 6) {
     return {
       isEligible: false,
-      reason: `Recurring is available once your selection is between ${recurringMinTotalQuantity} and ${MAX_TOTAL_QTY} bottles.`,
+      reason: "Subscriptions include exactly six kanji bottles each week.",
     };
   }
 
@@ -55,7 +57,7 @@ const buildRecurringEligibility = ({
   } catch (_error) {
     return {
       isEligible: false,
-      reason: "Select a valid recurring duration to enable recurring checkout.",
+      reason: "Select a valid subscription duration.",
     };
   }
 
@@ -68,7 +70,7 @@ const buildRecurringEligibility = ({
   if (!plannedDeliveryDates.length) {
     return {
       isEligible: false,
-      reason: "Choose a valid first delivery date to enable recurring checkout.",
+      reason: "Choose a valid first delivery date.",
     };
   }
 
@@ -91,13 +93,13 @@ const buildRecurringEligibility = ({
       return {
         isEligible: false,
         reason:
-          "Recurring is only available when every selected item is available for the full plan duration.",
+          "Subscriptions are only available when every selected item is available for the full plan duration.",
       };
     }
 
     return {
       isEligible: false,
-      reason: `Recurring requires full-plan item availability. One or more seasonal items are only available before ${invalidSeasonalItem.recurringCutoffDate}.`,
+      reason: `Subscriptions require full-plan item availability. One or more seasonal items are only available before ${invalidSeasonalItem.recurringCutoffDate}.`,
     };
   }
 
@@ -285,8 +287,15 @@ export default function SubscriptionForm({
   onOrderSaved,
 }) {
   const [wantsRecurring, setWantsRecurring] = useState(mode === "edit");
+  useEffect(() => {
+    if (mode === "create" && new URLSearchParams(window.location.search).get("subscription") === "1") {
+      const boxes = getKanjiSubscriptionBoxes(catalogItems);
+      if (boxes.length) { setWantsRecurring(true); setSelectionMode("custom"); setCart(buildCartFromCatalog(catalogItems, boxes[0].items)); }
+    }
+  }, [mode, catalogItems]);
   const isRecurringMode = mode === "edit" || wantsRecurring;
   const isOneTimeMode = !isRecurringMode;
+  const isPrepaidMode = mode === "create" && isRecurringMode;
   const [customer, setCustomer] = useState(() => ({
     ...initialCustomer,
     ...(initialValues
@@ -357,7 +366,6 @@ export default function SubscriptionForm({
         initialValues?.billing?.status === "cancelled"
     )
   );
-  const [recurringNotice, setRecurringNotice] = useState("");
   const [fieldErrors, setFieldErrors] = useState({});
   const [discountCodeInput, setDiscountCodeInput] = useState("");
   const [appliedDiscount, setAppliedDiscount] = useState(null);
@@ -554,7 +562,7 @@ export default function SubscriptionForm({
     [selectedItems]
   );
 
-  const subtotal = useMemo(
+  const weeklySubtotal = useMemo(
     () =>
       selectedItems.reduce(
         (sum, item) => sum + Number(item.quantity || 0) * Number(item.unitPrice || 0),
@@ -565,16 +573,21 @@ export default function SubscriptionForm({
 
   const deliveryConfigured = Boolean(pickupAddress && deliveryBands.length > 0);
   const fullAddress = buildFullAddress(customer.addressLine2, customer.address);
-  const discountAmount = isOneTimeMode ? Number(appliedDiscount?.discountAmount || 0) : 0;
+  const subtotal = weeklySubtotal * (isPrepaidMode ? durationWeeks : 1);
+  const subscriptionBoxes = useMemo(() => getKanjiSubscriptionBoxes(catalogItems), [catalogItems]);
+  const subscriptionDiscount = isPrepaidMode && appliedDiscount?.code === "TRAYA" && durationWeeks !== 1
+    ? calculatePrepaidSubscriptionPrice({ weeklySubtotal, durationWeeks, code: "TRAYA" }).discount : null;
+  const discountAmount = isPrepaidMode ? Number(subscriptionDiscount?.discountAmount || 0) : Number(appliedDiscount?.discountAmount || 0);
   const discountedSubtotal = Math.max(0, subtotal - discountAmount);
   const hasDeliveryQuote = Boolean(deliveryQuote && deliveryQuote.isDeliverable !== false);
   const effectiveDeliveryFee = isRecurringMode || !hasDeliveryQuote ? 0 : Number(deliveryQuote.deliveryFee || 0);
   const smallCartFee = isOneTimeMode ? calculateSmallCartFee(totalQuantity) : 0;
   const bottlesToWaiveSmallCartFee = Math.max(0, SMALL_CART_FEE_MAX_QTY + 1 - totalQuantity);
-  const total = discountedSubtotal + effectiveDeliveryFee + smallCartFee;
+  const processingFee = isPrepaidMode ? SUBSCRIPTION_PROCESSING_FEE : 0;
+  const total = discountedSubtotal + effectiveDeliveryFee + smallCartFee + processingFee;
   const needsAddressSelection =
     deliveryConfigured && customer.address.trim() && !selectedPlace && !hasVerifiedAddress;
-  const durationOptions = getSubscriptionDurationOptions(cadence);
+  const durationOptions = mode === "create" ? PREPAID_SUBSCRIPTION_WEEKS : getSubscriptionDurationOptions(cadence).filter((weeks) => weeks !== 1);
   const durationIsValid = isOneTimeMode
     ? true
     : durationOptions.includes(Number(durationWeeks || 0));
@@ -632,10 +645,6 @@ export default function SubscriptionForm({
       startDate,
     ]
   );
-  const canOfferRecurringToggle =
-    mode === "create" &&
-    selectedItems.length > 0 &&
-    recurringEligibility.isEligible;
   const canCreateManualOrderWithoutPayment =
     enableAdminManualOrders && mode === "create" && isOneTimeMode;
   const effectiveStartDate = startDate || fallbackStartDate;
@@ -643,36 +652,8 @@ export default function SubscriptionForm({
     (option) => option.value === effectiveStartDate
   );
   const minimumQuantityForMode = isRecurringMode
-    ? recurringMinTotalQuantity
+    ? 6
     : ONE_TIME_MIN_TOTAL_QTY;
-  const recurringToggleProgress = useMemo(() => {
-    if (mode !== "create" || effectiveSelectionMode !== "custom" || totalQuantity <= 0) {
-      return { message: "", tone: "" };
-    }
-
-    if (totalQuantity < recurringMinTotalQuantity) {
-      const recurringRemaining = recurringMinTotalQuantity - totalQuantity;
-      return {
-        message: `Add ${recurringRemaining} more for recurring.`,
-        tone: "text-[#8a5a20]",
-      };
-    }
-
-    if (recurringEligibility.isEligible) {
-      return {
-        message: "You're eligible to make this recurring.",
-        tone: "text-success",
-      };
-    }
-
-    return { message: "", tone: "" };
-  }, [
-    effectiveSelectionMode,
-    mode,
-    recurringEligibility.isEligible,
-    recurringMinTotalQuantity,
-    totalQuantity,
-  ]);
   const nextDeliveryDate = useMemo(
     () =>
       getNextSubscriptionDeliveryDate({
@@ -805,7 +786,7 @@ export default function SubscriptionForm({
     if (isRecurringMode && !recurringEligibility.isEligible) {
       addError(
         "quantity",
-        recurringEligibility.reason || "This selection is not eligible for recurring."
+        recurringEligibility.reason || "This selection is not eligible for a subscription."
       );
     }
 
@@ -858,9 +839,17 @@ export default function SubscriptionForm({
       }
 
       if (!isOneTimeMode) {
-        setAppliedDiscount(null);
-        setDiscountError("");
-        return true;
+        try {
+          const pricing = calculatePrepaidSubscriptionPrice({ weeklySubtotal, durationWeeks, code: normalizedCode });
+          setAppliedDiscount(pricing.discount);
+          setDiscountCodeInput(pricing.discount.code);
+          setDiscountError("");
+          return true;
+        } catch (error) {
+          setAppliedDiscount(null);
+          setDiscountError(error.message);
+          return false;
+        }
       }
 
       if (selectedItems.length === 0) {
@@ -905,33 +894,11 @@ export default function SubscriptionForm({
         }
       }
     },
-    [customer.phone, discountCodeInput, isOneTimeMode, selectedItems]
+    [customer.phone, discountCodeInput, isOneTimeMode, selectedItems, weeklySubtotal, durationWeeks]
   );
 
-  useEffect(() => {
-    if (mode !== "create") {
-      return;
-    }
-
-    if (wantsRecurring && !canOfferRecurringToggle) {
-      setWantsRecurring(false);
-      setRecurringNotice(recurringEligibility.reason);
-    }
-  }, [
-    canOfferRecurringToggle,
-    mode,
-    recurringEligibility.reason,
-    selectedItems.length,
-    wantsRecurring,
-  ]);
 
   useEffect(() => {
-    if (!isOneTimeMode) {
-      setAppliedDiscount(null);
-      setDiscountError("");
-      return;
-    }
-
     if (!appliedDiscount?.code || selectedItems.length === 0) {
       if (selectedItems.length === 0) {
         setAppliedDiscount(null);
@@ -1236,7 +1203,6 @@ export default function SubscriptionForm({
     setStartDate(fallbackStartDate);
     setShowStartDateOptions(false);
     setWantsRecurring(false);
-    setRecurringNotice("");
     setFieldErrors({});
     setDiscountCodeInput("");
     setAppliedDiscount(null);
@@ -1302,6 +1268,10 @@ export default function SubscriptionForm({
         : "checkout";
     setActiveSubmitAction(nextSubmitAction);
 
+    if (isRecurringMode && mode === "create") {
+      try { assertSubscriptionBox(selectedItems, catalogItems, durationWeeks); }
+      catch (boxError) { setError(boxError.message); return; }
+    }
     const validation = validateCheckoutBeforeSubmit();
 
     if (validation.firstTarget) {
@@ -1315,7 +1285,6 @@ export default function SubscriptionForm({
     const normalizedDiscountCode = normalizeDiscountCode(discountCodeInput);
 
     if (
-      isOneTimeMode &&
       normalizedDiscountCode &&
       normalizedDiscountCode !== appliedDiscount?.code
     ) {
@@ -1357,8 +1326,8 @@ export default function SubscriptionForm({
             selectionMode: submissionSelectionMode,
             comboId: submissionComboId,
             items: selectedItems,
-            mode: isOneTimeMode ? "one_time" : "recurring",
-            discountCode: isOneTimeMode ? normalizedDiscountCode : "",
+            mode: isOneTimeMode ? "one_time" : "subscription",
+            discountCode: normalizedDiscountCode,
             manualWithoutPayment:
               nextSubmitAction === "manual_without_payment" && canCreateManualOrderWithoutPayment,
             manualPaymentAction:
@@ -1430,7 +1399,7 @@ export default function SubscriptionForm({
         isCompletingPaymentRef.current = true;
 
         try {
-          const serializedPaymentResult = isOneTimeMode
+          const serializedPaymentResult = checkoutData.razorpay.order_id
             ? serializeRazorpayPaymentResult(paymentResult)
             : serializeRazorpaySubscriptionResult(paymentResult);
           const verifyResponse = await fetch(
@@ -1533,7 +1502,34 @@ export default function SubscriptionForm({
 
   return (
     <div className="space-y-6">
-      <section
+      {mode === "create" && (
+        <section id="subscription-checkout" className="rounded-[28px] border border-[#d6c6ae] bg-[#fbf7f0] p-6 md:p-8">
+          <h2 className="text-xl font-semibold text-[#2f4a3e]">Kanji subscriptions</h2>
+          <p className="mt-2 text-sm text-[#53675d]">Six bottles each week. Choose Trial (6 bottles), 2 weeks (12 bottles), or 4 weeks (24 bottles). Pay once upfront, with a single ₹50 processing fee and delivery included.</p>
+          <p className="mt-2 text-sm text-[#53675d]">Use TRAYA for 5% off bottles on 2 weeks or 10% on 4 weeks. No automatic renewal or autopay.</p>
+          <div className="mt-4 flex flex-wrap gap-3">
+            <button type="button" aria-pressed={isOneTimeMode} className="btn btn-outline" onClick={() => { setWantsRecurring(false); setAppliedDiscount(null); setDiscountCodeInput(""); }}>One-time order</button>
+            <button type="button" aria-pressed={isRecurringMode} className="btn btn-outline" disabled={!subscriptionBoxes.length} onClick={() => {
+              setWantsRecurring(true); setSelectionMode("custom"); setComboCart({}); setAppliedDiscount(null); setDiscountCodeInput("");
+              setCart(buildCartFromCatalog(catalogItems, subscriptionBoxes[0]?.items || []));
+            }}>Subscription</button>
+          </div>
+          {isRecurringMode && (
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              {subscriptionBoxes.map((box) => (
+                <button key={box.id} type="button" aria-pressed={box.items.length === selectedItems.length && box.items.every((item) => selectedItems.some((selected) => selected.sku === item.sku && selected.quantity === item.quantity))} className="rounded-xl border border-[#d6c6ae] bg-[#fffaf1] p-4 text-left aria-pressed:border-[#2f5d49] aria-pressed:bg-[#eef4ee]" onClick={() => {
+                  setSelectionMode("custom"); setComboCart({}); setCart(buildCartFromCatalog(catalogItems, box.items)); clearFieldErrors("selection", "quantity");
+                }}>
+                  <span className="font-semibold">{box.name}</span>
+                  <span className="mt-1 block text-sm">{box.id === "mixed" ? "Two bottles of each active kanji variant per week" : "Six bottles of this variant per week"}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          {!subscriptionBoxes.length && <p className="mt-3 text-sm">Subscriptions will be available when kanji variants are in the catalog.</p>}
+        </section>
+      )}
+      {(!isRecurringMode || mode === "edit") && <section
         ref={selectionSectionRef}
         className="rounded-[28px] border border-[#d6c6ae] bg-[#fbf7f0]/96 p-6 shadow-xl md:p-8"
       >
@@ -1638,38 +1634,65 @@ export default function SubscriptionForm({
                       : "border-[#d8cdbb] bg-[#fffaf1]"
                   }`}
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <h3 className="text-lg font-semibold text-[#2f4a3e]">{combo.name}</h3>
-                      <p className="mt-2 text-sm leading-7 text-[#53675d]">
-                        {combo.description || "A handpicked selection from Good Gut Hut."}
-                      </p>
-                    </div>
+                  <div className={`relative mb-5 flex aspect-[8/5] items-center justify-center gap-3 overflow-hidden rounded-xl bg-[#f1e8d8] ${getProductSetImage(combo) ? "" : "p-4"}`}>
+                    {getProductSetImage(combo) ? (
+                      <Image
+                        src={getProductSetImage(combo)}
+                        alt={`Six bottles of ${combo.items[0].productName || combo.name}`}
+                        fill
+                        sizes="(min-width: 1280px) 33vw, (min-width: 768px) 50vw, 100vw"
+                        className="object-contain"
+                      />
+                    ) : (combo.items || []).map((item) => (
+                      <Image
+                        key={`${combo.id}-${item.sku}-image`}
+                        src={item.imageUrl || catalogItems.find((product) => product.sku === item.sku)?.imageUrl || "/images/logo.jpg"}
+                        alt={item.productName || item.sku}
+                        width={192}
+                        height={192}
+                        unoptimized
+                        className="h-full min-w-0 max-w-full flex-1 rounded-lg object-contain"
+                        onError={(event) => { if (!event.currentTarget.src.endsWith("/images/logo.jpg")) event.currentTarget.src = "/images/logo.jpg"; }}
+                      />
+                    ))}
                     {combo.isFeatured && (
-                      <div className="badge border-[#c3b190] bg-[#fff1ce] text-[#6a5422]">
-                        Featured
-                      </div>
+                      <span className="badge absolute right-3 top-3 border-[#c3b190] bg-[#fff1ce] text-[#6a5422]">Featured</span>
                     )}
                   </div>
+                  <h3 className="h-14 line-clamp-2 text-lg font-semibold leading-7 text-[#2f4a3e]" title={combo.name}>{combo.name}</h3>
+                  <p className="mt-2 h-[84px] line-clamp-3 text-sm leading-7 text-[#53675d]" title={combo.description || "A handpicked selection from Good Gut Hut."}>
+                    {combo.description || "A handpicked selection from Good Gut Hut."}
+                  </p>
                   <div className="mt-4 flex flex-wrap gap-2 text-xs text-[#5f7068]">
-                    <span className="rounded-full bg-[#f1e8d8] px-3 py-1">
-                      {combo.totalQuantity} bottles
-                    </span>
-                    <span className="rounded-full bg-[#f1e8d8] px-3 py-1">
-                      {currency} {Number(combo.subtotal || 0).toFixed(2)}
-                    </span>
+                    <span className="rounded-full bg-[#f1e8d8] px-3 py-1">{combo.totalQuantity} bottles</span>
+                    <span className="rounded-full bg-[#f1e8d8] px-3 py-1">{currency} {Number(combo.subtotal || 0).toFixed(2)}</span>
                   </div>
-                  <div className="mt-3 text-xs text-[#5f7068]">
-                    {comboQty > 0 ? `${comboQty} set${comboQty === 1 ? "" : "s"} selected` : "Not added yet"}
-                  </div>
-                  <ul className="mt-4 space-y-2 text-sm text-[#456154]">
+                  <ul className="mt-4 flex-1 space-y-2 text-sm text-[#456154]">
                     {(combo.items || []).map((item) => (
-                      <li key={`${combo.id}-${item.sku}`}>
-                        {item.productName} x {item.quantity}
-                      </li>
+                      <li key={`${combo.id}-${item.sku}`}>{item.productName} x {item.quantity}</li>
                     ))}
                   </ul>
-                  <div className="mt-auto flex justify-end pt-4">
+                  <div className="mt-2 min-h-5">
+                  {!canUseComboInCurrentMode && (
+                    <div className="mt-2 text-xs text-[#7a5a2e]">
+                      {!seasonalIneligibility?.recurringCutoffDate
+                        ? "This set includes seasonal items that are not configured for subscription deliveries yet."
+                        : `This set includes seasonal items that must be delivered before ${seasonalIneligibility.recurringCutoffDate}.`}
+                    </div>
+                  )}
+                  {canUseComboInCurrentMode && comboInventoryMaximum === 0 && (
+                    <div className="mt-2 text-xs font-medium text-error">Sold out</div>
+                  )}
+                  {canUseComboInCurrentMode &&
+                    comboInventoryMaximum > 0 &&
+                    comboInventoryMaximum <= 3 && (
+                      <div className="mt-2 text-xs font-medium text-[#8a5a20]">Low stock</div>
+                    )}
+                  </div>
+                  <div className="mt-5 flex items-center justify-between gap-3 border-t border-[#e4d8c6] pt-4">
+                    <span className="text-xs text-[#5f7068]">
+                      {comboQty > 0 ? `${comboQty} set${comboQty === 1 ? "" : "s"} selected` : "Not added yet"}
+                    </span>
                     {comboQty > 0 ? (
                       <div className="inline-flex min-w-[128px] items-center justify-between rounded-lg border border-[#cdbb9e] bg-[#fffaf1] px-2 py-1">
                         <button
@@ -1703,21 +1726,6 @@ export default function SubscriptionForm({
                       </button>
                     )}
                   </div>
-                  {!canUseComboInCurrentMode && (
-                    <div className="mt-2 text-xs text-[#7a5a2e]">
-                      {!seasonalIneligibility?.recurringCutoffDate
-                        ? "This set includes seasonal items that are not configured for recurring deliveries yet."
-                        : `This set includes seasonal items that must be delivered before ${seasonalIneligibility.recurringCutoffDate}.`}
-                    </div>
-                  )}
-                  {canUseComboInCurrentMode && comboInventoryMaximum === 0 && (
-                    <div className="mt-2 text-xs font-medium text-error">Sold out</div>
-                  )}
-                  {canUseComboInCurrentMode &&
-                    comboInventoryMaximum > 0 &&
-                    comboInventoryMaximum <= 3 && (
-                      <div className="mt-2 text-xs font-medium text-[#8a5a20]">Low stock</div>
-                    )}
                 </article>
               );
             })}
@@ -1732,9 +1740,9 @@ export default function SubscriptionForm({
         {effectiveSelectionMode === "combo" && fieldErrors.quantity && (
           <div className={fieldErrorClass}>{fieldErrors.quantity}</div>
         )}
-      </section>
+      </section>}
 
-      {effectiveSelectionMode === "custom" && (
+      {effectiveSelectionMode === "custom" && (!isRecurringMode || mode === "edit") && (
         <section
           ref={customSelectionRef}
           className="rounded-[28px] border border-[#d6c6ae] bg-[#fbf7f0]/96 p-6 shadow-xl md:p-8"
@@ -1857,37 +1865,6 @@ export default function SubscriptionForm({
         </section>
       )}
 
-      {mode === "create" &&
-        (canOfferRecurringToggle || recurringNotice || recurringToggleProgress.message) && (
-          <section className="rounded-2xl border border-[#d8cdbb] bg-[#fffaf1] p-4 text-sm text-[#53675d]">
-            {canOfferRecurringToggle ? (
-              <div className="space-y-2">
-                <label className="inline-flex cursor-pointer items-center gap-3">
-                  <input
-                    type="checkbox"
-                    className="toggle toggle-sm"
-                    checked={wantsRecurring}
-                    onChange={(event) => {
-                      setWantsRecurring(event.target.checked);
-                      setRecurringNotice("");
-                    }}
-                  />
-                  <span>Want this on repeat? Make it recurring</span>
-                </label>
-                <div className="text-xs text-[#6b7d74]">
-                  Recurring is available only when all selected items can be delivered for the full selected duration.
-                </div>
-                {recurringToggleProgress.message && (
-                  <div className={recurringToggleProgress.tone}>
-                    {recurringToggleProgress.message}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div>{recurringNotice || recurringToggleProgress.message}</div>
-            )}
-          </section>
-        )}
 
       <form
         onSubmit={onSubmit}
@@ -1913,7 +1890,7 @@ export default function SubscriptionForm({
                   </button>
                 </div>
                 <div className="mt-2 text-xs text-[#6b7d74]">
-                  Cadence is currently fixed to weekly.
+                  Six bottles delivered each week.
                 </div>
               </div>
             )}
@@ -1942,12 +1919,13 @@ export default function SubscriptionForm({
                         }}
                       >
                         {formatSubscriptionDuration(option)}
+                        {mode === "create" && <span className="mt-1 block text-xs">{option * 6} bottles · {currency} {calculatePrepaidSubscriptionPrice({ weeklySubtotal, durationWeeks: option }).total.toFixed(2)}</span>}
                       </button>
                     );
                   })}
                 </div>
                 <div className="mt-2 text-xs text-[#6b7d74]">
-                  Your recurring payment will automatically end when this plan is complete.
+                  Pay the full amount upfront. We will email you near the end to invite you to renew.
                 </div>
                 <div className="mt-2 text-xs text-[#6b7d74]">
                   Deliveries go out on {formatDeliveryDaysOfWeek(deliveryDaysOfWeek)}.
@@ -1973,7 +1951,7 @@ export default function SubscriptionForm({
                   <div className="mt-1 text-xs text-[#6b7d74]">
                     {isOneTimeMode
                       ? `We currently need at least ${formatMinimumLeadDays(minimumLeadDays)} notice, and deliveries go out on ${formatDeliveryDaysOfWeek(deliveryDaysOfWeek)}.`
-                      : `We currently need at least ${formatMinimumLeadDays(minimumLeadDays)} notice, and deliveries go out on ${formatDeliveryDaysOfWeek(deliveryDaysOfWeek)}. Recurring billing begins on the previous production day.`}
+                      : `We currently need at least ${formatMinimumLeadDays(minimumLeadDays)} notice, and deliveries go out on ${formatDeliveryDaysOfWeek(deliveryDaysOfWeek)}. Payment is upfront for the entire plan.`}
                   </div>
                   {isRecurringMode &&
                     nextDeliveryDate &&
@@ -2190,11 +2168,11 @@ export default function SubscriptionForm({
                     ? selectedComboBreakdown.length > 0
                       ? `You have selected ${selectedComboBreakdown.length} ready-to-go set${selectedComboBreakdown.length === 1 ? "" : "s"}.`
                       : "Choose one or more ready-to-go sets to continue."
-                    : "You are creating a custom order from the current menu."}
+                    : isRecurringMode ? "Your selected box is delivered each week for the purchased period." : "You are creating a custom order from the current menu."}
                 </p>
               </div>
               <div className="badge border-[#d1c4b0] bg-[#f7f1e6] text-[#2f5d49]">
-                {totalQuantity} bottle{totalQuantity === 1 ? "" : "s"} selected
+                {totalQuantity} bottle{totalQuantity === 1 ? "" : "s"}{isRecurringMode ? " per week" : " selected"}
               </div>
             </div>
 
@@ -2272,12 +2250,6 @@ export default function SubscriptionForm({
                   <span className="text-right">{formatSubscriptionDate(effectiveStartDate)}</span>
                 </div>
               )}
-              {isRecurringMode && effectiveStartDate && (
-                <div className="flex justify-between gap-4">
-                  <span>First recurring charge</span>
-                  <span className="text-right">{formatSubscriptionDate(effectiveStartDate)}</span>
-                </div>
-              )}
               {isRecurringMode && nextDeliveryDate && nextDeliveryDate !== effectiveStartDate && (
                 <div className="flex justify-between gap-4">
                   <span>Next delivery after that</span>
@@ -2285,10 +2257,10 @@ export default function SubscriptionForm({
                 </div>
               )}
               <div className="flex justify-between">
-                <span>Subtotal</span>
+                <span>{isRecurringMode ? `Bottles (${6 * durationWeeks} total)` : "Subtotal"}</span>
                 <span>{currency} {subtotal.toFixed(2)}</span>
               </div>
-              {isOneTimeMode && (
+              {(mode === "create" || isOneTimeMode) && (
                 <div className="rounded-xl border border-[#ddcfb6] bg-[#f7f1e6] p-3">
                   <div className="flex flex-col gap-3 md:flex-row md:items-end">
                     <label className="form-control flex-1">
@@ -2306,7 +2278,7 @@ export default function SubscriptionForm({
                           }
                           setDiscountError("");
                         }}
-                        placeholder="SUMMER10"
+                        placeholder="Discount code"
                         disabled={billingLocked}
                       />
                     </label>
@@ -2332,18 +2304,19 @@ export default function SubscriptionForm({
                   {discountError && <div className="mt-2 text-sm text-error">{discountError}</div>}
                 </div>
               )}
-              {isOneTimeMode && discountAmount > 0 && (
+              {discountAmount > 0 && (
                 <div className="flex justify-between text-success">
                   <span>Discount</span>
                   <span>-{currency} {discountAmount.toFixed(2)}</span>
                 </div>
               )}
-              {isOneTimeMode && discountAmount > 0 && (
+              {discountAmount > 0 && (
                 <div className="flex justify-between">
                   <span>Subtotal after discount</span>
                   <span>{currency} {discountedSubtotal.toFixed(2)}</span>
                 </div>
               )}
+              {isPrepaidMode && <div className="flex justify-between"><span>Processing fee (once)</span><span>{currency} {processingFee.toFixed(2)}</span></div>}
               {isOneTimeMode && smallCartFee > 0 && (
                 <div className="flex justify-between">
                   <span>
@@ -2385,7 +2358,7 @@ export default function SubscriptionForm({
               )}
               {isRecurringMode && (
                 <div className="text-xs text-[#5f7068]">
-                  Recurring plans include free delivery.
+                  Subscriptions include delivery.
                 </div>
               )}
               {!isRecurringMode && deliveryQuote?.isFreeDelivery && (
@@ -2416,13 +2389,13 @@ export default function SubscriptionForm({
                 <div className="text-error">Please bring this down to {MAX_TOTAL_QTY} bottles or fewer.</div>
               )}
               <div className="flex justify-between text-base font-semibold">
-                <span>{isOneTimeMode ? "Total due now" : "Total per delivery"}</span>
-                <span>{currency} {total.toFixed(2)}</span>
+                <span>{mode === "edit" ? "Total per delivery" : "Total due now"}</span>
+                <span>{discountAmount > 0 && <del className="mr-2 text-sm font-normal opacity-60">{currency} {(total + discountAmount).toFixed(2)}</del>}{currency} {total.toFixed(2)}</span>
               </div>
               <div className="text-xs text-[#6b7d74]">
                 {isOneTimeMode
                   ? "This is a one-time payment. No UPI AutoPay mandate is required."
-                  : "Your UPI AutoPay setup will be authorized at checkout, and the first charge will happen on your first delivery date."}
+                  : "Pay once for the whole subscription. No automatic renewal or further charges."}
               </div>
             </div>
           </div>
@@ -2463,7 +2436,7 @@ export default function SubscriptionForm({
                 ? "Admin order entry. Choose how this order should be treated for payment."
                 : isOneTimeMode
                 ? "Quick checkout. Complete your order and we will send the confirmation by email."
-                : "Easy plan care. We will email you a secure link so you can update or cancel anytime."}
+                : "Pay upfront for your weekly deliveries. We will email you near the end to invite you to renew."}
             </div>
             <div className="flex flex-wrap gap-3">
               {mode === "edit" && !isCancelled && (
@@ -2544,7 +2517,7 @@ export default function SubscriptionForm({
                       ? "Save updates"
                       : isOneTimeMode
                         ? "Continue to payment"
-                        : "Continue"}
+                        : "Pay upfront"}
                 </button>
               )}
             </div>
@@ -2554,4 +2527,3 @@ export default function SubscriptionForm({
     </div>
   );
 }
-

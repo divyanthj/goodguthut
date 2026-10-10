@@ -1,3 +1,4 @@
+import { getSubscriptionDeliveryPricing, isPrepaidSubscription } from "@/libs/prepaid-subscriptions";
 import config from "@/config";
 import { emailTemplate } from "@/libs/emailTemplate";
 import { getInvoiceSettings } from "@/libs/invoice-settings";
@@ -292,6 +293,7 @@ const buildInvoiceHtml = (invoice) => {
       </table>
       <h2 class="section-title">Summary</h2>
       <table role="presentation" class="summary-table">
+        ${Number(invoice.processingFee || 0) > 0 ? `<tr><td>Processing fee (once)</td><td>${escapeHtml(formatMoney(invoice.currency, invoice.processingFee))}</td></tr>` : ""}
         <tr><td>Subtotal</td><td>${escapeHtml(formatMoney(invoice.currency, invoice.subtotal))}</td></tr>
         ${
           Number(invoice.discountAmount || 0) > 0
@@ -365,6 +367,7 @@ const buildInvoiceText = (invoice) =>
           : `${item.productName} x ${Number(item.quantity || 0)} - ${formatMoney(invoice.currency, item.lineTotal)}`
     ),
     "",
+    Number(invoice.processingFee || 0) > 0 ? `Processing fee (once): ${formatMoney(invoice.currency, invoice.processingFee)}` : "",
     `Subtotal: ${formatMoney(invoice.currency, invoice.subtotal)}`,
     Number(invoice.discountAmount || 0) > 0
       ? `Discount: -${formatMoney(invoice.currency, invoice.discountAmount)}`
@@ -436,6 +439,7 @@ const createInvoiceFromSnapshot = async ({
   items = [],
   subtotal = 0,
   discountAmount = 0,
+  processingFee = 0,
   smallCartFee = 0,
   deliveryFee = 0,
   deliveryFeeBeforePerks = 0,
@@ -541,6 +545,7 @@ const createInvoiceFromSnapshot = async ({
     items: invoiceItems,
     subtotal: Number(subtotal || 0),
     discountAmount: Number(discountAmount || 0),
+    processingFee: Number(processingFee || 0),
     smallCartFee: Number(smallCartFee || 0),
     deliveryFee: Number(deliveryFee || 0),
     deliveryFeeBeforePerks: Number(deliveryFeeBeforePerks || deliveryFee || 0),
@@ -603,11 +608,13 @@ export const createAndSendOrderPlanInvoice = async ({
 }) => {
   const deliveredAt = orderPlan.deliveredAt || new Date();
   const recurringDeliveryKey = toDateKey(deliveryDate || orderPlan.nextDeliveryDate || deliveredAt);
+  const prepaid = isPrepaidSubscription(orderPlan);
+  const cyclePricing = prepaid ? getSubscriptionDeliveryPricing(orderPlan, recurringDeliveryKey) : null;
   const { invoice, created } = await createInvoiceFromSnapshot({
     source: {
       type: "order_plan",
       id: String(orderPlan.id || orderPlan._id),
-      label: orderPlan.mode === "recurring" ? "Recurring order" : "One-time order",
+      label: orderPlan.mode === "recurring" ? "Subscription" : "One-time order",
       deliveryKey: orderPlan.mode === "recurring" ? recurringDeliveryKey : "final",
     },
     customer: {
@@ -618,13 +625,14 @@ export const createAndSendOrderPlanInvoice = async ({
     },
     currency: orderPlan.currency || orderPlan.payment?.currency || "INR",
     items: orderPlan.items || [],
-    subtotal: orderPlan.subtotal,
-    discountAmount: orderPlan.discount?.discountAmount || 0,
+    subtotal: cyclePricing?.subtotal ?? orderPlan.subtotal,
+    processingFee: cyclePricing?.processingFee || 0,
+    discountAmount: cyclePricing?.discountAmount ?? (orderPlan.discount?.discountAmount || 0),
     smallCartFee: orderPlan.smallCartFee || 0,
     deliveryFee: orderPlan.deliveryFee,
     deliveryFeeBeforePerks: orderPlan.deliveryFeeBeforePerks,
     appliedPerks: orderPlan.appliedPerks,
-    total: orderPlan.total || orderPlan.payment?.amount || orderPlan.subtotal,
+    total: cyclePricing?.total ?? (orderPlan.total || orderPlan.payment?.amount || orderPlan.subtotal),
     deliveredAt,
   });
   const emailDelivery = created

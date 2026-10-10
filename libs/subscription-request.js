@@ -1,3 +1,4 @@
+import { assertSubscriptionBox, calculatePrepaidSubscriptionPrice } from "@/libs/prepaid-subscriptions";
 import connectMongo from "@/libs/mongoose";
 import { calculateDeliveryQuote } from "@/libs/delivery";
 import { getPlaceDetails } from "@/libs/places";
@@ -121,7 +122,7 @@ export const getSubscriptionSetupContext = async () => {
   };
 };
 
-export const buildSubscriptionRequest = async (body = {}) => {
+export const buildSubscriptionRequest = async (body = {}, { prepaid = false } = {}) => {
   const name = normalizeName(body.name || "");
   const email = normalizeEmail(body.email || "");
   const phone = normalizePhone(body.phone || "");
@@ -155,7 +156,7 @@ export const buildSubscriptionRequest = async (body = {}) => {
     throw new Error("Enter a valid delivery address.");
   }
 
-  if (!["weekly", "fortnightly", "monthly"].includes(cadence)) {
+  if (prepaid ? cadence !== "weekly" : !["weekly", "fortnightly", "monthly"].includes(cadence)) {
     throw new Error("Select a valid subscription cadence.");
   }
 
@@ -230,10 +231,13 @@ export const buildSubscriptionRequest = async (body = {}) => {
     };
   });
 
-  const subtotal = items.reduce((sum, item) => sum + item.lineTotal, 0);
+  if (prepaid) assertSubscriptionBox(items, skuCatalog, durationWeeks);
+  const weeklySubtotal = items.reduce((sum, item) => sum + item.lineTotal, 0);
+  const pricing = prepaid ? calculatePrepaidSubscriptionPrice({ weeklySubtotal, durationWeeks, code: body.discountCode }) : { subtotal: weeklySubtotal, total: weeklySubtotal };
+  const subtotal = pricing.subtotal;
   const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
 
-  if (totalQuantity < recurringMinTotalQuantity) {
+  if (totalQuantity < (prepaid ? 6 : recurringMinTotalQuantity)) {
     throw new Error(
       `Subscriptions must include at least ${recurringMinTotalQuantity} bottles.`
     );
@@ -341,7 +345,7 @@ export const buildSubscriptionRequest = async (body = {}) => {
     subtotal,
     deliveryFee,
     deliveryDistanceKm,
-    total: subtotal + deliveryFee,
+    ...pricing,
     pickupAddress,
     deliveryBands,
     addressSessionToken: sessionToken,

@@ -34,12 +34,14 @@ export const formatSubscriptionCadence = (value = "") => {
 export const formatSubscriptionDuration = (durationWeeks = 0) => {
   const normalized = Number(durationWeeks || 0);
 
+  if (normalized === 1) return "Trial";
+
   if (normalized === 8) {
     return "2 months";
   }
 
   if (normalized === 4) {
-    return "1 month";
+    return "4 weeks";
   }
 
   return `${normalized} week${normalized === 1 ? "" : "s"}`;
@@ -85,7 +87,7 @@ export const getSubscriptionCadenceConfig = (cadence = "") => {
 export const getSubscriptionDurationOptions = (cadence = "") => {
   switch (cadence) {
     case "weekly":
-      return [2, 3, 4, 6, 8];
+      return [1, 2, 3, 4, 6, 8];
     case "fortnightly":
       return [2, 4, 6, 8];
     case "monthly":

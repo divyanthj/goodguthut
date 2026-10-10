@@ -32,7 +32,7 @@ const isPendingPaymentOrSetup = (order = {}) => {
   const paymentStatus = String(order.payment?.status || "").trim();
   const paymentProvider = String(order.payment?.provider || "").trim();
 
-  if (order.mode === "recurring") {
+  if (order.mode === "recurring" && order.paymentType !== "one_time") {
     return paymentStatus === "created";
   }
 
@@ -78,7 +78,7 @@ export const sendPaymentNudgeEmail = async ({ order }) => {
     return { status: "skipped", reason: "not_pending" };
   }
 
-  const isRecurring = order.mode === "recurring";
+  const isRecurring = order.mode === "recurring" && order.paymentType !== "one_time";
   const paymentRedirectUrl = buildPaymentRedirectUrl(order);
   const itemSummaryText = buildItemSummaryText(order.items);
   const itemSummaryHtml = buildItemSummaryHtml(order.items);

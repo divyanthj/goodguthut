@@ -1,0 +1,29 @@
+Generated with the built-in image generation tool, 2026-10-07.
+Assets: public/images/sets/{beetroot,radish,kokum}-six-bottles-isometric.png
+
+BEETROOT
+Use case: product-mockup
+Asset type: ecommerce product set photograph, landscape 8:5 aspect ratio, 1536x960.
+Primary request: Recompose the single-bottle reference into EXACTLY SIX identical Beetroot Kanji bottles arranged in a compact 3 by 2 grid: THREE bottles in the front row and THREE bottles in the back row.
+Input image 1: product identity reference, preserve glass bottle geometry, gold crown cap, actual label art and liquid color.
+Composition: ISOMETRIC raised three-quarter view from above, looking down about 25 degrees, viewing both front and right side of the arrangement. The 3x2 rectangular grid runs diagonally across the frame. All six gold caps and six necks clearly separately visible; back-row bottles offset in perspective so they are countable. All six bottles upright, equal size, labels oriented consistently toward the front. Compact group centered, full bottles from caps to bases visible, occupying about 80% of canvas with balanced margins. Orthographic-like product photography, no wide-angle distortion. NOT a single straight row.
+Scene: warm ivory tabletop, softly textured cream and pale blush backdrop, soft daylight upper left, gentle realistic shadows right. Photorealistic glass and condensation.
+Constraints: Exactly six bottles, no seventh or hidden bottles. Preserve original Beetroot Kanji label design, GGH branding, product name and 180 ml. No props, packaging, text outside labels, UI, watermark, border. Same composition and lighting across this product series. Wide landscape 8:5 image.
+
+RADISH
+Use case: product-mockup
+Asset type: ecommerce product set photograph, landscape 8:5 aspect ratio, 1536x960.
+Primary request: Recompose the single-bottle reference into EXACTLY SIX identical Radish Kanji bottles arranged in a compact 3 by 2 grid: THREE bottles in the front row and THREE bottles in the back row.
+Input image 1: product identity reference, preserve glass bottle geometry, gold crown cap, actual label art and liquid color.
+Composition: ISOMETRIC raised three-quarter view from above, looking down about 25 degrees, viewing both front and right side of the arrangement. The 3x2 rectangular grid runs diagonally across the frame. All six gold caps and six necks clearly separately visible; back-row bottles offset in perspective so they are countable. All six bottles upright, equal size, labels oriented consistently toward the front. Compact group centered, full bottles from caps to bases visible, occupying about 80% of canvas with balanced margins. Orthographic-like product photography, no wide-angle distortion. NOT a single straight row.
+Scene: warm ivory tabletop, softly textured cream and pale blush backdrop, soft daylight upper left, gentle realistic shadows right. Photorealistic glass and condensation.
+Constraints: Exactly six bottles, no seventh or hidden bottles. Preserve original Radish Kanji label design, GGH branding, product name and 180 ml. No props, packaging, text outside labels, UI, watermark, border. Same composition and lighting across this product series. Wide landscape 8:5 image.
+
+KOKUM
+Use case: product-mockup
+Asset type: ecommerce product set photograph, landscape 8:5 aspect ratio, 1536x960.
+Primary request: Recompose the single-bottle reference into EXACTLY SIX identical Kokum Carrot Kanji bottles arranged in a compact 3 by 2 grid: THREE bottles in the front row and THREE bottles in the back row.
+Input image 1: product identity reference, preserve glass bottle geometry, gold crown cap, actual label art and liquid color.
+Composition: ISOMETRIC raised three-quarter view from above, looking down about 25 degrees, viewing both front and right side of the arrangement. The 3x2 rectangular grid runs diagonally across the frame. All six gold caps and six necks clearly separately visible; back-row bottles offset in perspective so they are countable. All six bottles upright, equal size, labels oriented consistently toward the front. Compact group centered, full bottles from caps to bases visible, occupying about 80% of canvas with balanced margins. Orthographic-like product photography, no wide-angle distortion. NOT a single straight row.
+Scene: warm ivory tabletop, softly textured cream and pale blush backdrop, soft daylight upper left, gentle realistic shadows right. Photorealistic glass and condensation.
+Constraints: Exactly six bottles, no seventh or hidden bottles. Preserve original Kokum Carrot Kanji label design, GGH branding, product name and 180 ml. No props, packaging, text outside labels, UI, watermark, border. Same composition and lighting across this product series. Wide landscape 8:5 image.

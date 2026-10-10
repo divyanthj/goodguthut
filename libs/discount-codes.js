@@ -207,6 +207,7 @@ export const resolveDiscountCode = async ({
   now = new Date(),
 }) => {
   const normalizedCode = normalizeDiscountCode(code);
+  if (normalizedCode === "TRAYA") throw new Error("TRAYA is available only for 2-week and 4-week subscriptions.");
 
   if (!normalizedCode) {
     return {

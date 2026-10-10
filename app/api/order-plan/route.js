@@ -1,3 +1,4 @@
+import { getSubscriptionEndDate } from "@/libs/prepaid-subscriptions";
 import { NextResponse } from "next/server";
 import connectMongo from "@/libs/mongoose";
 import { buildOrderPlanRequest } from "@/libs/order-plan-request";
@@ -6,8 +7,6 @@ import { sendOrderPlanConfirmationEmail } from "@/libs/order-plan-notifications"
 import { recalculateSubscriptionRouteSnapshots } from "@/libs/subscription-route-planner";
 import {
   createRazorpayOrder,
-  createRazorpayPlan,
-  createRazorpaySubscription,
   createSignedCheckoutToken,
   getRazorpayPublicConfig,
   isRazorpayConfigured,
@@ -19,14 +18,6 @@ import {
   readJsonBody,
 } from "@/libs/request-protection";
 import {
-  formatSubscriptionDate,
-  getNextSubscriptionDeliveryDate,
-  getRecurringBillingStartAt,
-  getRecurringBillingStartDate,
-} from "@/libs/subscription-schedule";
-import {
-  buildSubscriptionBillingDescription,
-  buildSubscriptionBillingNotes,
   getSubscriptionDurationConfig,
 } from "@/libs/subscriptions";
 import { reserveNextOrderNumber } from "@/libs/order-numbers";
@@ -49,7 +40,7 @@ const refreshRouteSnapshots = async () => {
   }
 };
 
-const buildOrderPlanCheckoutPayload = ({ orderPlan, mode, razorpayOrder, razorpaySubscription }) => {
+const buildOrderPlanCheckoutPayload = ({ orderPlan, mode, razorpayOrder }) => {
   if (mode === "one_time" && razorpayOrder) {
     const checkoutToken = createSignedCheckoutToken({
       kind: "order_plan_one_time",
@@ -70,7 +61,7 @@ const buildOrderPlanCheckoutPayload = ({ orderPlan, mode, razorpayOrder, razorpa
         amount: razorpayOrder.amount,
         currency: razorpayOrder.currency,
         name: "Good Gut Hut",
-        description: "One-time order payment",
+        description: orderPlan.mode === "recurring" ? "Prepaid kanji subscription" : "One-time order payment",
         prefill: {
           name: orderPlan.name,
           email: orderPlan.email,
@@ -80,35 +71,6 @@ const buildOrderPlanCheckoutPayload = ({ orderPlan, mode, razorpayOrder, razorpa
     };
   }
 
-  if (mode === "recurring" && razorpaySubscription) {
-    const checkoutToken = createSignedCheckoutToken({
-      kind: "order_plan_recurring",
-      orderPlanId: orderPlan.id,
-      razorpaySubscriptionId: razorpaySubscription.id,
-      amount: Math.round(Number(orderPlan.total || 0) * 100),
-      currency: orderPlan.currency || "INR",
-      email: orderPlan.email || "",
-      phone: orderPlan.phone || "",
-    });
-
-    return {
-      checkoutToken,
-      razorpay: {
-        ...getRazorpayPublicConfig(),
-        subscription_id: razorpaySubscription.id,
-        subscriptionId: razorpaySubscription.id,
-        amount: Math.round(Number(orderPlan.total || 0) * 100),
-        currency: orderPlan.currency || "INR",
-        name: "Good Gut Hut",
-        description: `Set up recurring auto-pay for first delivery on ${formatSubscriptionDate(orderPlan.firstDeliveryDate)}`,
-        prefill: {
-          name: orderPlan.name,
-          email: orderPlan.email,
-          contact: orderPlan.phone,
-        },
-      },
-    };
-  }
 
   return null;
 };
@@ -144,6 +106,10 @@ export async function POST(req) {
       if (!manualAdminSession.session?.user || !manualAdminSession.isAdmin) {
         return jsonError("Manual order creation is only available to admins.", 403);
       }
+    }
+
+    if (["recurring", "subscription"].includes(String(body.mode || "").trim().toLowerCase()) && !isRazorpayConfigured()) {
+      return jsonError("Subscription payments are temporarily unavailable. Please try again later.", 503);
     }
 
     const orderPlanRequest = await buildOrderPlanRequest(body, {
@@ -206,6 +172,8 @@ export async function POST(req) {
       subtotal: orderPlanRequest.subtotal,
       discount: orderPlanRequest.discount,
       smallCartFee: orderPlanRequest.smallCartFee,
+      processingFee: orderPlanRequest.processingFee || 0,
+      subscriptionEndDate: orderPlanRequest.mode === "recurring" ? getSubscriptionEndDate(orderPlanRequest) : "",
       deliveryFee: orderPlanRequest.deliveryFee,
       deliveryFeeBeforePerks: orderPlanRequest.deliveryFeeBeforePerks,
       appliedPerks: orderPlanRequest.appliedPerks,
@@ -272,7 +240,7 @@ export async function POST(req) {
       await refreshRouteSnapshots();
     } else if (isRazorpayConfigured() && Number(orderPlan.total || 0) > 0) {
       try {
-      if (orderPlan.mode === "one_time") {
+      if (orderPlan.paymentType === "one_time") {
         const razorpayOrder = await createRazorpayOrder({
           amount: Math.round(Number(orderPlan.total) * 100),
           currency: orderPlan.currency || "INR",
@@ -291,6 +259,7 @@ export async function POST(req) {
           amount: Number(orderPlan.total || 0),
           currency: orderPlan.currency || "INR",
           orderId: razorpayOrder.id || "",
+          totalCount: inventoryTotalCycles,
         };
         await orderPlan.save();
 
@@ -299,82 +268,7 @@ export async function POST(req) {
           mode: "one_time",
           razorpayOrder,
         });
-      } else {
-        const cadenceConfig = getSubscriptionDurationConfig(
-          orderPlan.cadence,
-          orderPlan.durationWeeks
-        );
-        const billingNotes = buildSubscriptionBillingNotes({
-          recordType: "order_plan",
-          recordId: orderPlan.id,
-          cadence: orderPlan.cadence,
-          cadenceConfig,
-          firstDeliveryDate: orderPlan.firstDeliveryDate || orderPlan.startDate,
-          billingStartDate: getRecurringBillingStartDate({
-            deliveryDate: orderPlan.firstDeliveryDate || orderPlan.startDate,
-            deliveryDaysOfWeek: orderPlan.deliveryDaysOfWeek,
-          }),
-          email: orderPlan.email,
-        });
-        const billingStartAt = getRecurringBillingStartAt({
-          deliveryDate: orderPlan.firstDeliveryDate || orderPlan.startDate,
-          deliveryDaysOfWeek: orderPlan.deliveryDaysOfWeek,
-        });
-        const plan = await createRazorpayPlan({
-          period: cadenceConfig.period,
-          interval: cadenceConfig.interval,
-          amount: Math.round(Number(orderPlan.total || 0) * 100),
-          currency: orderPlan.currency || "INR",
-          name: `Good Gut Hut ${cadenceConfig.label} Subscription`,
-          description: buildSubscriptionBillingDescription({
-            cadenceConfig,
-            items: orderPlan.items,
-          }),
-          notes: billingNotes,
-        });
-        const razorpaySubscription = await createRazorpaySubscription({
-          planId: plan.id,
-          totalCount: cadenceConfig.totalCount,
-          startAt: billingStartAt ? Math.floor(billingStartAt.getTime() / 1000) : null,
-          notes: billingNotes,
-        });
 
-        orderPlan.payment = {
-          provider: "razorpay",
-          status: razorpaySubscription.status || "created",
-          planId: plan.id || "",
-          subscriptionId: razorpaySubscription.id || "",
-          shortUrl: razorpaySubscription.short_url || "",
-          amount: orderPlan.total,
-          currency: orderPlan.currency,
-          totalCount: razorpaySubscription.total_count || cadenceConfig.totalCount,
-          paidCount: razorpaySubscription.paid_count || 0,
-          remainingCount: razorpaySubscription.remaining_count || 0,
-          authAttempts: razorpaySubscription.auth_attempts || 0,
-          chargeAt: razorpaySubscription.charge_at
-            ? new Date(Number(razorpaySubscription.charge_at) * 1000)
-            : null,
-          startAt: razorpaySubscription.start_at
-            ? new Date(Number(razorpaySubscription.start_at) * 1000)
-            : null,
-          endAt: razorpaySubscription.end_at
-            ? new Date(Number(razorpaySubscription.end_at) * 1000)
-            : null,
-          mandateEndsAt: null,
-        };
-        orderPlan.nextDeliveryDate = getNextSubscriptionDeliveryDate({
-          startDate: orderPlan.firstDeliveryDate || orderPlan.startDate,
-          cadence: orderPlan.cadence,
-          paidCount: razorpaySubscription.paid_count || 0,
-          totalCount: razorpaySubscription.total_count || cadenceConfig.totalCount,
-        });
-        await orderPlan.save();
-
-        checkoutPayload = buildOrderPlanCheckoutPayload({
-          orderPlan,
-          mode: "recurring",
-          razorpaySubscription,
-        });
       }
       } catch (paymentSetupError) {
         await releaseOrderInventory({
@@ -439,7 +333,7 @@ export async function POST(req) {
                   : "Admin order created and marked paid."
               : "Order created and confirmed."
           : checkoutPayload?.checkoutToken
-            ? "Plan created. Complete Razorpay setup to activate recurring auto-pay."
+            ? "Subscription created. Pay the full amount upfront to confirm your weekly deliveries."
             : "Plan created and confirmed.",
     });
   } catch (error) {
@@ -448,6 +342,10 @@ export async function POST(req) {
       return jsonError(error.message, 409);
     }
     if (
+      error.message?.startsWith("Subscriptions require ") ||
+      error.message === "Select Trial, 2 weeks, or 4 weeks." ||
+      error.message?.startsWith("TRAYA is available only") ||
+      error.message === "Only TRAYA is available for subscriptions." ||
       error.message?.startsWith("SKU ") ||
       error.message === "Select a valid order mode." ||
       error.message === "Enter a valid name." ||

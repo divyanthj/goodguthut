@@ -28,7 +28,7 @@ export const getOrderPlanPaymentBadgeLabel = (plan = {}) => {
     }
   }
 
-  if (plan.mode === "recurring") {
+  if (plan.mode === "recurring" && plan.paymentType !== "one_time") {
     if (status === "created") {
       return "mandate setup pending";
     }
@@ -126,6 +126,9 @@ export const normalizeAdminOrderFromOrderPlan = (plan = {}) => {
     payment: plan.payment || {},
     paymentBadgeLabel: getOrderPlanPaymentBadgeLabel(plan),
     mode: plan.mode || "one_time",
+    paymentType: plan.paymentType || "",
+    processingFee: Number(plan.processingFee || 0),
+    subscriptionEndDate: plan.subscriptionEndDate || "",
     cadence: plan.cadence || "",
     durationWeeks: Number(plan.durationWeeks || 0),
     firstDeliveryDate: plan.firstDeliveryDate || plan.startDate || "",
@@ -135,7 +138,7 @@ export const normalizeAdminOrderFromOrderPlan = (plan = {}) => {
     fulfillmentMethod: "delivery",
     pickupAddressSnapshot: "",
     preorderWindowLabel: "",
-    discount: null,
+    discount: plan.discount || null,
     confirmationLabel: "",
     inventory: plan.inventory || { status: "not_tracked", items: [], shortfalls: [] },
   };
