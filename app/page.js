@@ -250,14 +250,14 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section id="products" className="relative z-10 bg-[#fffdf8] px-6 py-16">
+      <section id="products" className="relative z-10 bg-[#fffdf8] px-4 py-10 sm:px-6 sm:py-16">
         <div className="mx-auto max-w-6xl">
           <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
             <div>
               <p className="text-sm font-semibold uppercase tracking-[0.24em] text-[#8b5d39]">
                 Product showcase
               </p>
-              <h2 className="mt-3 text-4xl font-black leading-tight text-[#213a2f] md:text-5xl">
+              <h2 className="mt-3 text-3xl font-black leading-tight text-[#213a2f] sm:text-4xl md:text-5xl">
                 Find the ferment that fits your day.
               </h2>
             </div>
@@ -269,7 +269,7 @@ export default async function HomePage() {
 
           <div className="mt-10 space-y-8">
             {catalogCategoryGroups.map((category) => (
-              <article key={category.name} className="rounded-lg border border-[#ddcfb6] bg-[#f8f4ea] p-5 shadow-sm">
+              <article key={category.name} className="min-w-0 rounded-lg border border-[#ddcfb6] bg-[#f8f4ea] p-3 shadow-sm sm:p-5">
                 {category.value !== "other" && (
                   <div>
                     {category.eyebrow && (
@@ -298,8 +298,8 @@ export default async function HomePage() {
                           }}
                         />
                         <div className="flex flex-1 flex-col p-4">
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div className="min-w-0 flex-1">
                               <h4 className="font-black text-[#213a2f]">{item.name}</h4>
                               {item.packLabel && (
                                 <p className="mt-1 text-xs font-bold uppercase tracking-[0.18em] text-[#9b6042]">
@@ -307,7 +307,7 @@ export default async function HomePage() {
                                 </p>
                               )}
                             </div>
-                            <span className="rounded-full bg-[#f4d8c8] px-3 py-1 text-xs font-bold text-[#7a3f28]">
+                            <span className="shrink-0 rounded-full bg-[#f4d8c8] px-3 py-1 text-xs font-bold text-[#7a3f28]">
                               {currency} {Number(item.unitPrice || 0).toFixed(0)}
                             </span>
                           </div>
@@ -354,13 +354,13 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section id="about" className="relative z-10 bg-[#2f4a3e] px-6 py-16 text-[#fffdf8]">
+      <section id="about" className="relative z-10 bg-[#2f4a3e] px-4 py-10 text-[#fffdf8] sm:px-6 sm:py-16">
         <div className="mx-auto grid max-w-6xl gap-10 md:grid-cols-[0.9fr_1.1fr] md:items-center">
           <div>
             <p className="text-sm font-semibold uppercase tracking-[0.24em] text-[#f0c6a8]">
               What we stand for
             </p>
-            <h2 className="mt-3 text-4xl font-black leading-tight md:text-5xl">
+            <h2 className="mt-3 text-3xl font-black leading-tight sm:text-4xl md:text-5xl">
               Made slowly, shared warmly.
             </h2>
             <p className="mt-5 text-base leading-8 text-[#f5eadb]">
@@ -379,13 +379,13 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section id="subscriptions" className="relative z-10 bg-[#f8f4ea] px-6 py-16">
+      <section id="subscriptions" className="relative z-10 bg-[#f8f4ea] px-4 py-10 sm:px-6 sm:py-16">
         <div className="mx-auto grid max-w-6xl gap-8 md:grid-cols-3">
           <div className="md:col-span-2">
             <p className="text-sm font-semibold uppercase tracking-[0.24em] text-[#8b5d39]">
               Subscriptions and packs
             </p>
-            <h2 className="mt-3 text-4xl font-black leading-tight text-[#213a2f] md:text-5xl">
+            <h2 className="mt-3 text-3xl font-black leading-tight text-[#213a2f] sm:text-4xl md:text-5xl">
               Choose a one-time batch, prepaid subscription, or gift-worthy pack.
             </h2>
             <p className="mt-5 max-w-3xl text-base leading-8 text-[#51685d]">
@@ -405,12 +405,12 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section id="testimonials" className="relative z-10 bg-[#fffdf8] px-6 py-16">
+      <section id="testimonials" className="relative z-10 bg-[#fffdf8] px-4 py-10 sm:px-6 sm:py-16">
         <div className="mx-auto max-w-6xl">
           <p className="text-sm font-semibold uppercase tracking-[0.24em] text-[#8b5d39]">
             Testimonials
           </p>
-          <h2 className="mt-3 text-4xl font-black leading-tight text-[#213a2f] md:text-5xl">
+          <h2 className="mt-3 text-3xl font-black leading-tight text-[#213a2f] sm:text-4xl md:text-5xl">
             Loved by people who like their food alive.
           </h2>
           <div className="mt-10 grid gap-4 md:grid-cols-3">
@@ -428,13 +428,13 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section id="learn" className="relative z-10 bg-[#f7f1e6] px-6 py-16">
+      <section id="learn" className="relative z-10 bg-[#f7f1e6] px-4 py-10 sm:px-6 sm:py-16">
         <div className="mx-auto grid max-w-6xl gap-8 md:grid-cols-[0.85fr_1.15fr] md:items-start">
           <div>
             <p className="text-sm font-semibold uppercase tracking-[0.24em] text-[#8b5d39]">
               Fermentation notes
             </p>
-            <h2 className="mt-3 text-4xl font-black leading-tight text-[#213a2f] md:text-5xl">
+            <h2 className="mt-3 text-3xl font-black leading-tight text-[#213a2f] sm:text-4xl md:text-5xl">
               Know what you are tasting.
             </h2>
             <p className="mt-5 text-base leading-8 text-[#51685d]">
@@ -460,13 +460,13 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section id="contact" className="relative z-10 bg-[#213a2f] px-6 py-16 text-[#fffdf8]">
+      <section id="contact" className="relative z-10 bg-[#213a2f] px-4 py-10 text-[#fffdf8] sm:px-6 sm:py-16">
         <div className="mx-auto grid max-w-6xl gap-8 md:grid-cols-[1fr_1fr] md:items-center">
           <div>
             <p className="text-sm font-semibold uppercase tracking-[0.24em] text-[#f0c6a8]">
               Contact
             </p>
-            <h2 className="mt-3 text-4xl font-black leading-tight md:text-5xl">
+            <h2 className="mt-3 text-3xl font-black leading-tight sm:text-4xl md:text-5xl">
               Questions, custom packs, or order help?
             </h2>
             <p className="mt-5 text-base leading-8 text-[#f5eadb]">
@@ -474,16 +474,16 @@ export default async function HomePage() {
               gifting, subscriptions, or anything you want to understand before ordering.
             </p>
           </div>
-          <div className="rounded-lg border border-[#66806e] bg-[#2f4a3e] p-5">
+          <div className="min-w-0 rounded-lg border border-[#66806e] bg-[#2f4a3e] p-4 sm:p-5">
             <div className="grid gap-3">
-              <a className="btn bg-[#f4d8c8] text-[#5a2d1d] hover:bg-[#ffd9c3]" href={whatsappHref} target="_blank" rel="noreferrer">
+              <a className="btn h-auto min-h-12 whitespace-normal py-3 bg-[#f4d8c8] text-[#5a2d1d] hover:bg-[#ffd9c3]" href={whatsappHref} target="_blank" rel="noreferrer">
                 WhatsApp {SUPPORT_PHONE_DISPLAY}
               </a>
               <a className="btn border-[#fffdf8] bg-transparent text-[#fffdf8] hover:border-[#fffdf8] hover:bg-[#406351]" href="/track-order">
                 Track an order
               </a>
               {config.mailgun.supportEmail && (
-                <a className="btn border-[#fffdf8] bg-transparent text-[#fffdf8] hover:border-[#fffdf8] hover:bg-[#406351]" href={`mailto:${config.mailgun.supportEmail}`}>
+                <a className="btn h-auto min-h-12 break-all whitespace-normal py-3 border-[#fffdf8] bg-transparent text-[#fffdf8] hover:border-[#fffdf8] hover:bg-[#406351]" href={`mailto:${config.mailgun.supportEmail}`}>
                   Email {config.mailgun.supportEmail}
                 </a>
               )}
@@ -495,13 +495,13 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section id="order-flow" className="relative z-10 bg-[#f8f4ea] px-6 py-16">
+      <section id="order-flow" className="relative z-10 bg-[#f8f4ea] px-4 py-10 sm:px-6 sm:py-16">
         <div className="mx-auto max-w-6xl">
           <div className="mb-8 max-w-3xl">
             <p className="text-sm font-semibold uppercase tracking-[0.24em] text-[#8b5d39]">
               Order
             </p>
-            <h2 className="mt-3 text-4xl font-black leading-tight text-[#213a2f] md:text-5xl">
+            <h2 className="mt-3 text-3xl font-black leading-tight text-[#213a2f] sm:text-4xl md:text-5xl">
               Build your Good Gut Hut order.
             </h2>
             <p className="mt-4 text-base leading-8 text-[#51685d]">

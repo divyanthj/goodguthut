@@ -73,10 +73,10 @@ export default function OrderTrackingForm() {
   };
 
   return (
-    <div className="grid gap-8 lg:grid-cols-[0.85fr_1.15fr]">
+    <div className="grid min-w-0 grid-cols-1 gap-5 sm:gap-8 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
       <form
         onSubmit={lookupOrder}
-        className="rounded-lg border border-[#ddcfb6] bg-[#fffdf8] p-5 shadow-sm"
+        className="min-w-0 rounded-lg border border-[#ddcfb6] bg-[#fffdf8] p-4 shadow-sm sm:p-5"
       >
         <div>
           <h2 className="text-2xl font-black text-[#213a2f]">Track an order</h2>
@@ -85,12 +85,12 @@ export default function OrderTrackingForm() {
           </p>
         </div>
 
-        <label className="form-control mt-5">
+        <label className="form-control mt-5 min-w-0">
           <div className="label">
             <span className="label-text text-[#365244]">Order number</span>
           </div>
           <input
-            className="input input-bordered bg-[#fffdf8]"
+            className="input input-bordered min-w-0 w-full bg-[#fffdf8] text-base"
             value={orderNumber}
             onChange={(event) => setOrderNumber(event.target.value)}
             placeholder="GGH-..."
@@ -99,12 +99,12 @@ export default function OrderTrackingForm() {
           />
         </label>
 
-        <label className="form-control mt-4">
+        <label className="form-control mt-4 min-w-0">
           <div className="label">
             <span className="label-text text-[#365244]">Phone or email</span>
           </div>
           <input
-            className="input input-bordered bg-[#fffdf8]"
+            className="input input-bordered min-w-0 w-full bg-[#fffdf8] text-base"
             value={contact}
             onChange={(event) => setContact(event.target.value)}
             placeholder="hello@example.com or +91..."
@@ -118,7 +118,7 @@ export default function OrderTrackingForm() {
         </button>
 
         {error && (
-          <div className="alert alert-error mt-5">
+          <div className="alert alert-error mt-5 min-w-0 break-words">
             <span>{error}</span>
           </div>
         )}
@@ -128,15 +128,15 @@ export default function OrderTrackingForm() {
         </p>
       </form>
 
-      <section className="rounded-lg border border-[#ddcfb6] bg-[#f8f4ea] p-5">
+      <section className="min-w-0 break-words rounded-lg border border-[#ddcfb6] bg-[#f8f4ea] p-4 sm:p-5">
         {trackedOrder ? (
           <div>
             <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
+              <div className="min-w-0">
                 <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#8b5d39]">
                   {trackedOrder.recordLabel}
                 </p>
-                <h2 className="mt-2 text-3xl font-black text-[#213a2f]">
+                <h2 className="mt-2 break-words text-2xl font-black text-[#213a2f] sm:text-3xl">
                   {trackedOrder.orderNumber}
                 </h2>
                 {trackedOrder.customerName && (
@@ -152,7 +152,7 @@ export default function OrderTrackingForm() {
               )}
             </div>
 
-            <div className="mt-6 grid gap-3">
+            <div className="mt-6 grid min-w-0 grid-cols-1 gap-3">
               {(trackedOrder.timeline || []).map((stage) => (
                 <div
                   key={stage.key}
@@ -167,24 +167,24 @@ export default function OrderTrackingForm() {
               ))}
             </div>
 
-            <div className="mt-6 grid gap-4 rounded-lg border border-[#ddcfb6] bg-[#fffdf8] p-4 text-sm text-[#40584c]">
+            <div className="mt-6 grid min-w-0 grid-cols-1 gap-4 rounded-lg border border-[#ddcfb6] bg-[#fffdf8] p-3 text-sm text-[#40584c] sm:p-4">
               {trackedOrder.deliveryDate && (
-                <div className="flex justify-between gap-4">
+                <div className="flex flex-col gap-1 sm:flex-row sm:justify-between sm:gap-4">
                   <span>Delivery date</span>
-                  <strong className="text-right">{formatDate(trackedOrder.deliveryDate)}</strong>
+                  <strong className="min-w-0 sm:text-right">{formatDate(trackedOrder.deliveryDate)}</strong>
                 </div>
               )}
               {trackedOrder.estimatedArrivalAt && (
-                <div className="flex justify-between gap-4">
+                <div className="flex flex-col gap-1 sm:flex-row sm:justify-between sm:gap-4">
                   <span>Estimated arrival</span>
-                  <strong className="text-right">{formatDate(trackedOrder.estimatedArrivalAt)}</strong>
+                  <strong className="min-w-0 sm:text-right">{formatDate(trackedOrder.estimatedArrivalAt)}</strong>
                 </div>
               )}
-              <div className="flex justify-between gap-4">
+              <div className="flex flex-col gap-1 sm:flex-row sm:justify-between sm:gap-4">
                 <span>Items</span>
-                <strong className="text-right">{itemSummary || `${trackedOrder.totalQuantity} item(s)`}</strong>
+                <strong className="min-w-0 break-words sm:text-right">{itemSummary || `${trackedOrder.totalQuantity} item(s)`}</strong>
               </div>
-              <div className="flex justify-between gap-4">
+              <div className="flex flex-wrap justify-between gap-2">
                 <span>Total</span>
                 <strong className="text-right">
                   {trackedOrder.currency} {Number(trackedOrder.total || 0).toFixed(2)}
@@ -192,7 +192,7 @@ export default function OrderTrackingForm() {
               </div>
               {trackedOrder.trackingLink && (
                 <a
-                  className="btn btn-sm btn-primary"
+                  className="btn btn-sm btn-primary min-h-11 w-full sm:w-auto"
                   href={trackedOrder.trackingLink}
                   target="_blank"
                   rel="noreferrer"
@@ -203,11 +203,11 @@ export default function OrderTrackingForm() {
             </div>
           </div>
         ) : (
-          <div className="flex min-h-[420px] flex-col justify-center rounded-lg border border-dashed border-[#d1c4b0] bg-[#fffdf8] p-6 text-center">
+          <div className="flex min-h-[240px] min-w-0 flex-col justify-center rounded-lg border border-dashed border-[#d1c4b0] bg-[#fffdf8] p-4 text-center sm:min-h-[420px] sm:p-6">
             <p className="text-sm font-semibold uppercase tracking-[0.24em] text-[#8b5d39]">
               Private lookup
             </p>
-            <h2 className="mt-3 text-3xl font-black text-[#213a2f]">
+            <h2 className="mt-3 text-2xl font-black text-[#213a2f] sm:text-3xl">
               Your order timeline will appear here.
             </h2>
             <p className="mx-auto mt-4 max-w-md text-sm leading-7 text-[#51685d]">

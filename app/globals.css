@@ -22,6 +22,51 @@ progress::-webkit-progress-value {
     linear-gradient(180deg, #e9e1d3 0%, #f0ebdf 42%, #f4f0e8 100%);
 }
 
+/* Keep native fields and long cart content inside the checkout's grid tracks. */
+.checkout-flow {
+  overflow-wrap: anywhere;
+}
+
+.checkout-flow .form-control {
+  min-width: 0;
+}
+
+.checkout-flow :is(.input, .select, .textarea) {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  font-size: 1rem;
+}
+
+.checkout-flow .label-text {
+  white-space: normal;
+}
+
+.checkout-totals > .flex {
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.checkout-totals > .flex > :last-child {
+  max-width: 60%;
+  text-align: right;
+}
+
+/* Anchor destinations stay visible beneath the sticky navigation. */
+:where(.landing-page section[id], #subscription-checkout) {
+  scroll-margin-top: 5rem;
+}
+
+@media (max-width: 639px), (pointer: coarse) {
+  .checkout-flow .btn {
+    min-height: 2.75rem;
+    min-width: 2.75rem;
+    height: auto;
+    padding-block: 0.625rem;
+    white-space: normal;
+  }
+}
+
 .page-sparkles {
   background-image: url("/images/sparkles.gif");
   background-position: center;

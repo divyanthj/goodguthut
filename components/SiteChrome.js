@@ -32,13 +32,13 @@ export default function SiteChrome({ children }) {
   const closeMenu = () => setIsMenuOpen(false);
 
   return (
-    <div className="flex min-h-screen flex-col bg-base-200">
+    <div className="flex min-h-screen min-w-0 flex-col bg-base-200">
       <header className="site-chrome-header sticky top-0 z-50 border-b border-[#ddcfb6] bg-[#fffdf8]/95 backdrop-blur">
-        <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-6 px-5 py-3 md:px-8">
+        <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-3 px-4 py-3 sm:gap-6 md:px-8">
           <div className="min-w-0 shrink-0">
             <Link
               href="/"
-              className="inline-flex items-center gap-3"
+              className="flex min-h-11 items-center gap-3"
               aria-label={`${config.appName} homepage`}
               onClick={closeMenu}
             >
@@ -59,9 +59,9 @@ export default function SiteChrome({ children }) {
             </Link>
           </div>
 
-          <nav className="hidden flex-1 items-center justify-center gap-7 text-sm font-semibold text-[#40584c] lg:flex" aria-label="Main navigation">
+          <nav className="hidden flex-1 items-center justify-center gap-6 text-sm font-semibold text-[#40584c] xl:flex" aria-label="Main navigation">
             {publicLinks.map((link) => (
-              <Link key={link.href} href={link.href} className="whitespace-nowrap transition hover:text-primary">
+              <Link key={link.href} href={link.href} className="inline-flex min-h-11 items-center whitespace-nowrap transition hover:text-primary">
                 {link.label}
               </Link>
             ))}
@@ -72,17 +72,17 @@ export default function SiteChrome({ children }) {
               href={whatsappHref}
               target="_blank"
               rel="noreferrer"
-              className="btn btn-sm border-[#c97754] bg-[#fff4ed] text-[#7a3f28] hover:border-[#c97754] hover:bg-[#ffe9db]"
+              className="btn btn-sm min-h-11 border-[#c97754] bg-[#fff4ed] text-[#7a3f28] hover:border-[#c97754] hover:bg-[#ffe9db]"
             >
               WhatsApp
             </a>
-            <Link href="/#order-flow" className="btn btn-sm btn-primary">
+            <Link href="/#order-flow" className="btn btn-sm btn-primary min-h-11">
               Cart
             </Link>
             {showAdminLink && (
               <Link
                 href="/admin"
-                className={`btn btn-sm ${isAdminPath(pathname) ? "btn-primary" : "btn-ghost"} hidden lg:inline-flex`}
+                className={`btn btn-sm ${isAdminPath(pathname) ? "btn-primary" : "btn-ghost"} hidden xl:inline-flex`}
               >
                 Admin
               </Link>
@@ -90,7 +90,7 @@ export default function SiteChrome({ children }) {
             {showLogout && (
               <button
                 type="button"
-                className="btn btn-sm btn-outline hidden lg:inline-flex"
+                className="btn btn-sm btn-outline hidden xl:inline-flex"
                 onClick={() => signOut({ callbackUrl: "/" })}
               >
                 Logout
@@ -100,7 +100,7 @@ export default function SiteChrome({ children }) {
 
           <button
             type="button"
-            className="btn btn-sm border-[#d1c4b0] bg-[#fffdf8] text-[#355a45] md:hidden"
+            className="btn btn-sm min-h-11 min-w-[72px] border-[#d1c4b0] bg-[#fffdf8] text-[#355a45] xl:hidden"
             onClick={() => setIsMenuOpen((current) => !current)}
             aria-expanded={isMenuOpen}
             aria-controls="mobile-site-menu"
@@ -110,10 +110,10 @@ export default function SiteChrome({ children }) {
         </div>
 
         {isMenuOpen && (
-          <div id="mobile-site-menu" className="border-t border-[#ddcfb6] bg-[#fffdf8] px-4 py-4 md:hidden">
-            <nav className="mx-auto flex max-w-6xl flex-col gap-3 text-sm font-semibold text-[#40584c]" aria-label="Mobile navigation">
+          <div id="mobile-site-menu" className="max-h-[calc(100dvh-69px)] overflow-y-auto overscroll-contain border-t border-[#ddcfb6] bg-[#fffdf8] px-4 py-3 xl:hidden">
+            <nav className="mx-auto flex max-w-6xl flex-col gap-1 text-base font-semibold text-[#40584c]" aria-label="Mobile navigation">
               {publicLinks.map((link) => (
-                <Link key={link.href} href={link.href} className="rounded-lg px-3 py-2 hover:bg-[#f8f4ea]" onClick={closeMenu}>
+                <Link key={link.href} href={link.href} className="flex min-h-11 items-center rounded-lg px-3 py-2 hover:bg-[#f8f4ea]" onClick={closeMenu}>
                   {link.label}
                 </Link>
               ))}
@@ -121,23 +121,23 @@ export default function SiteChrome({ children }) {
                 href={whatsappHref}
                 target="_blank"
                 rel="noreferrer"
-                className="rounded-lg px-3 py-2 hover:bg-[#f8f4ea]"
+                className="flex min-h-11 items-center rounded-lg px-3 py-2 hover:bg-[#f8f4ea]"
                 onClick={closeMenu}
               >
                 WhatsApp
               </a>
-              <Link href="/#order-flow" className="rounded-lg px-3 py-2 hover:bg-[#f8f4ea]" onClick={closeMenu}>
+              <Link href="/#order-flow" className="flex min-h-11 items-center rounded-lg px-3 py-2 hover:bg-[#f8f4ea]" onClick={closeMenu}>
                 Cart
               </Link>
               {showAdminLink && (
-                <Link href="/admin" className="rounded-lg px-3 py-2 hover:bg-[#f8f4ea]" onClick={closeMenu}>
+                <Link href="/admin" className="flex min-h-11 items-center rounded-lg px-3 py-2 hover:bg-[#f8f4ea]" onClick={closeMenu}>
                   Admin
                 </Link>
               )}
               {showLogout && (
                 <button
                   type="button"
-                  className="rounded-lg px-3 py-2 text-left hover:bg-[#f8f4ea]"
+                  className="flex min-h-11 items-center rounded-lg px-3 py-2 text-left hover:bg-[#f8f4ea]"
                   onClick={() => {
                     closeMenu();
                     signOut({ callbackUrl: "/" });
@@ -151,12 +151,12 @@ export default function SiteChrome({ children }) {
         )}
       </header>
 
-      <div className="flex-1">{children}</div>
+      <div className="min-w-0 flex-1">{children}</div>
 
       <footer className="site-chrome-footer border-t border-[#ddcfb6] bg-[#f7f1e6] text-base-content">
-        <div className="mx-auto grid max-w-6xl gap-12 px-6 py-14 text-center md:grid-cols-[1.3fr_1fr_1fr_1fr] md:px-8 md:text-left">
+        <div className="mx-auto grid min-w-0 max-w-6xl grid-cols-1 gap-8 px-4 py-10 text-center sm:grid-cols-2 md:gap-12 md:px-8 md:py-14 md:text-left lg:grid-cols-[minmax(0,1.3fr)_repeat(3,minmax(0,1fr))]">
           <div className="mx-auto max-w-xs md:mx-0">
-            <Link href="/" className="flex items-center justify-center gap-3 md:justify-start" aria-label={`${config.appName} homepage`}>
+            <Link href="/" className="flex min-h-11 items-center justify-center gap-3 md:justify-start" aria-label={`${config.appName} homepage`}>
               <Image
                 src={logo}
                 alt={`${config.appName} logo`}
@@ -181,19 +181,19 @@ export default function SiteChrome({ children }) {
               Links
             </div>
             <div className="mt-4 flex flex-col items-center gap-3 text-sm md:items-start">
-              <Link href="/#products" className="transition hover:text-primary">
+              <Link href="/#products" className="inline-flex min-h-11 items-center px-2 transition hover:text-primary md:min-h-0 md:px-0">
                 Products
               </Link>
-              <Link href="/#subscriptions" className="transition hover:text-primary">
+              <Link href="/#subscriptions" className="inline-flex min-h-11 items-center px-2 transition hover:text-primary md:min-h-0 md:px-0">
                 Subscriptions
               </Link>
-              <Link href="/track-order" className="transition hover:text-primary">
+              <Link href="/track-order" className="inline-flex min-h-11 items-center px-2 transition hover:text-primary md:min-h-0 md:px-0">
                 Track Order
               </Link>
-              <Link href="/#about" className="transition hover:text-primary">
+              <Link href="/#about" className="inline-flex min-h-11 items-center px-2 transition hover:text-primary md:min-h-0 md:px-0">
                 About Us
               </Link>
-              <Link href="/#order-flow" className="transition hover:text-primary">
+              <Link href="/#order-flow" className="inline-flex min-h-11 items-center px-2 transition hover:text-primary md:min-h-0 md:px-0">
                 Cart
               </Link>
             </div>
@@ -204,10 +204,10 @@ export default function SiteChrome({ children }) {
               Legal
             </div>
             <div className="mt-4 flex flex-col items-center gap-3 text-sm md:items-start">
-              <Link href="/tos" className="transition hover:text-primary">
+              <Link href="/tos" className="inline-flex min-h-11 items-center px-2 transition hover:text-primary md:min-h-0 md:px-0">
                 Terms and Conditions
               </Link>
-              <Link href="/privacy-policy" className="transition hover:text-primary">
+              <Link href="/privacy-policy" className="inline-flex min-h-11 items-center px-2 transition hover:text-primary md:min-h-0 md:px-0">
                 Privacy Policy
               </Link>
             </div>
@@ -218,11 +218,11 @@ export default function SiteChrome({ children }) {
               Contact
             </div>
             <div className="mt-4 flex flex-col items-center gap-3 text-sm md:items-start">
-              <a href={whatsappHref} target="_blank" rel="noreferrer" className="transition hover:text-primary">
+              <a href={whatsappHref} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center px-2 transition hover:text-primary md:min-h-0 md:px-0">
                 WhatsApp
               </a>
               {config.mailgun.supportEmail && (
-                <a href={`mailto:${config.mailgun.supportEmail}`} className="transition hover:text-primary">
+                <a href={`mailto:${config.mailgun.supportEmail}`} className="inline-flex min-h-11 max-w-full items-center break-all px-2 transition hover:text-primary md:min-h-0 md:px-0">
                   {config.mailgun.supportEmail}
                 </a>
               )}
@@ -230,7 +230,7 @@ export default function SiteChrome({ children }) {
                 href="https://instagram.com/goodguthut"
                 target="_blank"
                 rel="noreferrer"
-                className="transition hover:text-primary"
+                className="inline-flex min-h-11 items-center px-2 transition hover:text-primary md:min-h-0 md:px-0"
               >
                 Instagram
               </a>
@@ -238,7 +238,7 @@ export default function SiteChrome({ children }) {
                 href="https://thinkinpublic.app/thinker/goodguthut"
                 target="_blank"
                 rel="noreferrer"
-                className="transition hover:text-primary"
+                className="inline-flex min-h-11 items-center px-2 transition hover:text-primary md:min-h-0 md:px-0"
               >
                 Think in Public
               </a>
@@ -246,7 +246,7 @@ export default function SiteChrome({ children }) {
                 href="https://www.facebook.com/profile.php?id=61590344084615"
                 target="_blank"
                 rel="noreferrer"
-                className="transition hover:text-primary"
+                className="inline-flex min-h-11 items-center px-2 transition hover:text-primary md:min-h-0 md:px-0"
               >
                 Facebook
               </a>

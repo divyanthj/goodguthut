@@ -114,6 +114,42 @@ const initialCustomer = {
   address: "",
 };
 
+function OrderSummaryItems({ items, label, currency }) {
+  return (
+    <div className="min-w-0">
+      <dl className="space-y-3 sm:hidden" aria-label={label}>
+        {items.map((item) => (
+          <div key={item.id} className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 border-b border-[#e4d8c6] pb-3 text-sm">
+            <dt className="min-w-0">
+              <span className="block font-medium">{item.name}</span>
+              <span className="mt-1 block text-xs text-[#6b7d74]">Qty: {item.quantity}</span>
+            </dt>
+            <dd className="text-right">{currency} {item.total.toFixed(2)}</dd>
+          </div>
+        ))}
+      </dl>
+      <table className="table table-sm hidden w-full table-fixed sm:table" aria-label={label}>
+        <thead>
+          <tr>
+            <th className="w-1/2">{label}</th>
+            <th className="w-[15%]">Qty</th>
+            <th className="w-[35%] text-right">Line total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((item) => (
+            <tr key={item.id}>
+              <td>{item.name}</td>
+              <td>{item.quantity}</td>
+              <td className="text-right">{currency} {item.total.toFixed(2)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 const createSessionToken = () => {
   if (typeof crypto !== "undefined" && crypto.randomUUID) {
     return crypto.randomUUID();
@@ -1501,13 +1537,13 @@ export default function SubscriptionForm({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="checkout-flow min-w-0 space-y-4 sm:space-y-6">
       {mode === "create" && (
-        <section id="subscription-checkout" className="rounded-[28px] border border-[#d6c6ae] bg-[#fbf7f0] p-6 md:p-8">
+        <section id="subscription-checkout" className="rounded-2xl border border-[#d6c6ae] bg-[#fbf7f0] p-4 sm:rounded-[28px] sm:p-6 md:p-8">
           <h2 className="text-xl font-semibold text-[#2f4a3e]">Kanji subscriptions</h2>
           <p className="mt-2 text-sm text-[#53675d]">Six bottles each week. Choose Trial (6 bottles), 2 weeks (12 bottles), or 4 weeks (24 bottles). Pay once upfront, with a single ₹50 processing fee and delivery included.</p>
           <p className="mt-2 text-sm text-[#53675d]">Use TRAYA for 5% off bottles on 2 weeks or 10% on 4 weeks. No automatic renewal or autopay.</p>
-          <div className="mt-4 flex flex-wrap gap-3">
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:flex sm:flex-wrap">
             <button type="button" aria-pressed={isOneTimeMode} className="btn btn-outline" onClick={() => { setWantsRecurring(false); setAppliedDiscount(null); setDiscountCodeInput(""); }}>One-time order</button>
             <button type="button" aria-pressed={isRecurringMode} className="btn btn-outline" disabled={!subscriptionBoxes.length} onClick={() => {
               setWantsRecurring(true); setSelectionMode("custom"); setComboCart({}); setAppliedDiscount(null); setDiscountCodeInput("");
@@ -1515,7 +1551,7 @@ export default function SubscriptionForm({
             }}>Subscription</button>
           </div>
           {isRecurringMode && (
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
               {subscriptionBoxes.map((box) => (
                 <button key={box.id} type="button" aria-pressed={box.items.length === selectedItems.length && box.items.every((item) => selectedItems.some((selected) => selected.sku === item.sku && selected.quantity === item.quantity))} className="rounded-xl border border-[#d6c6ae] bg-[#fffaf1] p-4 text-left aria-pressed:border-[#2f5d49] aria-pressed:bg-[#eef4ee]" onClick={() => {
                   setSelectionMode("custom"); setComboCart({}); setCart(buildCartFromCatalog(catalogItems, box.items)); clearFieldErrors("selection", "quantity");
@@ -1531,7 +1567,7 @@ export default function SubscriptionForm({
       )}
       {(!isRecurringMode || mode === "edit") && <section
         ref={selectionSectionRef}
-        className="rounded-[28px] border border-[#d6c6ae] bg-[#fbf7f0]/96 p-6 shadow-xl md:p-8"
+        className="min-w-0 rounded-2xl border border-[#d6c6ae] bg-[#fbf7f0]/96 p-4 shadow-xl sm:rounded-[28px] sm:p-6 md:p-8"
       >
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -1547,7 +1583,7 @@ export default function SubscriptionForm({
           </div>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-4">
           <button
             type="button"
             className={`rounded-2xl border p-5 text-left transition ${
@@ -1587,7 +1623,7 @@ export default function SubscriptionForm({
         {effectiveSelectionMode === "combo" && comboOptions.length > 0 && (
           <div
             ref={comboSelectionRef}
-            className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3"
+            className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3"
           >
             {comboOptions.map((combo) => {
               const comboQty = Math.max(0, Number(comboCart[combo.id] || 0));
@@ -1689,7 +1725,7 @@ export default function SubscriptionForm({
                       <div className="mt-2 text-xs font-medium text-[#8a5a20]">Low stock</div>
                     )}
                   </div>
-                  <div className="mt-5 flex items-center justify-between gap-3 border-t border-[#e4d8c6] pt-4">
+                  <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-[#e4d8c6] pt-4">
                     <span className="text-xs text-[#5f7068]">
                       {comboQty > 0 ? `${comboQty} set${comboQty === 1 ? "" : "s"} selected` : "Not added yet"}
                     </span>
@@ -1697,7 +1733,7 @@ export default function SubscriptionForm({
                       <div className="inline-flex min-w-[128px] items-center justify-between rounded-lg border border-[#cdbb9e] bg-[#fffaf1] px-2 py-1">
                         <button
                           type="button"
-                          className="btn btn-sm btn-ghost h-7 min-h-0 px-2"
+                          className="btn btn-sm btn-ghost h-11 min-h-11 min-w-11 px-2 sm:h-7 sm:min-h-0 sm:min-w-0"
                           disabled={billingLocked}
                           onClick={() => updateComboQty(combo.id, comboQty - 1)}
                         >
@@ -1708,7 +1744,7 @@ export default function SubscriptionForm({
                         </span>
                         <button
                           type="button"
-                          className="btn btn-sm btn-ghost h-7 min-h-0 px-2"
+                          className="btn btn-sm btn-ghost h-11 min-h-11 min-w-11 px-2 sm:h-7 sm:min-h-0 sm:min-w-0"
                           disabled={!canIncrementCombo}
                           onClick={() => updateComboQty(combo.id, comboQty + 1)}
                         >
@@ -1745,7 +1781,7 @@ export default function SubscriptionForm({
       {effectiveSelectionMode === "custom" && (!isRecurringMode || mode === "edit") && (
         <section
           ref={customSelectionRef}
-          className="rounded-[28px] border border-[#d6c6ae] bg-[#fbf7f0]/96 p-6 shadow-xl md:p-8"
+          className="min-w-0 rounded-2xl border border-[#d6c6ae] bg-[#fbf7f0]/96 p-4 shadow-xl sm:rounded-[28px] sm:p-6 md:p-8"
         >
           <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -1761,7 +1797,7 @@ export default function SubscriptionForm({
             </div>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             {lineup.map((drink) => {
               const qty = Number(cart[drink.sku] || 0);
               const inventoryMaximum = getSkuMaxSelectable(drink.sku);
@@ -1869,10 +1905,10 @@ export default function SubscriptionForm({
       <form
         onSubmit={onSubmit}
         noValidate
-        className="rounded-[28px] border border-[#d6c6ae] bg-[#fbf7f0]/96 p-6 shadow-xl md:p-8"
+        className="min-w-0 rounded-2xl border border-[#d6c6ae] bg-[#fbf7f0]/96 p-4 shadow-xl sm:rounded-[28px] sm:p-6 md:p-8"
       >
-        <div className="grid gap-6">
-          <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid min-w-0 grid-cols-1 gap-6">
+          <div className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2">
             {isRecurringMode && (
               <div>
                 <div className="label">
@@ -1899,7 +1935,7 @@ export default function SubscriptionForm({
                 <div className="label">
                   <span className="label-text text-[#365244]">How Long</span>
                 </div>
-                <div className="flex flex-wrap gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:flex sm:flex-wrap">
                   {durationOptions.map((option) => {
                     const isActive = Number(durationWeeks) === option;
 
@@ -1908,6 +1944,7 @@ export default function SubscriptionForm({
                         key={`${cadence}-${option}`}
                         type="button"
                         disabled={billingLocked}
+                        aria-pressed={isActive}
                         className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
                           isActive
                             ? "border-[#2f5d49] bg-[#355a45] text-[#f7f1e6] shadow-md"
@@ -1940,7 +1977,7 @@ export default function SubscriptionForm({
               className="md:col-span-2 rounded-2xl border border-[#ddcfb6] bg-[#fffdf8] p-4 text-sm text-[#365244]"
             >
               <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
+                <div className="min-w-0 flex-1 basis-full sm:basis-auto">
                   <div className="font-medium text-[#2f4a3e]">
                     {selectedStartDateOption
                       ? isOneTimeMode
@@ -1964,7 +2001,7 @@ export default function SubscriptionForm({
                 {!isOneTimeMode && !billingLocked && effectiveStartDateOptions.length > 1 && (
                   <button
                     type="button"
-                    className="btn btn-ghost btn-sm text-[#2f5d49]"
+                    className="btn btn-ghost btn-sm w-full text-[#2f5d49] sm:w-auto"
                     onClick={() => setShowStartDateOptions((current) => !current)}
                   >
                     {showStartDateOptions ? "Keep this date" : "Need to start later?"}
@@ -2003,6 +2040,7 @@ export default function SubscriptionForm({
               </div>
               <input
                 ref={nameInputRef}
+                autoComplete="name"
                 className={`input input-bordered bg-[#fffdf8] ${fieldErrors.name ? inputErrorClass : ""}`}
                 value={customer.name}
                 onChange={(event) => {
@@ -2025,6 +2063,8 @@ export default function SubscriptionForm({
               <input
                 ref={emailInputRef}
                 type="email"
+                autoComplete="email"
+                autoCapitalize="none"
                 className={`input input-bordered bg-[#fffdf8] ${fieldErrors.email ? inputErrorClass : ""}`}
                 value={customer.email}
                 onChange={(event) => {
@@ -2044,6 +2084,9 @@ export default function SubscriptionForm({
               </div>
               <input
                 ref={phoneInputRef}
+                type="tel"
+                inputMode="tel"
+                autoComplete="tel"
                 className={`input input-bordered bg-[#fffdf8] ${fieldErrors.phone ? inputErrorClass : ""}`}
                 value={customer.phone}
                 onChange={(event) => {
@@ -2063,6 +2106,7 @@ export default function SubscriptionForm({
               </div>
               <input
                 className="input input-bordered bg-[#fffdf8]"
+                autoComplete="address-line2"
                 value={customer.addressLine2}
                 onChange={(event) =>
                   setCustomer((prev) => ({ ...prev, addressLine2: event.target.value }))
@@ -2156,7 +2200,7 @@ export default function SubscriptionForm({
 
           <div
             ref={orderSummaryRef}
-            className="rounded-2xl border border-[#ddcfb6] bg-[#fffdf8] p-5"
+            className="min-w-0 rounded-2xl border border-[#ddcfb6] bg-[#fffdf8] p-3 sm:p-5"
           >
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
@@ -2183,55 +2227,31 @@ export default function SubscriptionForm({
             ) : (
               <div className="mt-4 space-y-4">
                 {effectiveSelectionMode === "combo" && selectedComboBreakdown.length > 0 && (
-                  <div className="overflow-x-auto">
-                    <table className="table table-sm">
-                      <thead>
-                        <tr>
-                          <th>Set</th>
-                          <th>Qty</th>
-                          <th className="text-right">Line total</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {selectedComboBreakdown.map((combo) => (
-                          <tr key={combo.id}>
-                            <td>{combo.name}</td>
-                            <td>{combo.quantity}</td>
-                            <td className="text-right">
-                              {currency} {(Number(combo.subtotal || 0) * Number(combo.quantity || 0)).toFixed(2)}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                  <OrderSummaryItems
+                    label="Set"
+                    currency={currency}
+                    items={selectedComboBreakdown.map((combo) => ({
+                      id: combo.id,
+                      name: combo.name,
+                      quantity: combo.quantity,
+                      total: Number(combo.subtotal || 0) * Number(combo.quantity || 0),
+                    }))}
+                  />
                 )}
-                <div className="overflow-x-auto">
-                  <table className="table table-sm">
-                    <thead>
-                      <tr>
-                        <th>Item</th>
-                        <th>Qty</th>
-                        <th className="text-right">Line total</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {selectedItems.map((item) => (
-                        <tr key={item.sku}>
-                          <td>{item.productName}</td>
-                          <td>{item.quantity}</td>
-                          <td className="text-right">
-                            {currency} {(Number(item.quantity || 0) * Number(item.unitPrice || 0)).toFixed(2)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <OrderSummaryItems
+                  label="Item"
+                  currency={currency}
+                  items={selectedItems.map((item) => ({
+                    id: item.sku,
+                    name: item.productName,
+                    quantity: item.quantity,
+                    total: Number(item.quantity || 0) * Number(item.unitPrice || 0),
+                  }))}
+                />
               </div>
             )}
 
-            <div className="mt-4 grid gap-2 text-sm text-[#365244]">
+            <div className="checkout-totals mt-4 grid grid-cols-1 gap-2 text-sm text-[#365244]">
               {isRecurringMode && (
                 <div className="flex justify-between">
                   <span>How often</span>
@@ -2430,7 +2450,7 @@ export default function SubscriptionForm({
             </div>
           )}
 
-          <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
             <div className="text-sm text-[#5f7068]">
               {canCreateManualOrderWithoutPayment
                 ? "Admin order entry. Choose how this order should be treated for payment."
@@ -2438,7 +2458,7 @@ export default function SubscriptionForm({
                 ? "Quick checkout. Complete your order and we will send the confirmation by email."
                 : "Pay upfront for your weekly deliveries. We will email you near the end to invite you to renew."}
             </div>
-            <div className="flex flex-wrap gap-3">
+            <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap">
               {mode === "edit" && !isCancelled && (
                 <button
                   type="button"
@@ -2484,7 +2504,7 @@ export default function SubscriptionForm({
                     type="submit"
                     value="manual_without_payment"
                     disabled={!canAttemptSubmit}
-                    className="btn btn-outline min-w-[220px]"
+                    className="btn btn-outline w-full sm:min-w-[220px] sm:w-auto"
                     onClick={() => setActiveSubmitAction("manual_without_payment")}
                   >
                     {isSubmitting && activeSubmitAction === "manual_without_payment"
@@ -2502,7 +2522,7 @@ export default function SubscriptionForm({
                   type="submit"
                   value="checkout"
                   disabled={!canAttemptSubmit}
-                  className="btn btn-primary min-w-[220px]"
+                  className="btn btn-primary w-full sm:min-w-[220px] sm:w-auto"
                   onClick={() => setActiveSubmitAction("checkout")}
                 >
                   {isSubmitting
