@@ -113,6 +113,10 @@ export async function POST(req) {
       return NextResponse.json({ error: "Order not found." }, { status: 404 });
     }
 
+    if (record.payment?.qrCodeId && record.payment?.status === "pending") {
+      return NextResponse.json({ error: "This order already has a payment QR code. Use it or cancel it before collecting another payment." }, { status: 409 });
+    }
+
     const order = await ensureRazorpayPaymentLink({ sourceType, record });
     const emailDelivery = await sendPaymentNudgeEmail({ order });
 

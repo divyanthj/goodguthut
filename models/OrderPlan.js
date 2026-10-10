@@ -86,6 +86,9 @@ const orderPlanPaymentSchema = mongoose.Schema(
       trim: true,
       default: "",
     },
+    qrCodeId: { type: String, trim: true, default: "", index: true },
+    qrImageUrl: { type: String, trim: true, default: "" },
+    qrExpiresAt: { type: Date, default: null },
     signature: {
       type: String,
       trim: true,
@@ -253,6 +256,8 @@ const orderPlanAppliedPerkSchema = mongoose.Schema(
 
 const orderPlanNotificationsSchema = mongoose.Schema(
   {
+    confirmationEmailClaimedAt: { type: Date, default: null },
+    adminOrderEmailClaimedAt: { type: Date, default: null },
     renewalEmailSentAt: { type: Date, default: null },
     renewalEmailClaimedAt: { type: Date, default: null },
     confirmationEmailSentAt: {

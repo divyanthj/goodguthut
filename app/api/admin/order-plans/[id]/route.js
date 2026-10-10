@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import connectMongo from "@/libs/mongoose";
 import { getAdminSessionState } from "@/libs/admin-auth";
+import { isAdminQrOrder, syncAdminOrderQrPayment } from "@/libs/admin-order-qr";
 import {
   assertValidOrderPlanStatus,
   getOrderPlanDisplayStatus,
@@ -95,6 +96,11 @@ export async function PATCH(req, { params }) {
 
     if (!orderPlan) {
       return NextResponse.json({ error: "Order not found." }, { status: 404 });
+    }
+
+    if (isAdminQrOrder(orderPlan) && orderPlan.payment.status !== "paid" &&
+      (body?.markShipped || body?.markDelivered || ["confirmed", "active", "shipped", "fulfilled"].includes(body?.status))) {
+      return NextResponse.json({ error: "Verify the QR payment before confirming or fulfilling this order." }, { status: 409 });
     }
 
     ensureOneTimeFulfillmentStatus(orderPlan);
@@ -224,7 +230,15 @@ export async function PATCH(req, { params }) {
       shouldReleaseInventory = nextStatus === "cancelled";
     }
 
-    if (shouldReleaseInventory) {
+    if (shouldReleaseInventory && isAdminQrOrder(orderPlan) && orderPlan.payment.status === "pending") {
+      orderPlan = await syncAdminOrderQrPayment(await OrderPlan.findById(orderPlan.id), { cancel: true });
+      if (orderPlan.payment.status === "paid") {
+        return NextResponse.json({ error: "Payment has been received for this order. Refresh it before making changes." }, { status: 409 });
+      }
+      if (orderPlan.payment.status === "pending") {
+        return NextResponse.json({ error: "Razorpay is still reconciling this QR payment. Check payment status before cancelling." }, { status: 409 });
+      }
+    } else if (shouldReleaseInventory) {
       orderPlan = await releaseOrderInventory({
         orderPlanId: orderPlan.id,
         actor: { actorType: "admin", actorEmail: session.user.email || "" },
@@ -315,6 +329,13 @@ export async function DELETE(_req, { params }) {
 
   try {
     await connectMongo();
+    const existingOrder = await OrderPlan.findById(params.id);
+    if (isAdminQrOrder(existingOrder) && existingOrder.payment.status === "pending") {
+      const closedOrder = await syncAdminOrderQrPayment(existingOrder, { cancel: true });
+      if (closedOrder.payment.status === "paid" || closedOrder.payment.status === "pending") {
+        return NextResponse.json({ error: "This QR payment has been received or is still reconciling. Refresh the order before deleting." }, { status: 409 });
+      }
+    }
     const orderPlan = await deleteOrderPlanWithInventory({
       orderPlanId: params.id,
       actor: { actorType: "admin", actorEmail: session.user.email || "" },

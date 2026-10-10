@@ -224,7 +224,7 @@ export const createRazorpayOrder = async ({ amount, currency, receipt, notes = {
   return response.json();
 };
 
-const razorpayApiRequest = async (path, { method = "GET", body } = {}) => {
+const razorpayApiRequest = async (path, { method = "GET", body, timeoutMs } = {}) => {
   if (!isRazorpayConfigured()) {
     throw new Error("Razorpay is not configured. Add RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET.");
   }
@@ -237,6 +237,7 @@ const razorpayApiRequest = async (path, { method = "GET", body } = {}) => {
       "Content-Type": "application/json",
     },
     ...(body ? { body: JSON.stringify(body) } : {}),
+    ...(timeoutMs ? { signal: AbortSignal.timeout(timeoutMs) } : {}),
   });
 
   if (!response.ok) {
@@ -246,6 +247,34 @@ const razorpayApiRequest = async (path, { method = "GET", body } = {}) => {
 
   return response.json();
 };
+
+// QR payments create their own Razorpay order when the customer scans and pays.
+export const createRazorpayQrCode = ({ amount, name, description, closeBy, notes = {} }) =>
+  razorpayApiRequest("/v1/payments/qr_codes", {
+    method: "POST",
+    timeoutMs: 15000,
+    body: {
+      type: "upi_qr",
+      usage: "single_use",
+      fixed_amount: true,
+      payment_amount: amount,
+      name,
+      description,
+      close_by: closeBy,
+      notes,
+    },
+  });
+
+export const fetchRazorpayQrCode = (qrCodeId) =>
+  razorpayApiRequest(`/v1/payments/qr_codes/${encodeURIComponent(qrCodeId)}`, { timeoutMs: 5000 });
+
+export const fetchRazorpayQrPayments = async (qrCodeId) => {
+  const response = await razorpayApiRequest(`/v1/payments/qr_codes/${encodeURIComponent(qrCodeId)}/payments`, { timeoutMs: 5000 });
+  return response.items || [];
+};
+
+export const closeRazorpayQrCode = (qrCodeId) =>
+  razorpayApiRequest(`/v1/payments/qr_codes/${encodeURIComponent(qrCodeId)}/close`, { method: "POST", timeoutMs: 5000 });
 
 export const createRazorpayPaymentLink = async ({
   amount,

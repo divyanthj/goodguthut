@@ -9,6 +9,7 @@ import { sendOrderPlanConfirmationEmail } from "@/libs/order-plan-notifications"
 import { recalculatePreorderWindowRouteSnapshot } from "@/libs/preorder-route-planner";
 import { recalculateSubscriptionRouteSnapshots } from "@/libs/subscription-route-planner";
 import connectMongo from "@/libs/mongoose";
+import { isAdminQrOrder, syncAdminOrderQrPayment } from "@/libs/admin-order-qr";
 import OrderPlan from "@/models/OrderPlan";
 import Preorder from "@/models/Preorder";
 import Subscription from "@/models/Subscription";
@@ -371,6 +372,16 @@ export async function POST(req) {
     const razorpayOrderId = getRazorpayOrderIdFromEvent(event);
     const razorpayPaymentLinkId = getRazorpayPaymentLinkIdFromEvent(event);
     const paymentNotes = getPaymentNotesFromEvent(event);
+
+    const qrCodeId = event?.payload?.qr_code?.entity?.id || "";
+    if (qrCodeId) {
+      const qrOrder = await OrderPlan.findOne({ "payment.qrCodeId": qrCodeId });
+      if (isAdminQrOrder(qrOrder)) {
+        // Re-fetch payments for the stored QR; webhook payloads alone do not settle it.
+        await syncAdminOrderQrPayment(qrOrder);
+        return NextResponse.json({ ok: true });
+      }
+    }
 
     if (razorpaySubscriptionId) {
       const orderPlan = await OrderPlan.findOne({
@@ -741,6 +752,11 @@ export async function POST(req) {
     if (orderPlan) {
       const paymentEntity = event?.payload?.payment?.entity;
       const orderEntity = event?.payload?.order?.entity;
+
+      if (isAdminQrOrder(orderPlan)) {
+        await syncAdminOrderQrPayment(orderPlan);
+        return NextResponse.json({ ok: true });
+      }
 
       switch (event.event) {
         case "payment.captured":

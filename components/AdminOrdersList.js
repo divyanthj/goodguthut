@@ -6,6 +6,7 @@ import {
   normalizeAdminOrderFromOrderPlan,
 } from "@/libs/admin-orders";
 import SubscriptionForm from "@/components/SubscriptionForm";
+import AdminOrderQrPayment from "@/components/AdminOrderQrPayment";
 import { isRecurringOrderPlanPaymentConfirmed } from "@/libs/order-plans";
 import { getRazorpayArtifactRows } from "@/libs/razorpay-dashboard-links";
 import { formatSubscriptionCadence, formatSubscriptionDuration } from "@/libs/subscriptions";
@@ -330,6 +331,7 @@ export default function AdminOrdersList({ initialOrders = [], orderEntryConfig =
   const [showFulfilledOrders, setShowFulfilledOrders] = useState(false);
   const [expandedOrders, setExpandedOrders] = useState({});
   const [inventoryDrafts, setInventoryDrafts] = useState({});
+  const [qrOrder, setQrOrder] = useState(null);
 
   const activeOrders = useMemo(
     () => orders.filter((order) => order.status !== "fulfilled"),
@@ -896,7 +898,7 @@ export default function AdminOrdersList({ initialOrders = [], orderEntryConfig =
     }));
   };
 
-  if (orders.length === 0) {
+  if (orders.length === 0 && !orderEntryConfig) {
     return (
       <section className="rounded-2xl bg-base-100 p-8 shadow-md">
         <p className="text-lg font-medium">No orders yet.</p>
@@ -926,7 +928,7 @@ export default function AdminOrdersList({ initialOrders = [], orderEntryConfig =
     const canManageRecurringDelivery =
       isRecurringOrderPlan &&
       isRecurringOrderPlanPaymentConfirmed(order.payment);
-    const canSendPaymentNudge = isPaymentOrMandateSetupPending(order);
+    const canSendPaymentNudge = !order.payment?.qrCodeId && isPaymentOrMandateSetupPending(order);
     const canConfirmLegacy =
       isLegacy &&
       order.status === "pending" &&
@@ -1470,6 +1472,11 @@ export default function AdminOrdersList({ initialOrders = [], orderEntryConfig =
           <div className={getModeBadgeClassName(order)}>{getModeLabel(order)}</div>
           <div className="badge badge-outline">{order.status}</div>
           <div className="badge badge-outline">{order.paymentBadgeLabel}</div>
+          {order.payment?.qrCodeId && order.payment?.status === "pending" && (
+            <button type="button" className="btn btn-primary btn-sm min-h-11" onClick={() => setQrOrder({ ...order, name: order.customerName })}>
+              Show payment QR
+            </button>
+          )}
           {order.sourceType === "order_plan" &&
             order.inventory?.status &&
             order.inventory.status !== "not_tracked" && (
@@ -1507,6 +1514,7 @@ export default function AdminOrdersList({ initialOrders = [], orderEntryConfig =
 
   return (
     <section className="space-y-4">
+      {qrOrder && <AdminOrderQrPayment initialOrder={qrOrder} onOrderUpdated={addOrderToState} onClose={() => setQrOrder(null)} />}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="grid flex-1 gap-3 md:grid-cols-3">
           <div className="rounded-2xl bg-base-100 p-4 shadow-sm">

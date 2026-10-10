@@ -2,6 +2,7 @@ import AdminLoginButton from "@/components/AdminLoginButton";
 import AdminNav from "@/components/AdminNav";
 import AdminOrdersList from "@/components/AdminOrdersList";
 import { getAdminSessionState } from "@/libs/admin-auth";
+import { syncPendingAdminQrOrders } from "@/libs/admin-order-qr";
 import {
   normalizeAdminOrderFromLegacyPreorder,
   normalizeAdminOrderFromOrderPlan,
@@ -49,6 +50,7 @@ export default async function AdminOrdersPage() {
   }
 
   await connectMongo();
+  await syncPendingAdminQrOrders();
   const [orderPlanDocs, legacyPreorderDocs, orderEntryConfig] = await Promise.all([
     OrderPlan.find({}).sort({ createdAt: -1 }).limit(300),
     Preorder.find({}).sort({ createdAt: -1 }).limit(200),

@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import connectMongo from "@/libs/mongoose";
 import { buildOrderPlanRequest } from "@/libs/order-plan-request";
 import { getAdminSessionState } from "@/libs/admin-auth";
+import { createAdminOrderQrPayment } from "@/libs/admin-order-qr";
 import { sendOrderPlanConfirmationEmail } from "@/libs/order-plan-notifications";
 import { recalculateSubscriptionRouteSnapshots } from "@/libs/subscription-route-planner";
 import {
@@ -98,9 +99,11 @@ export async function POST(req) {
 
   try {
     const isManualAdminOrder = body.manualWithoutPayment === true;
+    const isAdminQrPayment = body.paymentMethod === "qr";
+    const isAdminOrder = isManualAdminOrder || isAdminQrPayment;
     let manualAdminSession = null;
 
-    if (isManualAdminOrder) {
+    if (isAdminOrder) {
       manualAdminSession = await getAdminSessionState();
 
       if (!manualAdminSession.session?.user || !manualAdminSession.isAdmin) {
@@ -108,17 +111,27 @@ export async function POST(req) {
       }
     }
 
+    if (isManualAdminOrder && isAdminQrPayment) {
+      return jsonError("Choose QR payment or manual payment handling, not both.", 400);
+    }
+    if (isAdminQrPayment && !isRazorpayConfigured()) {
+      return jsonError("Razorpay QR payments are currently unavailable.", 503);
+    }
+
     if (["recurring", "subscription"].includes(String(body.mode || "").trim().toLowerCase()) && !isRazorpayConfigured()) {
       return jsonError("Subscription payments are temporarily unavailable. Please try again later.", 503);
     }
 
     const orderPlanRequest = await buildOrderPlanRequest(body, {
-      allowMissingEmail: Boolean(isManualAdminOrder && manualAdminSession?.isAdmin),
+      allowMissingEmail: Boolean(isAdminOrder && manualAdminSession?.isAdmin),
     });
     await connectMongo();
 
-    if (isManualAdminOrder && orderPlanRequest.mode !== "one_time") {
+    if (isAdminOrder && orderPlanRequest.mode !== "one_time") {
       return jsonError("Manual order creation is only available for one-time orders.", 400);
+    }
+    if (isAdminQrPayment && (orderPlanRequest.currency !== "INR" || Number(orderPlanRequest.total || 0) <= 0)) {
+      return jsonError("QR payments require a positive INR order total.", 400);
     }
 
     const allowManualWithoutPayment =
@@ -180,25 +193,25 @@ export async function POST(req) {
       deliveryDistanceKm: orderPlanRequest.deliveryDistanceKm,
       total: orderPlanRequest.total,
       status: "new",
-      source: allowManualWithoutPayment ? "admin" : "landing",
-      adminOrderKind: allowManualWithoutPayment
+      source: isAdminOrder ? "admin" : "landing",
+      adminOrderKind: isAdminQrPayment ? "manual" : allowManualWithoutPayment
         ? manualPaymentAction === "never_collect"
           ? "sample"
           : "manual"
         : "",
-      createdByAdmin: allowManualWithoutPayment
+      createdByAdmin: isAdminOrder
         ? String(manualAdminSession?.session?.user?.email || "").trim().toLowerCase()
         : "",
     };
     const orderPlan = await createOrderPlanWithInventory({
       orderPayload,
-      channel: allowManualWithoutPayment ? "admin" : "website",
+      channel: isAdminOrder ? "admin" : "website",
       totalCycles: inventoryTotalCycles,
       expiresAt: allowManualWithoutPayment
         ? null
         : new Date(Date.now() + WEBSITE_INVENTORY_HOLD_MS),
       commitImmediately: shouldCommitInventoryImmediately,
-      actor: allowManualWithoutPayment
+      actor: isAdminOrder
         ? {
             actorType: "admin",
             actorEmail: manualAdminSession?.session?.user?.email || "",
@@ -208,7 +221,18 @@ export async function POST(req) {
 
     let checkoutPayload = null;
 
-    if (allowManualWithoutPayment) {
+    if (isAdminQrPayment) {
+      try {
+        await createAdminOrderQrPayment(orderPlan);
+      } catch (qrError) {
+        await releaseOrderInventory({
+          orderPlanId: orderPlan.id, actor: { actorType: "system" },
+          note: "Razorpay QR setup failed", setOrderStatus: "failed", setPaymentStatus: "failed",
+        });
+        console.error("Failed to create admin QR payment", qrError);
+        return jsonError("Could not create a Razorpay QR code. Check that QR payments are enabled in your Razorpay account and try again.", 502);
+      }
+    } else if (allowManualWithoutPayment) {
       if (manualPaymentAction === "never_collect") {
         orderPlan.payment = {
           provider: "manual",
@@ -299,7 +323,7 @@ export async function POST(req) {
       await refreshRouteSnapshots();
     }
 
-    if (!checkoutPayload) {
+    if (!checkoutPayload && !isAdminQrPayment) {
       try {
         await sendOrderPlanConfirmationEmail({ orderPlan });
         orderPlan.notifications.confirmationEmailSentAt = new Date();
@@ -321,8 +345,10 @@ export async function POST(req) {
       checkoutToken: checkoutPayload?.checkoutToken || "",
       razorpay: checkoutPayload?.razorpay || getRazorpayPublicConfig(),
       requiresPaymentSetup: Boolean(checkoutPayload?.checkoutToken),
+      ...(isAdminQrPayment ? { qrPayment: true } : {}),
       message:
-        orderPlan.mode === "one_time"
+        isAdminQrPayment ? "Order created. Ask the customer to scan the QR code to pay."
+        : orderPlan.mode === "one_time"
           ? checkoutPayload?.checkoutToken
             ? "Order created. Complete payment to confirm your delivery."
             : allowManualWithoutPayment
@@ -383,4 +409,3 @@ export async function POST(req) {
     return jsonError(error.message || "Could not create order.", 500);
   }
 }
-

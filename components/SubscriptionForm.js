@@ -3,6 +3,7 @@
 import { assertSubscriptionBox, calculatePrepaidSubscriptionPrice, getKanjiSubscriptionBoxes, PREPAID_SUBSCRIPTION_WEEKS, SUBSCRIPTION_PROCESSING_FEE } from "@/libs/prepaid-subscriptions";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
+import AdminOrderQrPayment from "@/components/AdminOrderQrPayment";
 import { getProductSetImage } from "@/libs/product-set-images";
 import {
   canEditSubscriptionBilling,
@@ -324,12 +325,12 @@ export default function SubscriptionForm({
 }) {
   const [wantsRecurring, setWantsRecurring] = useState(mode === "edit");
   useEffect(() => {
-    if (mode === "create" && new URLSearchParams(window.location.search).get("subscription") === "1") {
+    if (!enableAdminManualOrders && mode === "create" && new URLSearchParams(window.location.search).get("subscription") === "1") {
       const boxes = getKanjiSubscriptionBoxes(catalogItems);
       if (boxes.length) { setWantsRecurring(true); setSelectionMode("custom"); setCart(buildCartFromCatalog(catalogItems, boxes[0].items)); }
     }
-  }, [mode, catalogItems]);
-  const isRecurringMode = mode === "edit" || wantsRecurring;
+  }, [mode, catalogItems, enableAdminManualOrders]);
+  const isRecurringMode = mode === "edit" || (!enableAdminManualOrders && wantsRecurring);
   const isOneTimeMode = !isRecurringMode;
   const isPrepaidMode = mode === "create" && isRecurringMode;
   const [customer, setCustomer] = useState(() => ({
@@ -408,6 +409,7 @@ export default function SubscriptionForm({
   const [discountError, setDiscountError] = useState("");
   const [isApplyingDiscount, setIsApplyingDiscount] = useState(false);
   const [adminManualPaymentAction, setAdminManualPaymentAction] = useState("mark_paid");
+  const [qrOrder, setQrOrder] = useState(null);
   const initialEmailRef = useRef(initialValues?.email || "");
   const isCompletingPaymentRef = useRef(false);
   const selectionSectionRef = useRef(null);
@@ -1301,7 +1303,7 @@ export default function SubscriptionForm({
     const nextSubmitAction =
       event?.nativeEvent?.submitter?.value === "manual_without_payment"
         ? "manual_without_payment"
-        : "checkout";
+        : canCreateManualOrderWithoutPayment ? "qr" : "checkout";
     setActiveSubmitAction(nextSubmitAction);
 
     if (isRecurringMode && mode === "create") {
@@ -1364,6 +1366,7 @@ export default function SubscriptionForm({
             items: selectedItems,
             mode: isOneTimeMode ? "one_time" : "subscription",
             discountCode: normalizedDiscountCode,
+            ...(nextSubmitAction === "qr" ? { paymentMethod: "qr" } : {}),
             manualWithoutPayment:
               nextSubmitAction === "manual_without_payment" && canCreateManualOrderWithoutPayment,
             manualPaymentAction:
@@ -1389,6 +1392,14 @@ export default function SubscriptionForm({
       }
 
       const data = await response.json();
+
+      if (nextSubmitAction === "qr") {
+        if (!data.qrPayment || !data.orderPlan?.payment?.qrCodeId) throw new Error("Razorpay QR payment is unavailable for this order.");
+        setQrOrder(data.orderPlan);
+        onOrderSaved?.(data.orderPlan);
+        resetForCreate();
+        return;
+      }
 
       if (data.razorpay?.isConfigured && data.checkoutToken) {
         await openRazorpayCheckout({
@@ -1538,7 +1549,8 @@ export default function SubscriptionForm({
 
   return (
     <div className="checkout-flow min-w-0 space-y-4 sm:space-y-6">
-      {mode === "create" && (
+      {qrOrder && <AdminOrderQrPayment initialOrder={qrOrder} onOrderUpdated={onOrderSaved} onClose={() => setQrOrder(null)} />}
+      {mode === "create" && !enableAdminManualOrders && (
         <section id="subscription-checkout" className="rounded-2xl border border-[#d6c6ae] bg-[#fbf7f0] p-4 sm:rounded-[28px] sm:p-6 md:p-8">
           <h2 className="text-xl font-semibold text-[#2f4a3e]">Kanji subscriptions</h2>
           <p className="mt-2 text-sm text-[#53675d]">Six bottles each week. Choose Trial (6 bottles), 2 weeks (12 bottles), or 4 weeks (24 bottles). Pay once upfront, with a single ₹50 processing fee and delivery included.</p>
@@ -2453,7 +2465,7 @@ export default function SubscriptionForm({
           <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
             <div className="text-sm text-[#5f7068]">
               {canCreateManualOrderWithoutPayment
-                ? "Admin order entry. Choose how this order should be treated for payment."
+                ? "Create the order and show the customer a QR code to pay."
                 : isOneTimeMode
                 ? "Quick checkout. Complete your order and we will send the confirmation by email."
                 : "Pay upfront for your weekly deliveries. We will email you near the end to invite you to renew."}
@@ -2470,51 +2482,59 @@ export default function SubscriptionForm({
                 </button>
               )}
               {canCreateManualOrderWithoutPayment && (
-                <div className="flex flex-col gap-3 rounded-2xl border border-[#ddcfb6] bg-[#fffaf1] p-3">
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      className={`btn btn-sm ${
-                        adminManualPaymentAction === "mark_paid" ? "btn-primary" : "btn-outline"
-                      }`}
-                      onClick={() => setAdminManualPaymentAction("mark_paid")}
-                    >
-                      Mark paid
-                    </button>
-                    <button
-                      type="button"
-                      className={`btn btn-sm ${
-                        adminManualPaymentAction === "collect_later" ? "btn-primary" : "btn-outline"
-                      }`}
-                      onClick={() => setAdminManualPaymentAction("collect_later")}
-                    >
-                      Collect later
-                    </button>
-                    <button
-                      type="button"
-                      className={`btn btn-sm ${
-                        adminManualPaymentAction === "never_collect" ? "btn-primary" : "btn-outline"
-                      }`}
-                      onClick={() => setAdminManualPaymentAction("never_collect")}
-                    >
-                      Never collect
-                    </button>
-                  </div>
-                  <button
-                    type="submit"
-                    value="manual_without_payment"
-                    disabled={!canAttemptSubmit}
-                    className="btn btn-outline w-full sm:min-w-[220px] sm:w-auto"
-                    onClick={() => setActiveSubmitAction("manual_without_payment")}
-                  >
-                    {isSubmitting && activeSubmitAction === "manual_without_payment"
-                      ? "Adding order..."
-                      : adminManualPaymentAction === "collect_later"
-                        ? "Create order, collect later"
-                        : adminManualPaymentAction === "never_collect"
-                          ? "Create sample/promo order"
-                        : "Create paid admin order"}
+                <div className="flex min-w-0 flex-col gap-3">
+                  <button type="submit" value="qr" disabled={!canAttemptSubmit} className="btn btn-primary w-full sm:w-auto">
+                    {isSubmitting && activeSubmitAction === "qr" ? "Creating payment QR…" : "Show payment QR code"}
                   </button>
+                  <details className="rounded-2xl border border-[#ddcfb6] bg-[#fffaf1] p-3">
+                    <summary className="cursor-pointer text-sm font-medium">Other payment options</summary>
+                    <div className="mt-3 flex flex-col gap-3">
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          className={`btn btn-sm ${
+                            adminManualPaymentAction === "mark_paid" ? "btn-primary" : "btn-outline"
+                          }`}
+                          onClick={() => setAdminManualPaymentAction("mark_paid")}
+                        >
+                          Mark paid
+                        </button>
+                        <button
+                          type="button"
+                          className={`btn btn-sm ${
+                            adminManualPaymentAction === "collect_later" ? "btn-primary" : "btn-outline"
+                          }`}
+                          onClick={() => setAdminManualPaymentAction("collect_later")}
+                        >
+                          Collect later
+                        </button>
+                        <button
+                          type="button"
+                          className={`btn btn-sm ${
+                            adminManualPaymentAction === "never_collect" ? "btn-primary" : "btn-outline"
+                          }`}
+                          onClick={() => setAdminManualPaymentAction("never_collect")}
+                        >
+                          Never collect
+                        </button>
+                      </div>
+                      <button
+                        type="submit"
+                        value="manual_without_payment"
+                        disabled={!canAttemptSubmit}
+                        className="btn btn-outline w-full sm:min-w-[220px] sm:w-auto"
+                        onClick={() => setActiveSubmitAction("manual_without_payment")}
+                      >
+                        {isSubmitting && activeSubmitAction === "manual_without_payment"
+                          ? "Adding order..."
+                          : adminManualPaymentAction === "collect_later"
+                            ? "Create order, collect later"
+                            : adminManualPaymentAction === "never_collect"
+                              ? "Create sample/promo order"
+                            : "Create paid admin order"}
+                      </button>
+                    </div>
+                  </details>
                 </div>
               )}
               {!canCreateManualOrderWithoutPayment && (
