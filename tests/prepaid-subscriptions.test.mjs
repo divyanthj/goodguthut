@@ -42,6 +42,19 @@ test("server rejects duplicate, fractional, unavailable, and incorrect boxes", (
   pricing.assertSubscriptionBox([{ ...catalog[0], quantity: 3 }, { ...catalog[1], quantity: 3 }], catalog, 1);
 });
 
+test("ready-to-go sets offered for prepaid plans must match a valid six-bottle kanji box", () => {
+  const combos = [
+    { id: "mixed", status: "active", items: mixed },
+    { id: "single", status: "active", items: [{ sku: catalog[0].sku, quantity: 6 }] },
+    { id: "trial-only", status: "active", items: [{ sku: catalog[0].sku, quantity: 3 }, { sku: catalog[1].sku, quantity: 3 }] },
+    { id: "short", status: "active", items: [{ sku: catalog[0].sku, quantity: 4 }] },
+    { id: "non-kanji", status: "active", items: [{ sku: "SPARKLE", quantity: 6 }] },
+    { id: "archived", status: "archived", items: mixed },
+  ];
+  assert.deepEqual(pricing.getEligiblePrepaidSubscriptionCombos(combos, catalog, 4).map((combo) => combo.id), ["mixed", "single"]);
+  assert.deepEqual(pricing.getEligiblePrepaidSubscriptionCombos(combos, catalog, 1).map((combo) => combo.id), ["mixed", "single", "trial-only"]);
+});
+
 test("weekly delivery count matches plans and legacy durations remain readable", () => {
   for (const weeks of [1, 2, 4, 3, 6, 8]) assert.equal(subscriptions.getSubscriptionDurationConfig("weekly", weeks).totalCount, weeks);
   assert.equal(subscriptions.formatSubscriptionDuration(1), "Trial");
@@ -84,6 +97,7 @@ test("request uses trusted SKU prices, preserves weekly items, and charges entir
     buildSeasonalCutoffMapFromCatalog: () => new Map(), getSeasonalCoverageError: () => "",
     calculateDeliveryQuote: async () => { throw new Error("Unexpected delivery call"); }, getPlaceDetails: async () => ({}),
     ...Object.fromEntries(["Address", "Email", "Name", "Phone", "SessionToken"].flatMap((key) => [[`normalize${key}`, (value) => value], [`isValid${key}`, () => true]])), isValidPlaceId: () => true,
+    isValidEmail: (value) => Boolean(value),
   };
   const { buildSubscriptionRequest } = loadWithDependencies("../libs/subscription-request.js", deps, ["buildSubscriptionRequest"]);
   const result = await buildSubscriptionRequest(body, { prepaid: true });
@@ -93,8 +107,31 @@ test("request uses trusted SKU prices, preserves weekly items, and charges entir
   assert.deepEqual(result.items.map((item) => item.unitPrice), [80, 100, 120]);
   await assert.rejects(buildSubscriptionRequest({ ...body, durationWeeks: 3 }, { prepaid: true }));
   await assert.rejects(buildSubscriptionRequest({ ...body, cadence: "monthly" }, { prepaid: true }));
+  await assert.rejects(buildSubscriptionRequest({ ...body, email: "" }, { prepaid: true }));
+  assert.equal((await buildSubscriptionRequest({ ...body, email: "" }, { prepaid: true, allowMissingEmail: true })).email, "");
   const legacy = await buildSubscriptionRequest({ ...body, durationWeeks: 6 });
   assert.equal(legacy.total, 600);
+
+  const configuredSets = [
+    { id: "six-kanji", name: "Six Kanji", status: "active", items: [{ sku: catalog[1].sku, quantity: 6, unitPrice: 1 }] },
+    { id: "short-set", name: "Short Set", status: "active", items: [{ sku: catalog[0].sku, quantity: 4 }] },
+  ];
+  const { buildSubscriptionRequest: buildConfiguredSetRequest } = loadWithDependencies(
+    "../libs/subscription-request.js",
+    { ...deps, listSubscriptionCombos: async () => configuredSets },
+    ["buildSubscriptionRequest"]
+  );
+  const configuredSetBody = { ...body, selectionMode: "combo", comboId: "six-kanji", items: [{ sku: catalog[0].sku, quantity: 6, unitPrice: 1 }] };
+  const configuredSet = await buildConfiguredSetRequest(configuredSetBody, { prepaid: true });
+  assert.equal(configuredSet.selectionMode, "combo");
+  assert.equal(configuredSet.comboId, "six-kanji");
+  assert.equal(configuredSet.comboName, "Six Kanji");
+  assert.deepEqual(configuredSet.items.map(({ sku, quantity, unitPrice }) => ({ sku, quantity, unitPrice })), [
+    { sku: catalog[1].sku, quantity: 6, unitPrice: 100 },
+  ]);
+  assert.equal(configuredSet.total, 2210);
+  await assert.rejects(buildConfiguredSetRequest({ ...configuredSetBody, comboId: "missing" }, { prepaid: true }), /available subscription combos/);
+  await assert.rejects(buildConfiguredSetRequest({ ...configuredSetBody, comboId: "short-set" }, { prepaid: true }), /exactly six bottles/);
 });
 
 test("renewal job claims once, retries failures, and selects paid plans near expiry", async () => {

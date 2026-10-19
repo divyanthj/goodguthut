@@ -7,18 +7,21 @@ import { sendAdminOrderPlanConfirmedEmail } from "@/libs/admin-order-notificatio
 import { syncCollatoKnowledgeDocument } from "@/libs/collato-knowledge";
 
 export const isAdminQrOrder = (order) =>
-  order?.source === "admin" && order?.mode === "one_time" &&
+  order?.source === "admin" && ["one_time", "recurring"].includes(order?.mode) &&
+  (order?.mode !== "recurring" || order?.paymentType === "one_time") &&
   order?.payment?.provider === "razorpay" && Boolean(order?.payment?.qrCodeId);
 
 export const createAdminOrderQrPayment = async (order) => {
   const amount = Math.round(Number(order.total) * 100);
-  if (order.source !== "admin" || order.mode !== "one_time" || order.currency !== "INR" || !Number.isSafeInteger(amount) || amount <= 0) {
-    throw new Error("QR payments require a positive INR one-time admin order.");
+  if (order.source !== "admin" || !["one_time", "recurring"].includes(order.mode) ||
+    (order.mode === "recurring" && order.paymentType !== "one_time") ||
+    order.currency !== "INR" || !Number.isSafeInteger(amount) || amount <= 0) {
+    throw new Error("QR payments require a positive INR admin order or prepaid subscription.");
   }
   const qr = await createRazorpayQrCode({
     amount,
     name: "Good Gut Hut",
-    description: `Order ${order.orderNumber}`,
+    description: `${order.mode === "recurring" ? "Subscription" : "Order"} ${order.orderNumber}`,
     closeBy: Math.floor((Date.now() + WEBSITE_INVENTORY_HOLD_MS) / 1000),
     notes: { orderPlanId: order.id, orderNumber: order.orderNumber, source: "admin" },
   });
@@ -31,6 +34,9 @@ export const createAdminOrderQrPayment = async (order) => {
   order.payment = {
     provider: "razorpay", status: "pending", amount: order.total, currency: order.currency,
     qrCodeId: qr.id, qrImageUrl: qr.image_url, qrExpiresAt: new Date(Number(qr.close_by) * 1000),
+    totalCount: order.mode === "recurring" ? order.durationWeeks : 1,
+    paidCount: 0,
+    remainingCount: order.mode === "recurring" ? order.durationWeeks : 1,
   };
   if (order.inventory?.status === "held") order.inventory.expiresAt = order.payment.qrExpiresAt;
   try { await order.save(); }
@@ -98,9 +104,11 @@ export const syncAdminOrderQrPayment = async (order, { cancel = false } = {}) =>
     const updated = await OrderPlan.findOneAndUpdate(
       { _id: order.id, "payment.qrCodeId": qr.id, "payment.status": { $ne: "paid" } },
       { $set: {
-        ...(!["cancelled", "shipped", "fulfilled"].includes(order.status) ? { status: "confirmed" } : {}),
+        ...(!["cancelled", "shipped", "fulfilled"].includes(order.status) ? { status: order.mode === "recurring" ? "active" : "confirmed" } : {}),
         "payment.status": "paid", "payment.paymentId": paid.id, "payment.orderId": paid.order_id || "",
         "payment.paidAt": new Date(Number(paid.created_at || Math.floor(Date.now() / 1000)) * 1000),
+        "payment.paidCount": order.mode === "recurring" ? order.durationWeeks : 1,
+        "payment.remainingCount": 0,
       } },
       { new: true }
     );
@@ -130,7 +138,7 @@ export const syncAdminOrderQrPayment = async (order, { cancel = false } = {}) =>
 // Refreshing Orders also reconciles payments made after the QR screen was closed.
 export const syncPendingAdminQrOrders = async () => {
   const pending = await OrderPlan.find({
-    source: "admin", mode: "one_time", "payment.provider": "razorpay", "payment.status": "pending", "payment.qrCodeId": { $exists: true, $ne: "" },
+    source: "admin", mode: { $in: ["one_time", "recurring"] }, "payment.provider": "razorpay", "payment.status": "pending", "payment.qrCodeId": { $exists: true, $ne: "" },
   }).sort({ createdAt: -1 }).limit(20);
   for (let offset = 0; offset < pending.length; offset += 5) {
     const results = await Promise.allSettled(pending.slice(offset, offset + 5).map(order => syncAdminOrderQrPayment(order)));

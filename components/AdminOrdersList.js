@@ -1187,11 +1187,13 @@ export default function AdminOrdersList({ initialOrders = [], orderEntryConfig =
 
             {isManualUnpaidHold && (
               <div className="mt-4 rounded-xl bg-base-100 p-4">
-                <div className="font-medium">Edit unpaid WhatsApp order</div>
+                <div className="font-medium">{isRecurringOrderPlan ? "Subscription payment pending" : "Edit unpaid WhatsApp order"}</div>
                 <div className="mt-1 text-xs opacity-70">
-                  Changes reserve or release only the difference. Existing item prices stay unchanged.
+                  {isRecurringOrderPlan
+                    ? "The full prepaid amount must be collected before weekly deliveries can begin."
+                    : "Changes reserve or release only the difference. Existing item prices stay unchanged."}
                 </div>
-                <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {!isRecurringOrderPlan && <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {(orderEntryConfig?.catalogItems || [])
                     .filter((item) => item.status === "active")
                     .map((item) => (
@@ -1214,16 +1216,16 @@ export default function AdminOrdersList({ initialOrders = [], orderEntryConfig =
                         />
                       </label>
                     ))}
-                </div>
+                </div>}
                 <div className="mt-4 flex flex-wrap gap-2">
-                  <button
+                  {!isRecurringOrderPlan && <button
                     type="button"
                     className="btn btn-outline btn-sm"
                     disabled={savingId === `${order.sourceType}:${order.id}`}
                     onClick={() => saveHeldOrderItems(order)}
                   >
                     Save item changes
-                  </button>
+                  </button>}
                   <button
                     type="button"
                     className="btn btn-success btn-sm"

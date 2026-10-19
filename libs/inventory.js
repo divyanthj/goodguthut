@@ -593,7 +593,7 @@ const recordShortfallAfterRollback = async ({
       orderPlan.payment.status = "paid";
       orderPlan.payment.paymentId = orderPlan.payment.paymentId || `manual_${Date.now()}`;
       orderPlan.payment.paidAt = orderPlan.payment.paidAt || new Date();
-      orderPlan.status = "confirmed";
+      orderPlan.status = orderPlan.mode === "recurring" ? "active" : "confirmed";
     }
 
     const quantities = new Map(
@@ -747,13 +747,14 @@ export const commitOneTimeOrderInventory = async ({
 
 export const markManualOrderPaid = async ({ orderPlanId, actor = {} }) => {
   try {
-    return await runTransaction(async (session) => {
+    const paidOrder = await runTransaction(async (session) => {
       const orderPlan = await OrderPlan.findById(orderPlanId).session(session);
       if (!orderPlan) {
         return null;
       }
       if (
-        orderPlan.mode !== "one_time" ||
+        !["one_time", "recurring"].includes(orderPlan.mode) ||
+        (orderPlan.mode === "recurring" && orderPlan.paymentType !== "one_time") ||
         orderPlan.source !== "admin" ||
         orderPlan.payment?.provider !== "manual" ||
         orderPlan.payment?.status !== "pending"
@@ -767,8 +768,14 @@ export const markManualOrderPaid = async ({ orderPlanId, actor = {} }) => {
       orderPlan.payment.status = "paid";
       orderPlan.payment.paymentId = orderPlan.payment.paymentId || `manual_${Date.now()}`;
       orderPlan.payment.paidAt = new Date();
-      orderPlan.status = "confirmed";
+      orderPlan.status = orderPlan.mode === "recurring" ? "active" : "confirmed";
+      if (orderPlan.mode === "recurring") {
+        orderPlan.payment.totalCount = orderPlan.durationWeeks;
+        orderPlan.payment.paidCount = orderPlan.durationWeeks;
+        orderPlan.payment.remainingCount = 0;
+      }
       await orderPlan.save({ session });
+      if (orderPlan.mode === "recurring") return orderPlan;
       return commitOneTimeInSession({
         orderPlan,
         session,
@@ -776,6 +783,14 @@ export const markManualOrderPaid = async ({ orderPlanId, actor = {} }) => {
         note: "External payment confirmed by admin",
       });
     });
+    if (paidOrder?.mode === "recurring") {
+      return syncRecurringOrderInventory({
+        orderPlanId,
+        paidCycles: paidOrder.durationWeeks,
+        actor,
+      });
+    }
+    return paidOrder;
   } catch (error) {
     if (error.code !== "INVENTORY_COMMIT_SHORTFALL") {
       throw error;

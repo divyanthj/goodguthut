@@ -9,16 +9,6 @@ export const SUBSCRIPTION_DELIVERY_HOUR_IST = 9;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const IST_OFFSET = "+05:30";
 
-const WEEKDAY_TO_INDEX = {
-  sunday: 0,
-  monday: 1,
-  tuesday: 2,
-  wednesday: 3,
-  thursday: 4,
-  friday: 5,
-  saturday: 6,
-};
-
 const DATE_KEY_FORMATTER = new Intl.DateTimeFormat("en-CA", {
   timeZone: SUBSCRIPTION_SCHEDULE_TIME_ZONE,
   year: "numeric",
@@ -32,6 +22,11 @@ const FRIENDLY_DATE_FORMATTER = new Intl.DateTimeFormat("en-IN", {
   day: "numeric",
   month: "long",
 });
+
+const formatFriendlyDate = (date) => {
+  const parts = Object.fromEntries(FRIENDLY_DATE_FORMATTER.formatToParts(date).map(({ type, value }) => [type, value]));
+  return `${parts.weekday}, ${parts.day} ${parts.month}`;
+};
 
 const FRIENDLY_DATE_TIME_FORMATTER = new Intl.DateTimeFormat("en-IN", {
   timeZone: SUBSCRIPTION_SCHEDULE_TIME_ZONE,
@@ -172,7 +167,7 @@ export const listAvailableSubscriptionStartDates = ({
 
     options.push({
       value: dateKey,
-      label: FRIENDLY_DATE_FORMATTER.format(scheduledAt),
+      label: formatFriendlyDate(scheduledAt),
       scheduledAtIso: scheduledAt.toISOString(),
     });
   }
@@ -185,7 +180,7 @@ export const getDefaultSubscriptionStartDate = (config = {}) =>
 
 export const formatSubscriptionDate = (dateKey = "") => {
   const date = parseDateKeyToIstDate(dateKey);
-  return date ? FRIENDLY_DATE_FORMATTER.format(date) : "";
+  return date ? formatFriendlyDate(date) : "";
 };
 
 export const formatSubscriptionDateTime = (date = "") => {

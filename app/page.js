@@ -75,21 +75,6 @@ const values = [
   },
 ];
 
-const testimonials = [
-  {
-    quote: "The drinks feel thoughtful, not mass-produced. I like that every order still feels personal.",
-    name: "Regular customer",
-  },
-  {
-    quote: "The kanji has become a weekly fridge staple. Tangy, bright, and exactly the kind of thing I want after lunch.",
-    name: "Kanji drinker",
-  },
-  {
-    quote: "Gift packs are the thing I want GGH to lean into. It already feels like something made for sharing.",
-    name: "GGH friend",
-  },
-];
-
 const educationTopics = [
   {
     title: "What kanji is and why it tastes alive",
@@ -380,51 +365,19 @@ export default async function HomePage() {
       </section>
 
       <section id="subscriptions" className="relative z-10 bg-[#f8f4ea] px-4 py-10 sm:px-6 sm:py-16">
-        <div className="mx-auto grid max-w-6xl gap-8 md:grid-cols-3">
-          <div className="md:col-span-2">
-            <p className="text-sm font-semibold uppercase tracking-[0.24em] text-[#8b5d39]">
-              Subscriptions and packs
-            </p>
-            <h2 className="mt-3 text-3xl font-black leading-tight text-[#213a2f] sm:text-4xl md:text-5xl">
-              Choose a one-time batch, prepaid subscription, or gift-worthy pack.
-            </h2>
-            <p className="mt-5 max-w-3xl text-base leading-8 text-[#51685d]">
-              Order once, set up a weekly rhythm, or ask us to build a gift or
-              event pack around the people you are buying for.
-            </p>
-          </div>
-          <div className="rounded-lg border border-[#d1c4b0] bg-[#fffdf8] p-5">
-            <h3 className="text-xl font-black text-[#213a2f]">Need something custom?</h3>
-            <p className="mt-3 text-sm leading-7 text-[#51685d]">
-              For gift packs, larger batches, event orders, or custom pickle requests, start on WhatsApp and we will shape it with you.
-            </p>
-            <a className="btn btn-primary mt-5 w-full" href={whatsappHref} target="_blank" rel="noreferrer">
-              Start a custom request
-            </a>
-          </div>
-        </div>
-      </section>
-
-      <section id="testimonials" className="relative z-10 bg-[#fffdf8] px-4 py-10 sm:px-6 sm:py-16">
         <div className="mx-auto max-w-6xl">
           <p className="text-sm font-semibold uppercase tracking-[0.24em] text-[#8b5d39]">
-            Testimonials
+            Subscriptions
           </p>
           <h2 className="mt-3 text-3xl font-black leading-tight text-[#213a2f] sm:text-4xl md:text-5xl">
-            Loved by people who like their food alive.
+            Make kanji part of your week.
           </h2>
-          <div className="mt-10 grid gap-4 md:grid-cols-3">
-            {testimonials.map((testimonial) => (
-              <figure key={testimonial.name} className="rounded-lg border border-[#ddcfb6] bg-[#f8f4ea] p-5">
-                <blockquote className="text-base leading-7 text-[#40584c]">
-                  &quot;{testimonial.quote}&quot;
-                </blockquote>
-                <figcaption className="mt-5 text-sm font-bold uppercase tracking-[0.18em] text-[#8b5d39]">
-                  {testimonial.name}
-                </figcaption>
-              </figure>
-            ))}
-          </div>
+          <p className="mt-5 max-w-3xl text-base leading-8 text-[#51685d]">
+            Choose a six-bottle kanji set for one, two, or four weekly deliveries. Pay once upfront, with delivery included.
+          </p>
+          <a className="btn btn-primary mt-6" href="#subscription-checkout">
+            Choose a subscription
+          </a>
         </div>
       </section>
 
@@ -487,8 +440,8 @@ export default async function HomePage() {
                   Email {config.mailgun.supportEmail}
                 </a>
               )}
-              <a className="btn btn-primary" href="#order-flow">
-                Go to cart
+                <a className="btn btn-primary" href="#subscription-checkout">
+                Choose a subscription
               </a>
             </div>
           </div>
@@ -502,10 +455,10 @@ export default async function HomePage() {
               Order
             </p>
             <h2 className="mt-3 text-3xl font-black leading-tight text-[#213a2f] sm:text-4xl md:text-5xl">
-              Build your Good Gut Hut order.
+              Build your Good Gut Hut subscription.
             </h2>
             <p className="mt-4 text-base leading-8 text-[#51685d]">
-              Choose a ready set, customize your bottle mix, or switch into a prepaid weekly subscription.
+              Choose a ready-to-go six-bottle kanji set and a prepaid weekly plan.
             </p>
           </div>
           <UnifiedOrderCheckout

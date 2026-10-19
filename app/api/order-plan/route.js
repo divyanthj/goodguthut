@@ -118,7 +118,7 @@ export async function POST(req) {
       return jsonError("Razorpay QR payments are currently unavailable.", 503);
     }
 
-    if (["recurring", "subscription"].includes(String(body.mode || "").trim().toLowerCase()) && !isRazorpayConfigured()) {
+    if (["recurring", "subscription"].includes(String(body.mode || "").trim().toLowerCase()) && !isAdminOrder && !isRazorpayConfigured()) {
       return jsonError("Subscription payments are temporarily unavailable. Please try again later.", 503);
     }
 
@@ -127,17 +127,11 @@ export async function POST(req) {
     });
     await connectMongo();
 
-    if (isAdminOrder && orderPlanRequest.mode !== "one_time") {
-      return jsonError("Manual order creation is only available for one-time orders.", 400);
-    }
     if (isAdminQrPayment && (orderPlanRequest.currency !== "INR" || Number(orderPlanRequest.total || 0) <= 0)) {
       return jsonError("QR payments require a positive INR order total.", 400);
     }
 
-    const allowManualWithoutPayment =
-      orderPlanRequest.mode === "one_time" &&
-      isManualAdminOrder &&
-      manualAdminSession?.isAdmin;
+    const allowManualWithoutPayment = isManualAdminOrder && manualAdminSession?.isAdmin;
     const manualPaymentAction = ["collect_later", "never_collect"].includes(
       body.manualPaymentAction
     )
@@ -152,10 +146,9 @@ export async function POST(req) {
           ).totalCount
         : 1;
     const shouldCommitInventoryImmediately =
-      orderPlanRequest.mode === "one_time" &&
-      ((allowManualWithoutPayment && manualPaymentAction !== "collect_later") ||
-        (!allowManualWithoutPayment &&
-          (!isRazorpayConfigured() || Number(orderPlanRequest.total || 0) <= 0)));
+      (allowManualWithoutPayment && manualPaymentAction !== "collect_later") ||
+      (orderPlanRequest.mode === "one_time" && !allowManualWithoutPayment &&
+        (!isRazorpayConfigured() || Number(orderPlanRequest.total || 0) <= 0));
     const orderPayload = {
       orderNumber: await reserveNextOrderNumber({
         sourceType: "order_plan",
@@ -233,22 +226,29 @@ export async function POST(req) {
         return jsonError("Could not create a Razorpay QR code. Check that QR payments are enabled in your Razorpay account and try again.", 502);
       }
     } else if (allowManualWithoutPayment) {
+      const isSubscription = orderPlan.mode === "recurring";
       if (manualPaymentAction === "never_collect") {
         orderPlan.payment = {
           provider: "manual",
           status: "not_required",
           amount: 0,
           currency: orderPlan.currency || "INR",
+          totalCount: inventoryTotalCycles,
+          paidCount: inventoryTotalCycles,
+          remainingCount: 0,
         };
-        orderPlan.status = "confirmed";
+        orderPlan.status = isSubscription ? "active" : "confirmed";
       } else if (manualPaymentAction === "collect_later") {
         orderPlan.payment = {
           provider: "manual",
           status: "pending",
           amount: Number(orderPlan.total || 0),
           currency: orderPlan.currency || "INR",
+          totalCount: inventoryTotalCycles,
+          paidCount: 0,
+          remainingCount: inventoryTotalCycles,
         };
-        orderPlan.status = "confirmed";
+        orderPlan.status = isSubscription ? "payment_pending" : "confirmed";
       } else {
         orderPlan.payment = {
           provider: "manual",
@@ -257,8 +257,11 @@ export async function POST(req) {
           currency: orderPlan.currency || "INR",
           paymentId: `manual_${Date.now()}`,
           paidAt: new Date(),
+          totalCount: inventoryTotalCycles,
+          paidCount: inventoryTotalCycles,
+          remainingCount: 0,
         };
-        orderPlan.status = "confirmed";
+        orderPlan.status = isSubscription ? "active" : "confirmed";
       }
       await orderPlan.save();
       await refreshRouteSnapshots();
@@ -323,7 +326,7 @@ export async function POST(req) {
       await refreshRouteSnapshots();
     }
 
-    if (!checkoutPayload && !isAdminQrPayment) {
+    if (!checkoutPayload && !isAdminQrPayment && !(allowManualWithoutPayment && manualPaymentAction === "collect_later") && !(allowManualWithoutPayment && orderPlan.mode === "recurring" && manualPaymentAction === "never_collect")) {
       try {
         await sendOrderPlanConfirmationEmail({ orderPlan });
         orderPlan.notifications.confirmationEmailSentAt = new Date();
@@ -347,7 +350,7 @@ export async function POST(req) {
       requiresPaymentSetup: Boolean(checkoutPayload?.checkoutToken),
       ...(isAdminQrPayment ? { qrPayment: true } : {}),
       message:
-        isAdminQrPayment ? "Order created. Ask the customer to scan the QR code to pay."
+        isAdminQrPayment ? `${orderPlan.mode === "recurring" ? "Subscription" : "Order"} created. Ask the customer to scan the QR code to pay.`
         : orderPlan.mode === "one_time"
           ? checkoutPayload?.checkoutToken
             ? "Order created. Complete payment to confirm your delivery."
@@ -360,7 +363,13 @@ export async function POST(req) {
               : "Order created and confirmed."
           : checkoutPayload?.checkoutToken
             ? "Subscription created. Pay the full amount upfront to confirm your weekly deliveries."
-            : "Plan created and confirmed.",
+            : allowManualWithoutPayment
+              ? manualPaymentAction === "never_collect"
+                ? "Admin subscription created. Payment will not be collected."
+                : manualPaymentAction === "collect_later"
+                  ? "Admin subscription created. Collect the full payment before deliveries begin."
+                  : "Admin subscription created and marked paid."
+              : "Plan created and confirmed.",
     });
   } catch (error) {
     console.error(error);

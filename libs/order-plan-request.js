@@ -226,7 +226,10 @@ export const buildOrderPlanRequest = async (body = {}, options = {}) => {
   const mode = String(body.mode || "one_time").trim().toLowerCase();
 
   if (["recurring", "subscription"].includes(mode)) {
-    const recurringRequest = await buildSubscriptionRequest(body, { prepaid: true });
+    const recurringRequest = await buildSubscriptionRequest(body, {
+      prepaid: true,
+      allowMissingEmail: options.allowMissingEmail === true,
+    });
     return {
       ...recurringRequest,
       mode: "recurring",
@@ -240,4 +243,3 @@ export const buildOrderPlanRequest = async (body = {}, options = {}) => {
 
   return buildOneTimeRequest(body, options);
 };
-

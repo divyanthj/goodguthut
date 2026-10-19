@@ -1,8 +1,10 @@
 # Admin face-to-face QR orders
 
-In **Admin → Orders → Add phone or face-to-face order**, enter the customer's
-details, address, and items, then choose **Show payment QR code**. Email is
-optional. The customer scans the Razorpay UPI QR on their own phone. Public
+In **Admin → Orders → Add phone or face-to-face order**, choose **One-time order**
+or **Subscription**. For a subscription, select a six-bottle kanji set and a
+Trial, two-week, or four-week prepaid plan. Enter the customer's details and
+address, then choose **Show payment QR code** or a manual payment option. Email
+is optional. The customer scans the Razorpay UPI QR on their own phone. Public
 website checkout continues to use the existing Razorpay checkout.
 
 The QR accepts one payment for the server-calculated INR total. Its expiry is
@@ -13,15 +15,19 @@ its order card after closing the screen. Refreshing Orders also reconciles up to
 20 pending QR orders.
 
 Only a captured payment fetched from that specific Razorpay QR, for the exact
-amount and currency, confirms the order. Verification commits the existing
-inventory allocation, updates delivery routes, and sends the usual customer and
-admin confirmations. Inventory shortfalls remain available for admin review.
+amount and currency, confirms the order. For subscriptions, the QR covers the
+full prepaid period and reserves all scheduled weeks until payment. Verification
+commits the existing inventory allocation, activates the plan, updates delivery
+routes, and sends the usual customer and admin confirmations. Inventory
+shortfalls remain available for admin review.
 Unpaid expiry or cancellation closes payment and releases inventory. Cancelling
 or deleting a pending QR order closes its QR first; a payment arriving during
 cancellation is reconciled before allowing the destructive action.
 
 The existing mark-paid, collect-later, and never-collect actions remain under
-**Other payment options**. These are separate from verified QR payments.
+**Other payment options** for both order types. A collect-later subscription
+stays pending until an admin marks it paid; its weekly deliveries cannot be
+fulfilled before then. These actions are separate from verified QR payments.
 
 ## Razorpay setup
 

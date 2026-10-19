@@ -9,6 +9,7 @@ import config from "@/config";
 import logo from "@/app/logo.jpg";
 
 const isAdminPath = (pathname = "") => pathname.startsWith("/admin");
+const SUBSCRIPTION_HREF = "/#subscription-checkout";
 const SUPPORT_PHONE_WHATSAPP = "919916331569";
 const whatsappHref = `https://wa.me/${SUPPORT_PHONE_WHATSAPP}?text=${encodeURIComponent(
   "Hi Good Gut Hut, I would like to know more about your ferments."
@@ -16,7 +17,7 @@ const whatsappHref = `https://wa.me/${SUPPORT_PHONE_WHATSAPP}?text=${encodeURICo
 
 const publicLinks = [
   { href: "/#products", label: "Products" },
-  { href: "/#subscriptions", label: "Subscriptions" },
+  { href: SUBSCRIPTION_HREF, label: "Subscriptions" },
   { href: "/track-order", label: "Track Order" },
   { href: "/blog", label: "Learn" },
   { href: "/#about", label: "About Us" },
@@ -30,6 +31,20 @@ export default function SiteChrome({ children }) {
   const showAdminLink = Boolean(session?.user?.isAdmin);
   const showLogout = status === "authenticated";
   const closeMenu = () => setIsMenuOpen(false);
+  const handleSubscriptionClick = (event) => {
+    closeMenu();
+
+    if (pathname !== "/") return;
+
+    const checkout = document.getElementById("subscription-checkout");
+    if (!checkout) return;
+
+    event.preventDefault();
+    if (`${window.location.pathname}${window.location.search}${window.location.hash}` !== SUBSCRIPTION_HREF) {
+      window.history.pushState(null, "", SUBSCRIPTION_HREF);
+    }
+    window.requestAnimationFrame(() => checkout.scrollIntoView({ behavior: "smooth", block: "start" }));
+  };
 
   return (
     <div className="flex min-h-screen min-w-0 flex-col bg-base-200">
@@ -60,7 +75,11 @@ export default function SiteChrome({ children }) {
           </div>
 
           <nav className="hidden flex-1 items-center justify-center gap-6 text-sm font-semibold text-[#40584c] xl:flex" aria-label="Main navigation">
-            {publicLinks.map((link) => (
+            {publicLinks.map((link) => link.href === SUBSCRIPTION_HREF ? (
+              <a key={link.href} href={link.href} className="inline-flex min-h-11 items-center whitespace-nowrap transition hover:text-primary" onClick={handleSubscriptionClick}>
+                {link.label}
+              </a>
+            ) : (
               <Link key={link.href} href={link.href} className="inline-flex min-h-11 items-center whitespace-nowrap transition hover:text-primary">
                 {link.label}
               </Link>
@@ -76,9 +95,9 @@ export default function SiteChrome({ children }) {
             >
               WhatsApp
             </a>
-            <Link href="/#order-flow" className="btn btn-sm btn-primary min-h-11">
-              Cart
-            </Link>
+            <a href={SUBSCRIPTION_HREF} className="btn btn-sm btn-primary min-h-11" onClick={handleSubscriptionClick}>
+              Subscribe
+            </a>
             {showAdminLink && (
               <Link
                 href="/admin"
@@ -112,7 +131,11 @@ export default function SiteChrome({ children }) {
         {isMenuOpen && (
           <div id="mobile-site-menu" className="max-h-[calc(100dvh-69px)] overflow-y-auto overscroll-contain border-t border-[#ddcfb6] bg-[#fffdf8] px-4 py-3 xl:hidden">
             <nav className="mx-auto flex max-w-6xl flex-col gap-1 text-base font-semibold text-[#40584c]" aria-label="Mobile navigation">
-              {publicLinks.map((link) => (
+              {publicLinks.map((link) => link.href === SUBSCRIPTION_HREF ? (
+                <a key={link.href} href={link.href} className="flex min-h-11 items-center rounded-lg px-3 py-2 hover:bg-[#f8f4ea]" onClick={handleSubscriptionClick}>
+                  {link.label}
+                </a>
+              ) : (
                 <Link key={link.href} href={link.href} className="flex min-h-11 items-center rounded-lg px-3 py-2 hover:bg-[#f8f4ea]" onClick={closeMenu}>
                   {link.label}
                 </Link>
@@ -126,9 +149,9 @@ export default function SiteChrome({ children }) {
               >
                 WhatsApp
               </a>
-              <Link href="/#order-flow" className="flex min-h-11 items-center rounded-lg px-3 py-2 hover:bg-[#f8f4ea]" onClick={closeMenu}>
-                Cart
-              </Link>
+              <a href={SUBSCRIPTION_HREF} className="flex min-h-11 items-center rounded-lg px-3 py-2 hover:bg-[#f8f4ea]" onClick={handleSubscriptionClick}>
+                Subscribe
+              </a>
               {showAdminLink && (
                 <Link href="/admin" className="flex min-h-11 items-center rounded-lg px-3 py-2 hover:bg-[#f8f4ea]" onClick={closeMenu}>
                   Admin
@@ -184,17 +207,14 @@ export default function SiteChrome({ children }) {
               <Link href="/#products" className="inline-flex min-h-11 items-center px-2 transition hover:text-primary md:min-h-0 md:px-0">
                 Products
               </Link>
-              <Link href="/#subscriptions" className="inline-flex min-h-11 items-center px-2 transition hover:text-primary md:min-h-0 md:px-0">
+              <a href={SUBSCRIPTION_HREF} className="inline-flex min-h-11 items-center px-2 transition hover:text-primary md:min-h-0 md:px-0" onClick={handleSubscriptionClick}>
                 Subscriptions
-              </Link>
+              </a>
               <Link href="/track-order" className="inline-flex min-h-11 items-center px-2 transition hover:text-primary md:min-h-0 md:px-0">
                 Track Order
               </Link>
               <Link href="/#about" className="inline-flex min-h-11 items-center px-2 transition hover:text-primary md:min-h-0 md:px-0">
                 About Us
-              </Link>
-              <Link href="/#order-flow" className="inline-flex min-h-11 items-center px-2 transition hover:text-primary md:min-h-0 md:px-0">
-                Cart
               </Link>
             </div>
           </div>

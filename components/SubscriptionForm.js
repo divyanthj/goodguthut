@@ -1,6 +1,6 @@
 "use client";
 
-import { assertSubscriptionBox, calculatePrepaidSubscriptionPrice, getKanjiSubscriptionBoxes, PREPAID_SUBSCRIPTION_WEEKS, SUBSCRIPTION_PROCESSING_FEE } from "@/libs/prepaid-subscriptions";
+import { assertSubscriptionBox, calculatePrepaidSubscriptionPrice, getEligiblePrepaidSubscriptionCombos, PREPAID_SUBSCRIPTION_WEEKS, SUBSCRIPTION_PROCESSING_FEE } from "@/libs/prepaid-subscriptions";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import AdminOrderQrPayment from "@/components/AdminOrderQrPayment";
@@ -323,14 +323,8 @@ export default function SubscriptionForm({
   enableAdminManualOrders = false,
   onOrderSaved,
 }) {
-  const [wantsRecurring, setWantsRecurring] = useState(mode === "edit");
-  useEffect(() => {
-    if (!enableAdminManualOrders && mode === "create" && new URLSearchParams(window.location.search).get("subscription") === "1") {
-      const boxes = getKanjiSubscriptionBoxes(catalogItems);
-      if (boxes.length) { setWantsRecurring(true); setSelectionMode("custom"); setCart(buildCartFromCatalog(catalogItems, boxes[0].items)); }
-    }
-  }, [mode, catalogItems, enableAdminManualOrders]);
-  const isRecurringMode = mode === "edit" || (!enableAdminManualOrders && wantsRecurring);
+  const [wantsRecurring, setWantsRecurring] = useState(mode === "edit" || !enableAdminManualOrders);
+  const isRecurringMode = mode === "edit" || wantsRecurring;
   const isOneTimeMode = !isRecurringMode;
   const isPrepaidMode = mode === "create" && isRecurringMode;
   const [customer, setCustomer] = useState(() => ({
@@ -350,11 +344,9 @@ export default function SubscriptionForm({
   );
   const [showStartDateOptions, setShowStartDateOptions] = useState(false);
   const [selectionMode, setSelectionMode] = useState(() =>
-    getInitialSelectionMode({
-      initialValues,
-      initialSelectionMode,
-      comboOptions,
-    })
+    mode === "create" && !enableAdminManualOrders
+      ? "combo"
+      : getInitialSelectionMode({ initialValues, initialSelectionMode, comboOptions })
   );
   const [comboCart, setComboCart] = useState(() =>
     buildInitialComboCart({
@@ -495,9 +487,6 @@ export default function SubscriptionForm({
     );
     initialEmailRef.current = initialValues.email || "";
     setStartDate(initialValues.startDate || fallbackStartDate);
-    if (mode === "edit") {
-      setWantsRecurring(true);
-    }
   }, [catalogItems, comboOptions, fallbackStartDate, initialSelectionMode, initialValues, mode]);
 
   const lineup = useMemo(
@@ -612,7 +601,10 @@ export default function SubscriptionForm({
   const deliveryConfigured = Boolean(pickupAddress && deliveryBands.length > 0);
   const fullAddress = buildFullAddress(customer.addressLine2, customer.address);
   const subtotal = weeklySubtotal * (isPrepaidMode ? durationWeeks : 1);
-  const subscriptionBoxes = useMemo(() => getKanjiSubscriptionBoxes(catalogItems), [catalogItems]);
+  const eligibleSubscriptionCombos = useMemo(
+    () => getEligiblePrepaidSubscriptionCombos(comboOptions, catalogItems, durationWeeks),
+    [catalogItems, comboOptions, durationWeeks]
+  );
   const subscriptionDiscount = isPrepaidMode && appliedDiscount?.code === "TRAYA" && durationWeeks !== 1
     ? calculatePrepaidSubscriptionPrice({ weeklySubtotal, durationWeeks, code: "TRAYA" }).discount : null;
   const discountAmount = isPrepaidMode ? Number(subscriptionDiscount?.discountAmount || 0) : Number(appliedDiscount?.discountAmount || 0);
@@ -683,8 +675,7 @@ export default function SubscriptionForm({
       startDate,
     ]
   );
-  const canCreateManualOrderWithoutPayment =
-    enableAdminManualOrders && mode === "create" && isOneTimeMode;
+  const canUseAdminPaymentOptions = enableAdminManualOrders && mode === "create";
   const effectiveStartDate = startDate || fallbackStartDate;
   const selectedStartDateOption = effectiveStartDateOptions.find(
     (option) => option.value === effectiveStartDate
@@ -739,7 +730,9 @@ export default function SubscriptionForm({
   const scrollToCheckoutIssue = (target) => {
     const targetMap = {
       selection: selectionSectionRef,
-      quantity: effectiveSelectionMode === "custom" ? customSelectionRef : selectionSectionRef,
+      quantity: isRecurringMode && mode === "create"
+        ? selectionSectionRef
+        : effectiveSelectionMode === "custom" ? customSelectionRef : selectionSectionRef,
       duration: durationRef,
       deliveryDate: deliveryDateRef,
       name: nameInputRef,
@@ -785,6 +778,14 @@ export default function SubscriptionForm({
     }, 0);
   };
 
+  const selectSubscriptionCombo = (combo) => {
+    setSelectionMode("combo");
+    setComboCart({ [combo.id]: 1 });
+    setCart(buildCartFromCatalog(catalogItems, []));
+    setError("");
+    clearFieldErrors("selection", "quantity");
+  };
+
   const validateCheckoutBeforeSubmit = () => {
     const nextErrors = {};
     let firstTarget = "";
@@ -799,7 +800,9 @@ export default function SubscriptionForm({
     if (effectiveSelectionMode === "combo" && selectedComboBreakdown.length === 0) {
       addError("selection", "Please add at least one ready-to-go set.");
     } else if (selectedItems.length === 0) {
-      addError("selection", "Choose a set or add a few bottles before continuing.");
+      addError("selection", isRecurringMode
+        ? "Choose a ready-to-go set."
+        : "Choose a set or add a few bottles before continuing.");
     }
 
     if (selectedItems.length > 0 && totalQuantity < minimumQuantityForMode) {
@@ -840,7 +843,7 @@ export default function SubscriptionForm({
       addError("name", "Please enter your name.");
     }
 
-    if (!customer.email.trim() && !canCreateManualOrderWithoutPayment) {
+    if (!customer.email.trim() && !canUseAdminPaymentOptions) {
       addError("email", "Please enter your email address.");
     }
 
@@ -968,7 +971,7 @@ export default function SubscriptionForm({
       remove("duration", isOneTimeMode || durationIsValid);
       remove("deliveryDate", Boolean(effectiveStartDate));
       remove("name", Boolean(customer.name.trim()));
-      remove("email", canCreateManualOrderWithoutPayment || Boolean(customer.email.trim()));
+      remove("email", canUseAdminPaymentOptions || Boolean(customer.email.trim()));
       remove("phone", Boolean(customer.phone.trim()));
       remove("address", Boolean(customer.address.trim()));
       remove(
@@ -984,7 +987,7 @@ export default function SubscriptionForm({
     customer.email,
     customer.name,
     customer.phone,
-    canCreateManualOrderWithoutPayment,
+    canUseAdminPaymentOptions,
     deliveryConfigured,
     deliveryError,
     durationIsValid,
@@ -1227,7 +1230,9 @@ export default function SubscriptionForm({
     setCustomer(initialCustomer);
     setCadence(LOCKED_SUBSCRIPTION_CADENCE);
     setDurationWeeks(4);
-    setSelectionMode(comboOptions.length > 0 ? initialSelectionMode : "custom");
+    setSelectionMode(
+      wantsRecurring ? "combo" : getInitialSelectionMode({ initialSelectionMode, comboOptions })
+    );
     setComboCart({});
     setCart(buildCartFromCatalog(catalogItems, []));
     setSelectedPlace(null);
@@ -1240,7 +1245,6 @@ export default function SubscriptionForm({
     setAddressLookupError("");
     setStartDate(fallbackStartDate);
     setShowStartDateOptions(false);
-    setWantsRecurring(false);
     setFieldErrors({});
     setDiscountCodeInput("");
     setAppliedDiscount(null);
@@ -1303,12 +1307,21 @@ export default function SubscriptionForm({
     const nextSubmitAction =
       event?.nativeEvent?.submitter?.value === "manual_without_payment"
         ? "manual_without_payment"
-        : canCreateManualOrderWithoutPayment ? "qr" : "checkout";
+        : canUseAdminPaymentOptions ? "qr" : "checkout";
     setActiveSubmitAction(nextSubmitAction);
 
     if (isRecurringMode && mode === "create") {
+      if (selectedItems.length === 0) {
+        setFieldErrors((current) => ({ ...current, selection: "Choose a ready-to-go set." }));
+        window.setTimeout(() => scrollToCheckoutIssue("selection"), 0);
+        return;
+      }
       try { assertSubscriptionBox(selectedItems, catalogItems, durationWeeks); }
-      catch (boxError) { setError(boxError.message); return; }
+      catch (boxError) {
+        setFieldErrors((current) => ({ ...current, selection: boxError.message }));
+        window.setTimeout(() => scrollToCheckoutIssue("selection"), 0);
+        return;
+      }
     }
     const validation = validateCheckoutBeforeSubmit();
 
@@ -1368,9 +1381,9 @@ export default function SubscriptionForm({
             discountCode: normalizedDiscountCode,
             ...(nextSubmitAction === "qr" ? { paymentMethod: "qr" } : {}),
             manualWithoutPayment:
-              nextSubmitAction === "manual_without_payment" && canCreateManualOrderWithoutPayment,
+              nextSubmitAction === "manual_without_payment" && canUseAdminPaymentOptions,
             manualPaymentAction:
-              nextSubmitAction === "manual_without_payment" && canCreateManualOrderWithoutPayment
+              nextSubmitAction === "manual_without_payment" && canUseAdminPaymentOptions
                 ? adminManualPaymentAction
                 : "",
             token,
@@ -1550,31 +1563,111 @@ export default function SubscriptionForm({
   return (
     <div className="checkout-flow min-w-0 space-y-4 sm:space-y-6">
       {qrOrder && <AdminOrderQrPayment initialOrder={qrOrder} onOrderUpdated={onOrderSaved} onClose={() => setQrOrder(null)} />}
-      {mode === "create" && !enableAdminManualOrders && (
-        <section id="subscription-checkout" className="rounded-2xl border border-[#d6c6ae] bg-[#fbf7f0] p-4 sm:rounded-[28px] sm:p-6 md:p-8">
-          <h2 className="text-xl font-semibold text-[#2f4a3e]">Kanji subscriptions</h2>
-          <p className="mt-2 text-sm text-[#53675d]">Six bottles each week. Choose Trial (6 bottles), 2 weeks (12 bottles), or 4 weeks (24 bottles). Pay once upfront, with a single ₹50 processing fee and delivery included.</p>
-          <p className="mt-2 text-sm text-[#53675d]">Use TRAYA for 5% off bottles on 2 weeks or 10% on 4 weeks. No automatic renewal or autopay.</p>
-          <div className="mt-4 grid grid-cols-1 gap-3 sm:flex sm:flex-wrap">
-            <button type="button" aria-pressed={isOneTimeMode} className="btn btn-outline" onClick={() => { setWantsRecurring(false); setAppliedDiscount(null); setDiscountCodeInput(""); }}>One-time order</button>
-            <button type="button" aria-pressed={isRecurringMode} className="btn btn-outline" disabled={!subscriptionBoxes.length} onClick={() => {
-              setWantsRecurring(true); setSelectionMode("custom"); setComboCart({}); setAppliedDiscount(null); setDiscountCodeInput("");
-              setCart(buildCartFromCatalog(catalogItems, subscriptionBoxes[0]?.items || []));
-            }}>Subscription</button>
-          </div>
+      {mode === "create" && (
+        <section ref={isRecurringMode ? selectionSectionRef : null} id="subscription-checkout" className="scroll-mt-24 rounded-2xl border border-[#d6c6ae] bg-[#fbf7f0] p-4 sm:rounded-[28px] sm:p-6 md:p-8">
+          <h2 className="text-xl font-semibold text-[#2f4a3e]">{enableAdminManualOrders ? "Order type" : "Choose your subscription set"}</h2>
+          {enableAdminManualOrders ? (
+            <p className="mt-2 text-sm text-[#53675d]">Choose a one-time order or a prepaid weekly kanji subscription for this customer.</p>
+          ) : (
+            <>
+              <p className="mt-2 text-sm text-[#53675d]">Choose a ready-to-go six-bottle set for each weekly delivery.</p>
+              <p className="mt-2 text-sm text-[#53675d]">Choose Trial, 2 weeks, or 4 weeks and pay once upfront, with a single ₹50 processing fee and delivery included. No automatic renewal.</p>
+            </>
+          )}
+          {enableAdminManualOrders && <div className="mt-4 grid grid-cols-1 gap-3 sm:flex sm:flex-wrap">
+            <button type="button" aria-pressed={isOneTimeMode} className="btn btn-outline" onClick={() => {
+                if (isOneTimeMode) return;
+                setWantsRecurring(false);
+                setSelectionMode("custom");
+                setComboCart({});
+                setCart(buildCartFromCatalog(catalogItems, [])); setAppliedDiscount(null); setDiscountCodeInput("");
+              }}>One-time order</button>
+            <button
+              type="button"
+              aria-pressed={isRecurringMode}
+              className="btn btn-outline"
+              disabled={!eligibleSubscriptionCombos.length}
+              onClick={() => {
+                if (!isRecurringMode) {
+                  setWantsRecurring(true); setSelectionMode("combo"); setComboCart({});
+                  setCart(buildCartFromCatalog(catalogItems, []));
+                  setAppliedDiscount(null); setDiscountCodeInput("");
+                }
+                window.setTimeout(() => {
+                  document.getElementById("subscription-sets")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                }, 0);
+              }}
+            >
+              Subscription
+            </button>
+          </div>}
+          {enableAdminManualOrders && isRecurringMode && (
+            <p className="mt-4 text-sm text-[#53675d]">Six kanji bottles each week for Trial, 2 weeks, or 4 weeks. One payment covers the full plan, the ₹50 processing fee, and delivery.</p>
+          )}
           {isRecurringMode && (
-            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {subscriptionBoxes.map((box) => (
-                <button key={box.id} type="button" aria-pressed={box.items.length === selectedItems.length && box.items.every((item) => selectedItems.some((selected) => selected.sku === item.sku && selected.quantity === item.quantity))} className="rounded-xl border border-[#d6c6ae] bg-[#fffaf1] p-4 text-left aria-pressed:border-[#2f5d49] aria-pressed:bg-[#eef4ee]" onClick={() => {
-                  setSelectionMode("custom"); setComboCart({}); setCart(buildCartFromCatalog(catalogItems, box.items)); clearFieldErrors("selection", "quantity");
-                }}>
-                  <span className="font-semibold">{box.name}</span>
-                  <span className="mt-1 block text-sm">{box.id === "mixed" ? "Two bottles of each active kanji variant per week" : "Six bottles of this variant per week"}</span>
-                </button>
-              ))}
+            <div id="subscription-sets" className="mt-6 scroll-mt-24">
+              <h3 className="text-lg font-semibold text-[#2f4a3e]">Ready-to-go sets</h3>
+              <p className="mt-1 text-sm text-[#53675d]">Choose one of our prepared six-bottle sets for each weekly delivery.</p>
+              {eligibleSubscriptionCombos.length > 0 ? (
+                <div ref={comboSelectionRef} className="mt-4 grid grid-cols-1 gap-4 scroll-mt-24 md:grid-cols-2 xl:grid-cols-3">
+                  {eligibleSubscriptionCombos.map((combo) => {
+                    const isSelected = effectiveSelectionMode === "combo" && Number(comboCart[combo.id] || 0) === 1;
+                    const setImage = getProductSetImage(combo);
+                    const seasonalIneligibility = (combo.items || []).find((item) => {
+                      if ((item.skuType || "perennial") !== "seasonal") return false;
+                      const cutoffDate = String(item.recurringCutoffDate || "").trim();
+                      return !/^\d{4}-\d{2}-\d{2}$/.test(cutoffDate) ||
+                        recurringPlannedDeliveryDates.some((deliveryDate) => deliveryDate >= cutoffDate);
+                    });
+                    const isAvailable = getComboMaxSelectable(combo) >= 1 && !seasonalIneligibility;
+
+                    return (
+                      <button
+                        key={combo.id}
+                        type="button"
+                        aria-pressed={isSelected}
+                        disabled={billingLocked || !isAvailable}
+                        className={`flex h-full flex-col rounded-2xl border p-4 text-left transition ${isSelected ? "border-[#2f5d49] bg-[#eef4ee] shadow-md" : "border-[#d8cdbb] bg-[#fffaf1] hover:border-[#a98f6f]"} disabled:cursor-not-allowed disabled:opacity-60`}
+                        onClick={() => selectSubscriptionCombo(combo)}
+                      >
+                        <span className="relative mb-4 flex aspect-[8/5] w-full items-center justify-center gap-2 overflow-hidden rounded-xl bg-[#f1e8d8] p-3">
+                          {setImage ? (
+                            <Image src={setImage} alt={combo.name} fill sizes="(min-width: 1280px) 33vw, (min-width: 768px) 50vw, 100vw" className="object-contain" />
+                          ) : (combo.items || []).map((item) => (
+                            <Image
+                              key={`${combo.id}-${item.sku}-subscription-image`}
+                              src={item.imageUrl || catalogItems.find((product) => product.sku === item.sku)?.imageUrl || "/images/logo.jpg"}
+                              alt={item.productName || item.sku}
+                              width={160}
+                              height={160}
+                              unoptimized
+                              className="h-full min-w-0 max-w-full flex-1 object-contain"
+                              onError={(event) => { if (!event.currentTarget.src.endsWith("/images/logo.jpg")) event.currentTarget.src = "/images/logo.jpg"; }}
+                            />
+                          ))}
+                        </span>
+                        <span className="flex w-full items-start justify-between gap-3 font-semibold text-[#2f4a3e]">
+                          <span>{combo.name}</span>
+                          {isSelected && <span className="text-sm text-[#2f5d49]">Selected</span>}
+                        </span>
+                        {combo.description && <span className="mt-2 block text-sm leading-6 text-[#53675d]">{combo.description}</span>}
+                        <span className="mt-3 block text-xs leading-5 text-[#5f7068]">
+                          {(combo.items || []).map((item) => `${item.productName || item.sku} × ${item.quantity}`).join(" · ")}
+                        </span>
+                        <span className="mt-auto block pt-4 text-sm font-semibold text-[#2f4a3e]">{currency} {Number(combo.subtotal || 0).toFixed(2)} per week</span>
+                        <span className="mt-2 block text-sm font-medium text-[#2f5d49]">
+                          {isSelected ? "Selected for your plan" : isAvailable ? "Select this set" : seasonalIneligibility ? "Unavailable for these delivery dates" : "Sold out"}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="mt-3 text-sm text-[#53675d]">No ready-to-go sets are available for this plan right now.</p>
+              )}
             </div>
           )}
-          {!subscriptionBoxes.length && <p className="mt-3 text-sm">Subscriptions will be available when kanji variants are in the catalog.</p>}
+          {isRecurringMode && fieldErrors.selection && <p className={fieldErrorClass}>{fieldErrors.selection}</p>}
         </section>
       )}
       {(!isRecurringMode || mode === "edit") && <section
@@ -1964,7 +2057,22 @@ export default function SubscriptionForm({
                         }`}
                         onClick={() => {
                           setDurationWeeks(option);
-                          clearFieldErrors("duration");
+                          const selectedCombo = effectiveSelectionMode === "combo" ? selectedComboBreakdown[0] : null;
+                          if (
+                            mode === "create" &&
+                            selectedCombo &&
+                            !getEligiblePrepaidSubscriptionCombos([selectedCombo], catalogItems, option).length
+                          ) {
+                            setComboCart({});
+                            setSelectionMode("combo");
+                            setCart(buildCartFromCatalog(catalogItems, []));
+                            setFieldErrors((current) => ({
+                              ...current,
+                              selection: "That set is not available for this duration. Choose another ready-to-go set.",
+                            }));
+                          } else {
+                            clearFieldErrors("duration", "selection");
+                          }
                         }}
                       >
                         {formatSubscriptionDuration(option)}
@@ -1981,6 +2089,9 @@ export default function SubscriptionForm({
                 </div>
                 {fieldErrors.duration && (
                   <div className={fieldErrorClass}>{fieldErrors.duration}</div>
+                )}
+                {isRecurringMode && fieldErrors.selection && (
+                  <div className={fieldErrorClass}>{fieldErrors.selection}</div>
                 )}
               </div>
             )}
@@ -2069,7 +2180,7 @@ export default function SubscriptionForm({
             <label className="form-control">
               <div className="label">
                 <span className="label-text text-[#365244]">
-                  Email {canCreateManualOrderWithoutPayment ? "(optional)" : "*"}
+                  Email {canUseAdminPaymentOptions ? "(optional)" : "*"}
                 </span>
               </div>
               <input
@@ -2083,7 +2194,7 @@ export default function SubscriptionForm({
                   setCustomer((prev) => ({ ...prev, email: event.target.value }));
                   clearFieldErrors("email");
                 }}
-                required={!canCreateManualOrderWithoutPayment}
+                required={!canUseAdminPaymentOptions}
                 disabled={billingLocked}
               />
               {fieldErrors.email && (
@@ -2224,7 +2335,7 @@ export default function SubscriptionForm({
                     ? selectedComboBreakdown.length > 0
                       ? `You have selected ${selectedComboBreakdown.length} ready-to-go set${selectedComboBreakdown.length === 1 ? "" : "s"}.`
                       : "Choose one or more ready-to-go sets to continue."
-                    : isRecurringMode ? "Your selected box is delivered each week for the purchased period." : "You are creating a custom order from the current menu."}
+                    : isRecurringMode ? "Choose a ready-to-go set for each weekly delivery." : "You are creating a custom order from the current menu."}
                 </p>
               </div>
               <div className="badge border-[#d1c4b0] bg-[#f7f1e6] text-[#2f5d49]">
@@ -2234,7 +2345,7 @@ export default function SubscriptionForm({
 
             {selectedItems.length === 0 ? (
               <p className="mt-4 text-sm opacity-70">
-                Nothing selected yet. Choose a set or add a few bottles to continue.
+                {isRecurringMode ? "Nothing selected yet. Choose a ready-to-go set to continue." : "Nothing selected yet. Choose a set or add a few bottles to continue."}
               </p>
             ) : (
               <div className="mt-4 space-y-4">
@@ -2464,7 +2575,7 @@ export default function SubscriptionForm({
 
           <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
             <div className="text-sm text-[#5f7068]">
-              {canCreateManualOrderWithoutPayment
+              {canUseAdminPaymentOptions
                 ? "Create the order and show the customer a QR code to pay."
                 : isOneTimeMode
                 ? "Quick checkout. Complete your order and we will send the confirmation by email."
@@ -2481,7 +2592,7 @@ export default function SubscriptionForm({
                   {isCancelling ? "Cancelling..." : "Cancel plan"}
                 </button>
               )}
-              {canCreateManualOrderWithoutPayment && (
+              {canUseAdminPaymentOptions && (
                 <div className="flex min-w-0 flex-col gap-3">
                   <button type="submit" value="qr" disabled={!canAttemptSubmit} className="btn btn-primary w-full sm:w-auto">
                     {isSubmitting && activeSubmitAction === "qr" ? "Creating payment QR…" : "Show payment QR code"}
@@ -2537,7 +2648,7 @@ export default function SubscriptionForm({
                   </details>
                 </div>
               )}
-              {!canCreateManualOrderWithoutPayment && (
+              {!canUseAdminPaymentOptions && (
                 <button
                   type="submit"
                   value="checkout"

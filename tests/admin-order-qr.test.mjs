@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 const load = (path, dependencies, exports) => {
   const source = readFileSync(new URL(path, import.meta.url), "utf8")
     .replace(/import\s+[\s\S]*?from\s+["'][^"']+["'];/g, "")
-    .replace(/export\s+(?=(const|async function|function)\b)/g, "");
+    .replace(/export\s+(?=(const|async function|function|class)\b)/g, "");
   return new Function(...Object.keys(dependencies), `${source}\nreturn { ${exports.join(", ")} };`)(...Object.values(dependencies));
 };
 const json = (body, options = {}) => ({ body, status: options.status || 200 });
@@ -66,9 +66,24 @@ test("QR creation fixes the trusted INR amount, expiry, and admin order identity
   assert.equal(fixture.order.payment.qrCodeId, "qr_test");
   assert.equal(fixture.order.payment.status, "pending");
   assert.equal(fixture.order.inventory.expiresAt.getTime(), fixture.order.payment.qrExpiresAt.getTime());
-  for (const invalid of [{ source: "landing" }, { mode: "recurring" }, { currency: "USD" }, { total: 0 }]) {
+  for (const invalid of [{ source: "landing" }, { mode: "recurring", paymentType: "recurring" }, { currency: "USD" }, { total: 0 }]) {
     await assert.rejects(fixture.createAdminOrderQrPayment({ ...fixture.order, ...invalid }));
   }
+});
+
+test("prepaid subscription QR reserves the full plan and activates it after captured payment", async () => {
+  const fixture = serviceFixture();
+  fixture.order.mode = "recurring";
+  fixture.order.durationWeeks = 4;
+  await fixture.createAdminOrderQrPayment(fixture.order);
+  assert.equal(fixture.order.payment.totalCount, 4);
+  assert.equal(fixture.order.payment.status, "pending");
+  fixture.state.payments = [captured()];
+  await fixture.syncAdminOrderQrPayment(fixture.order);
+  assert.equal(fixture.order.status, "active");
+  assert.equal(fixture.order.payment.paidCount, 4);
+  assert.equal(fixture.order.payment.remainingCount, 0);
+  assert.equal(fixture.state.commits, 1);
 });
 
 test("QR adapter uses Razorpay single-use UPI fixed-amount API, not checkout orders", async () => {
@@ -150,6 +165,8 @@ function creationFixture() {
     createAdminOrderQrPayment: async order => { state.qrCalls++; if (state.failQr) throw new Error("QR unavailable"); order.payment.qrImageUrl = "https://rzp.io/i/test"; },
     createRazorpayOrder: async args => { state.checkoutCalls++; return { id: "order_web", amount: args.amount, currency: "INR" }; },
     createSignedCheckoutToken: () => "public_checkout_token", syncCollatoKnowledgeDocument: async () => {},
+    getSubscriptionDurationConfig: () => ({ totalCount: 4 }), getSubscriptionEndDate: () => "2026-11-05",
+    recalculateSubscriptionRouteSnapshots: async () => {},
     sendOrderPlanConfirmationEmail: async () => { state.notifications++; },
     releaseOrderInventory: async () => { state.releases++; },
     console: { error: () => {} },
@@ -176,14 +193,70 @@ test("QR creation requires admin, holds inventory without committing, and never 
   assert.equal(fixture.state.checkoutCalls, 0);
 });
 
-test("QR failure releases stock and does not fall back to checkout; recurring QR orders are rejected", async () => {
+test("QR failure releases stock and does not fall back to checkout", async () => {
   const fixture = creationFixture();
   fixture.state.failQr = true;
   assert.equal((await fixture.POST({})).status, 502);
   assert.equal(fixture.state.releases, 1);
   assert.equal(fixture.state.checkoutCalls, 0);
-  fixture.quote.mode = "recurring";
-  assert.equal((await fixture.POST({})).status, 400);
+});
+
+test("admin can create a prepaid subscription with QR or manual payment", async () => {
+  const fixture = creationFixture();
+  Object.assign(fixture.quote, { mode: "recurring", paymentType: "one_time", cadence: "weekly", durationWeeks: 4 });
+  fixture.state.body = { mode: "subscription", paymentMethod: "qr" };
+  const qrResponse = await fixture.POST({});
+  assert.equal(qrResponse.status, 200);
+  assert.equal(qrResponse.body.qrPayment, true);
+  assert.equal(fixture.state.reservation.totalCycles, 4);
+  assert.equal(fixture.state.reservation.commitImmediately, false);
+  assert.equal(fixture.state.reservation.orderPayload.subscriptionEndDate, "2026-11-05");
+  fixture.state.body = { mode: "subscription", manualWithoutPayment: true, manualPaymentAction: "mark_paid" };
+  const paidResponse = await fixture.POST({});
+  assert.equal(paidResponse.status, 200);
+  assert.equal(fixture.state.reservation.commitImmediately, true);
+  assert.equal(paidResponse.body.orderPlan.status, "active");
+  assert.equal(paidResponse.body.orderPlan.payment.status, "paid");
+  assert.equal(paidResponse.body.orderPlan.payment.paidCount, 4);
+  fixture.state.body.manualPaymentAction = "collect_later";
+  const pendingResponse = await fixture.POST({});
+  assert.equal(pendingResponse.status, 200);
+  assert.equal(fixture.state.reservation.commitImmediately, false);
+  assert.equal(fixture.state.reservation.expiresAt, null);
+  assert.equal(pendingResponse.body.orderPlan.status, "payment_pending");
+  assert.equal(pendingResponse.body.orderPlan.payment.remainingCount, 4);
+  assert.match(pendingResponse.body.message, /Collect the full payment before deliveries begin/);
+});
+
+test("collect-later admin subscription becomes active and commits every reserved week when marked paid", async () => {
+  const order = {
+    id: "subscription-order", source: "admin", mode: "recurring", paymentType: "one_time",
+    durationWeeks: 4, status: "payment_pending", payment: { provider: "manual", status: "pending" },
+    inventory: {
+      status: "held", totalCycles: 4, committedCycles: 0,
+      items: [{ sku: "KANJI", quantityPerCycle: 6, reservedQuantity: 24, committedQuantity: 0 }],
+    },
+    save: async () => {},
+  };
+  const session = { withTransaction: async callback => callback(), endSession: async () => {} };
+  const { markManualOrderPaid } = load("../libs/inventory.js", {
+    mongoose: { startSession: async () => session },
+    OrderPlan: { findById: () => ({ session: async () => order }) },
+    Sku: { find: () => ({ session: async () => [] }), findOne: () => ({ session: async () => null }) },
+  }, ["markManualOrderPaid"]);
+  order.source = "landing";
+  await assert.rejects(markManualOrderPaid({ orderPlanId: order.id }), { code: "INVALID_INVENTORY_ACTION" });
+  order.source = "admin";
+  const paid = await markManualOrderPaid({ orderPlanId: order.id });
+  assert.equal(paid.status, "active");
+  assert.equal(paid.payment.status, "paid");
+  assert.equal(paid.payment.paidCount, 4);
+  assert.equal(paid.payment.remainingCount, 0);
+  assert.equal(paid.inventory.status, "committed");
+  assert.equal(paid.inventory.committedCycles, 4);
+  assert.equal(paid.inventory.items[0].committedQuantity, 24);
+  assert.equal(paid.inventory.items[0].reservedQuantity, 0);
+  await assert.rejects(markManualOrderPaid({ orderPlanId: order.id }), { code: "INVALID_INVENTORY_ACTION" });
 });
 
 test("public one-time checkout continues to create the original Razorpay checkout token", async () => {

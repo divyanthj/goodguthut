@@ -24,9 +24,20 @@ export const assertSubscriptionBox = (items = [], catalog = [], durationWeeks = 
     throw new Error("Subscriptions require exactly six bottles of active kanji variants per week.");
   }
   if (Number(durationWeeks) !== 1 && !getKanjiSubscriptionBoxes(catalog).some((box) => box.items.length === items.length && box.items.every((expected) => items.some((item) => item.sku === expected.sku && item.quantity === expected.quantity)))) {
-    throw new Error("Subscriptions require a mixed box or six bottles of a single variant.");
+    throw new Error("Subscriptions require a mixed six-bottle set or six bottles of a single variant.");
   }
 };
+
+export const getEligiblePrepaidSubscriptionCombos = (combos = [], catalog = [], durationWeeks = 4) =>
+  combos.filter((combo) => {
+    if (combo?.status !== "active") return false;
+    try {
+      assertSubscriptionBox(combo.items || [], catalog, durationWeeks);
+      return true;
+    } catch (_error) {
+      return false;
+    }
+  });
 
 export const calculatePrepaidSubscriptionPrice = ({ weeklySubtotal = 0, durationWeeks = 0, code = "" } = {}) => {
   const weeks = Number(durationWeeks);

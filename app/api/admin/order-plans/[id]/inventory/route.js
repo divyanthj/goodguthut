@@ -14,6 +14,8 @@ import connectMongo from "@/libs/mongoose";
 import { MAX_TOTAL_QTY, ONE_TIME_MIN_TOTAL_QTY } from "@/libs/order-quantity";
 import OrderPlan from "@/models/OrderPlan";
 import Sku from "@/models/Sku";
+import { recalculateSubscriptionRouteSnapshots } from "@/libs/subscription-route-planner";
+import { sendOrderPlanConfirmationEmail } from "@/libs/order-plan-notifications";
 
 const ensureAdmin = async () => {
   const { session, isAdmin } = await getAdminSessionState();
@@ -142,6 +144,23 @@ export async function PATCH(req, { params }) {
             });
     } else {
       return NextResponse.json({ error: "Unsupported inventory action." }, { status: 400 });
+    }
+
+    if (action === "mark_paid") {
+      try {
+        await recalculateSubscriptionRouteSnapshots();
+      } catch (routeError) {
+        console.error("Failed to refresh delivery routes after manual payment", routeError);
+      }
+      if (!orderPlan.notifications?.confirmationEmailSentAt) {
+        try {
+          await sendOrderPlanConfirmationEmail({ orderPlan });
+          orderPlan.notifications.confirmationEmailSentAt = new Date();
+          await orderPlan.save();
+        } catch (notificationError) {
+          console.error("Failed to send manual order confirmation", notificationError);
+        }
+      }
     }
 
     return NextResponse.json({

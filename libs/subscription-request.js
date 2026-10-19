@@ -122,7 +122,7 @@ export const getSubscriptionSetupContext = async () => {
   };
 };
 
-export const buildSubscriptionRequest = async (body = {}, { prepaid = false } = {}) => {
+export const buildSubscriptionRequest = async (body = {}, { prepaid = false, allowMissingEmail = false } = {}) => {
   const name = normalizeName(body.name || "");
   const email = normalizeEmail(body.email || "");
   const phone = normalizePhone(body.phone || "");
@@ -144,7 +144,7 @@ export const buildSubscriptionRequest = async (body = {}, { prepaid = false } = 
     throw new Error("Enter a valid name.");
   }
 
-  if (!isValidEmail(email)) {
+  if ((!allowMissingEmail || email) && !isValidEmail(email)) {
     throw new Error("Enter a valid email address.");
   }
 
